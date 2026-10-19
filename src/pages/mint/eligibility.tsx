@@ -1,8 +1,17 @@
 import { useState } from 'react'
-import { Card } from '@/components/ui/card'
+import { Eye, RefreshCw, Trash2 } from 'lucide-react'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { WalletSelect, type WalletGroup } from '@/components/wallet-select'
 
 const walletGroups: WalletGroup[] = [
@@ -22,6 +31,42 @@ const walletGroups: WalletGroup[] = [
       { id: 'wb-2', name: '0x7g8h…2b04' },
       { id: 'wb-3', name: '0x9i0j…3c05' },
     ],
+  },
+]
+
+type Snapshot = {
+  id: string
+  title: string
+  status: 'Upcoming' | 'Live' | 'Ended'
+  marketplace: string
+  chain: string
+  date: string
+}
+
+const snapshots: Snapshot[] = [
+  {
+    id: 'snap-1',
+    title: 'NFT Title',
+    status: 'Upcoming',
+    marketplace: 'OpenSea',
+    chain: 'Ethereum',
+    date: '12 Oct 2026, 14:30',
+  },
+  {
+    id: 'snap-2',
+    title: 'NFT Title',
+    status: 'Live',
+    marketplace: 'OpenSea',
+    chain: 'Ethereum',
+    date: '13 Oct 2026, 09:00',
+  },
+  {
+    id: 'snap-3',
+    title: 'NFT Title',
+    status: 'Ended',
+    marketplace: 'OpenSea',
+    chain: 'Ethereum',
+    date: '10 Oct 2026, 23:15',
   },
 ]
 
@@ -47,11 +92,87 @@ export function MintEligibilityPage() {
             />
             <Button className="shrink-0">Check</Button>
           </Card>
-          <Card className="flex-1" />
+          <Card className="flex flex-1 flex-col gap-3 p-4">
+            <div className="flex gap-4 text-xs text-muted-foreground">
+              <span>NFT Title</span>
+              <span>Label Marketplace</span>
+              <span>Chain</span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Wallet Profile</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Mint Stage</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody />
+              </Table>
+            </div>
+          </Card>
         </TabsContent>
 
-        <TabsContent value="snapshot" className="flex flex-1 flex-col">
-          <Card className="flex-1" />
+        <TabsContent value="snapshot" className="flex flex-1 flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {snapshots.map((snapshot) => (
+              <Card key={snapshot.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle>{snapshot.title}</CardTitle>
+                    <Badge
+                      variant="outline"
+                      className={
+                        snapshot.status === 'Live'
+                          ? 'border-success/30 bg-success/10 text-success'
+                          : snapshot.status === 'Upcoming'
+                            ? 'border-warning/30 bg-warning/10 text-warning'
+                            : 'text-muted-foreground'
+                      }
+                    >
+                      {snapshot.status}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  <div className="flex justify-between gap-2">
+                    <span>Marketplace</span>
+                    <span className="text-foreground">{snapshot.marketplace}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Chain</span>
+                    <span className="text-foreground">{snapshot.chain}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Date</span>
+                    <span className="text-foreground">{snapshot.date}</span>
+                  </div>
+                </CardContent>
+                <CardFooter className="justify-between gap-2">
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">
+                      <RefreshCw />
+                      Refresh
+                    </Button>
+                    <Button size="sm">
+                      <Eye />
+                      View Snapshot
+                    </Button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Delete snapshot"
+                    className="hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 />
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+
         </TabsContent>
       </Tabs>
     </div>
