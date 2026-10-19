@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "@animate-ui/react/primitives/radix-ui"
 
-import { Button } from "@/components/animate-ui/button"
+import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {

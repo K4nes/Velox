@@ -1,5 +1,5 @@
 import { useMatches } from 'react-router-dom'
-import { SidebarTrigger } from '@/components/animate-ui/sidebar'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 
 type RouteHandle = { title?: string }
 

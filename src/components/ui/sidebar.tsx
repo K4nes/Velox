@@ -6,22 +6,22 @@ import { cn } from "cn"
 import { Slot } from "radix-ui"
 import * as SidebarPrimitive from "@animate-ui/react/primitives/sidebar"
 
-import { Button } from "@/components/animate-ui/button"
-import { Input } from "@/components/animate-ui/input"
-import { Separator } from "@/components/animate-ui/separator"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/animate-ui/sheet"
-import { Skeleton } from "@/components/animate-ui/skeleton"
+} from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/animate-ui/tooltip"
+} from "@/components/ui/tooltip"
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react"
 
 const SIDEBAR_WIDTH = "16rem"

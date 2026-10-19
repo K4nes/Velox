@@ -15,12 +15,12 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
-} from '@/components/animate-ui/sidebar'
+} from '@/components/ui/sidebar'
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from '@/components/animate-ui/collapsible'
+} from '@/components/ui/collapsible'
 import { ToggleTheme } from '@/components/lightswind/toggle-theme'
 import { navGroups } from '@/config/nav'
 
