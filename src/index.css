@@ -141,3 +141,7 @@
     @apply font-sans;
     }
 }
+
+[data-slot="sidebar"] [data-slot="trigger-highlight"] {
+  background-color: var(--sidebar-accent) !important;
+}
