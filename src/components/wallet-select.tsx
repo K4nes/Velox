@@ -25,6 +25,7 @@ type WalletSelectProps = {
   groups: WalletGroup[]
   selected: string[]
   onSelectedChange: (ids: string[]) => void
+  disabled?: boolean
   className?: string
 }
 
@@ -32,6 +33,7 @@ export function WalletSelect({
   groups,
   selected,
   onSelectedChange,
+  disabled,
   className,
 }: WalletSelectProps) {
   const [open, setOpen] = useState(false)
@@ -71,9 +73,15 @@ export function WalletSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery('')
+      }}
+    >
       <PopoverTrigger asChild>
-        <Button variant="outline" className={className}>
+        <Button variant="outline" className={className} disabled={disabled}>
           <span>Select wallets ({selected.length} selected)</span>
           <ChevronDown
             className={`ml-auto size-4 shrink-0 opacity-60 transition-transform ${
