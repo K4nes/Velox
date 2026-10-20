@@ -1,8 +1,7 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 export type TaskStatus = 'idle' | 'running' | 'failed'
@@ -34,39 +33,19 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 }
 
 export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskListProps) {
-  const [query, setQuery] = useState('')
   const listRef = useRef<HTMLUListElement>(null)
-  const searchRef = useRef<HTMLInputElement>(null)
+  const addRef = useRef<HTMLButtonElement>(null)
   const pendingFocus = useRef<number | 'last' | null>(null)
   const focused = useRef<{ id: string; index: number } | null>(null)
 
-  const needle = query.trim().toLowerCase()
-
-  // Rows describe what is on screen; matches describe what the query found.
-  // A row that is not a match stays only because it is the active task.
-  const { matches, rows } = useMemo(() => {
-    if (!needle) {
-      return {
-        matches: items,
-        rows: items.map((item, index) => ({
-          item,
-          position: `, task ${index + 1} of ${items.length}`,
-        })),
-      }
-    }
-    const matched = items.filter((item) => item.label.toLowerCase().includes(needle))
-    return {
-      matches: matched,
-      rows: items
-        .map((item) => ({ item, index: matched.findIndex((match) => match.id === item.id) }))
-        .filter((row) => row.index !== -1 || row.item.id === activeId)
-        .map(({ item, index }) => ({
-          item,
-          position:
-            index === -1 ? ', current task' : `, task ${index + 1} of ${matched.length}`,
-        })),
-    }
-  }, [items, needle, activeId])
+  const rows = useMemo(
+    () =>
+      items.map((item, index) => ({
+        item,
+        position: `, task ${index + 1} of ${items.length}`,
+      })),
+    [items]
+  )
 
   useLayoutEffect(() => {
     const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>('[data-task-select]')
@@ -75,7 +54,7 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
     const focusRow = (index: number) => {
       const row = present[Math.min(index, present.length - 1)]
       if (!row) {
-        searchRef.current?.focus()
+        addRef.current?.focus()
         focused.current = null
         return
       }
@@ -90,12 +69,11 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
       return
     }
 
-    // A filtered-out or renamed row can unmount while focused: move focus to its
-    // neighbour instead of letting it fall back to <body>.
+    // A renamed row can unmount while focused: move focus to its neighbour
+    // instead of letting it fall back to <body>.
     const previous = focused.current
     if (!previous) return
-    const stillPresent = present.some((row) => row.dataset.taskId === previous.id)
-    if (stillPresent) return
+    if (present.some((row) => row.dataset.taskId === previous.id)) return
     focusRow(previous.index)
   }, [rows])
 
@@ -117,32 +95,21 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
     next.focus()
   }
 
-  const emptyMessage =
-    items.length === 0 ? 'No tasks yet' : needle && matches.length === 0 ? 'No matches' : null
-
   return (
     <Card className="min-h-0 gap-0 py-0">
       <h2 className="sr-only">Tasks</h2>
 
-      <div className="flex shrink-0 items-center gap-2 p-3">
-        <Input
-          ref={searchRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search"
-          aria-label="Search tasks"
-          className="h-8 flex-1"
-        />
+      <div className="shrink-0 p-3">
         <button
+          ref={addRef}
           type="button"
           onClick={() => {
-            setQuery('')
             pendingFocus.current = 'last'
             onAdd()
           }}
           aria-label="New task"
           className={cn(
-            'text-muted-foreground hover:bg-foreground/8 hover:text-foreground grid size-8 shrink-0 place-items-center rounded-md transition-colors',
+            'border-input hover:bg-muted/60 grid h-8 w-full place-items-center rounded-lg border transition-colors',
             'focus-visible:ring-ring/50 focus-visible:ring-[1px] focus-visible:outline-none'
           )}
         >
@@ -151,7 +118,7 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
       </div>
 
       <p role="status" className="sr-only">
-        {matches.length === 1 ? '1 task' : `${matches.length} tasks`}
+        {items.length === 1 ? '1 task' : `${items.length} tasks`}
       </p>
 
       <ul
@@ -211,12 +178,6 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
           )
         })}
       </ul>
-
-      {emptyMessage ? (
-        <p className="text-muted-foreground shrink-0 px-2 pb-4 text-center text-sm">
-          {emptyMessage}
-        </p>
-      ) : null}
     </Card>
   )
 }
