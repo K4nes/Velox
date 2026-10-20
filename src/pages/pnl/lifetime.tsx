@@ -164,7 +164,7 @@ export function PnlLifetimePage() {
             <TableRow className="hover:bg-transparent">
               <TableCell colSpan={columns.length} className="p-0">
                 <div className="flex justify-center px-6 py-8 text-center">
-                  <h2 className="text-muted-foreground">No PnL records yet.</h2>
+                  <p className="text-muted-foreground">No PnL records yet.</p>
                 </div>
               </TableCell>
             </TableRow>
