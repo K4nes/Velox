@@ -58,8 +58,12 @@ export function MintEligibilityPage() {
     <div className="flex flex-1 flex-col gap-4 p-6">
       <Tabs defaultValue="check" className="flex flex-1 flex-col gap-4">
         <TabsList className="w-fit">
-          <TabsTrigger value="check">Check Eligible</TabsTrigger>
-          <TabsTrigger value="snapshot">Snapshot</TabsTrigger>
+          <TabsTrigger value="check" className="focus-visible:ring-[1px]">
+            Check Eligible
+          </TabsTrigger>
+          <TabsTrigger value="snapshot" className="focus-visible:ring-[1px]">
+            Snapshot
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="check" className="flex flex-1 flex-col gap-4">
@@ -81,7 +85,7 @@ export function MintEligibilityPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <Table>
-                <TableHeader>
+                <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
                   <TableRow>
                     <TableHead>#</TableHead>
                     <TableHead>Wallet Profile</TableHead>
