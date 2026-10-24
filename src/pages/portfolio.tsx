@@ -134,7 +134,7 @@ export function PortfolioPage() {
     {
       label: 'Floor value',
       value: best ? best.floorPrice : '—',
-      secondary: best ? `${owned} × floor ≈ ${best.floorUsd}` : 'No floor data',
+      secondary: best ? `${owned} × floor ${best.floorUsd}` : 'No floor data',
     },
     {
       label: 'Collection supply',
