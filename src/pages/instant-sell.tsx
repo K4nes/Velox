@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
-import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
 import { walletGroups } from '@/config/wallets'
 
@@ -112,17 +112,18 @@ export function InstantSellPage() {
                 </TableHead>
               </TableRow>
             </TableHeader>
+            <TableBody>
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={1} className="p-0">
+                  <EmptyState
+                    icon={ScanLine}
+                    title="No held NFTs found"
+                    description="Scan the collection to load the tokens held across the selected wallets."
+                  />
+                </TableCell>
+              </TableRow>
+            </TableBody>
           </Table>
-
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-            <div className="m-auto">
-              <EmptyState
-                icon={ScanLine}
-                title="No held NFTs found"
-                description="Scan the collection to load the tokens held across the selected wallets."
-              />
-            </div>
-          </div>
         </Card>
 
         <div className="flex w-[300px] shrink-0 flex-col gap-4 xl:w-[380px]">
