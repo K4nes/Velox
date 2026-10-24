@@ -80,11 +80,11 @@ export function PortfolioPage() {
   const [picked, setPicked] = useState<string[]>([])
 
   const term = query.trim().toLowerCase()
-  const visibleHoldings = holdings
+  const searchedHoldings = holdings.filter((holding) =>
+    term ? `${holding.name} ${holding.owner}`.toLowerCase().includes(term) : true
+  )
+  const visibleHoldings = searchedHoldings
     .filter((holding) => tier === 'All' || holding.tier === tier)
-    .filter((holding) =>
-      term ? `${holding.name} ${holding.owner}`.toLowerCase().includes(term) : true
-    )
     .sort((a, b) =>
       sort === sortOptions[0] ? a.rank - b.rank : b.rank - a.rank
     )
@@ -252,8 +252,8 @@ export function PortfolioPage() {
           {tiers.map((option) => {
             const count =
               option === 'All'
-                ? holdings.length
-                : holdings.filter((holding) => holding.tier === option).length
+                ? searchedHoldings.length
+                : searchedHoldings.filter((holding) => holding.tier === option).length
             const active = option === tier
 
             return (
