@@ -49,7 +49,7 @@ const holdings: Holding[] = [
   {
     id: 'tile-63',
     name: 'Tile #63',
-    owner: 'rh1',
+    owner: 'mb-1',
     rank: 29,
     rankDetail: 'Top 5.2%',
     tier: 'Rare',
