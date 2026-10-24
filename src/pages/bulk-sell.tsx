@@ -200,7 +200,9 @@ export function BulkSellPage() {
           />
         </div>
 
-        <Button className="shrink-0">Scan held NFTs</Button>
+        <Button className="shrink-0" disabled>
+          Scan held NFTs
+        </Button>
       </Card>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
