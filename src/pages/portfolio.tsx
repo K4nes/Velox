@@ -117,6 +117,9 @@ export function PortfolioPage() {
       )
     : null
   const walletsHolding = new Set(holdings.map((holding) => holding.owner)).size
+  const revealedCount = Math.round(
+    (Number.parseFloat(collection.revealed) / 100) * collection.supply
+  )
 
   const stats = [
     {
@@ -143,7 +146,7 @@ export function PortfolioPage() {
     },
     {
       label: 'Revealed',
-      value: `${owned} / ${owned}`,
+      value: `${revealedCount} / ${collection.supply}`,
       secondary: `${collection.revealed} metadata live`,
     },
     {
