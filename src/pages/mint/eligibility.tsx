@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -67,14 +68,35 @@ export function MintEligibilityPage() {
         </TabsList>
 
         <TabsContent value="check" className="flex flex-1 flex-col gap-4">
-          <Card className="flex h-16 flex-row items-center gap-2 px-4">
-            <Input placeholder="Collection URL" className="flex-1" />
-            <WalletSelect
-              groups={walletGroups}
-              selected={selectedWallets}
-              onSelectedChange={setSelectedWallets}
-              className="shrink-0"
-            />
+          <Card className="gap-3 p-4 lg:flex-row lg:items-end">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label
+                htmlFor="eligibility-collection-url"
+                className="text-xs font-medium"
+              >
+                Collection URL or slug (OpenSea / Scatter)
+              </label>
+              <Input
+                id="eligibility-collection-url"
+                placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+              />
+            </div>
+            <div
+              className="flex flex-col gap-1.5 lg:w-[280px]"
+              role="group"
+              aria-labelledby="eligibility-wallet-label"
+            >
+              <span id="eligibility-wallet-label" className="text-xs font-medium">
+                Wallet
+              </span>
+              <WalletSelect
+                groups={walletGroups}
+                selected={selectedWallets}
+                onSelectedChange={setSelectedWallets}
+                aria-labelledby="eligibility-wallet-label"
+                className="w-full"
+              />
+            </div>
             <Button className="shrink-0">Check</Button>
           </Card>
           <Card className="flex flex-1 flex-col gap-3 p-4">
@@ -87,13 +109,30 @@ export function MintEligibilityPage() {
               <Table>
                 <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
                   <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Wallet Profile</TableHead>
-                    <TableHead>Address</TableHead>
-                    <TableHead>Mint Stage</TableHead>
+                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
+                      #
+                    </TableHead>
+                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
+                      Wallet Profile
+                    </TableHead>
+                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
+                      Address
+                    </TableHead>
+                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
+                      Mint Stage
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody />
+                <TableBody>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={4}
+                      className="text-muted-foreground h-24 text-center"
+                    >
+                      No data yet
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
               </Table>
             </div>
           </Card>
@@ -105,7 +144,7 @@ export function MintEligibilityPage() {
               <Card key={snapshot.id} className="flex flex-col">
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle>{snapshot.title}</CardTitle>
+                    <CardTitle className="text-[13px] font-semibold">{snapshot.title}</CardTitle>
                     <Badge
                       variant="outline"
                       className={

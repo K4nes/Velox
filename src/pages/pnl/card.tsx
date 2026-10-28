@@ -90,10 +90,10 @@ export function PnlCardPage() {
       }}
       className="flex flex-1 flex-col gap-4 p-6"
     >
-      <Card className="p-4 lg:flex-row lg:items-end">
+      <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug
+            Collection URL or slug (OpenSea / Scatter)
           </label>
           <Input
             id="collection-url"
@@ -103,7 +103,7 @@ export function PnlCardPage() {
           />
         </div>
         <div
-          className="flex flex-col gap-1.5 lg:w-72"
+          className="flex flex-col gap-1.5 lg:w-[280px]"
           role="group"
           aria-labelledby="wallet-label"
         >

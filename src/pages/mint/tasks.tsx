@@ -18,6 +18,7 @@ import {
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -241,7 +242,7 @@ export function MintTasksPage() {
 
   return (
     <div className="flex min-h-[calc(100svh-3rem)] flex-col p-6 lg:h-[calc(100svh-3rem)] lg:min-h-0 lg:overflow-hidden">
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[160px_minmax(0,1fr)_240px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[200px_minmax(0,1fr)_300px]">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[160px_minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[200px_minmax(0,1fr)_300px]">
         <TaskList
           items={items}
           activeId={realActive?.id ?? null}
@@ -253,18 +254,19 @@ export function MintTasksPage() {
         <div className="grid min-h-0 gap-3 lg:grid-rows-[auto_minmax(0,1fr)]">
           <Card className="gap-0 py-0">
             <h2 className="sr-only">Collection</h2>
-            <div className="flex items-center gap-2 p-3">
-              <label htmlFor="collection-url" className="sr-only">
-                Collection URL
-              </label>
-              <Input
-                id="collection-url"
-                placeholder="Collection URL"
-                className="flex-1"
-                disabled={locked}
-                value={active.url}
-                onChange={(event) => changeUrl(event.target.value)}
-              />
+            <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <label htmlFor="collection-url" className="text-xs font-medium">
+                  Collection URL or slug (OpenSea / Scatter)
+                </label>
+                <Input
+                  id="collection-url"
+                  placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+                  disabled={locked}
+                  value={active.url}
+                  onChange={(event) => changeUrl(event.target.value)}
+                />
+              </div>
               <Button
                 className="shrink-0"
                 onClick={check}
@@ -286,25 +288,34 @@ export function MintTasksPage() {
                     {columns.map((column) => (
                       <TableHead
                         key={column}
-                        className="px-2 py-2 leading-tight whitespace-normal xl:px-3"
+                        className="text-muted-foreground px-3 py-2 text-xs leading-tight font-medium whitespace-normal"
                       >
                         {column}
                       </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
-                <TableBody />
+                <TableBody>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={columns.length}
+                      className="text-muted-foreground h-24 text-center"
+                    >
+                      No data yet
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
               </Table>
             </div>
           </Card>
         </div>
 
         <Card className="min-h-0 gap-0 py-0 @container">
-          <h2 className="shrink-0 px-4 pt-4 pb-1 text-base font-semibold">Mint Configuration</h2>
+          <h2 className="flex h-12 shrink-0 items-center border-b px-4 text-[13px] font-semibold">Mint Configuration</h2>
 
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
             <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Wallets</span>
+              <span className="text-xs font-medium">Wallets</span>
               <WalletSelect
                 groups={walletGroups}
                 selected={active.wallets}
@@ -315,7 +326,7 @@ export function MintTasksPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label htmlFor="mint-stage" className="text-sm font-medium">
+              <label htmlFor="mint-stage" className="text-xs font-medium">
                 Mint Stage
               </label>
               <Select
@@ -325,7 +336,7 @@ export function MintTasksPage() {
                 <SelectTrigger
                   id="mint-stage"
                   disabled={locked}
-                  className="data-[size=default]:h-9 w-full justify-between rounded-lg px-3"
+                  className="w-full justify-between rounded-lg px-3"
                 >
                   <SelectValue placeholder="Select Mint Stage" />
                 </SelectTrigger>
@@ -340,7 +351,7 @@ export function MintTasksPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label htmlFor="quantity" className="text-sm font-medium">
+              <label htmlFor="quantity" className="text-xs font-medium">
                 Quantity
               </label>
               <Input
@@ -360,7 +371,7 @@ export function MintTasksPage() {
               className="flex flex-col gap-2"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">Mint Mode</span>
+                <span className="text-xs font-medium">Mint Mode</span>
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
@@ -399,7 +410,7 @@ export function MintTasksPage() {
               <CollapsibleContent className="flex flex-col gap-3 [mask-image:none]! [-webkit-mask-image:none]!">
                 <div className="grid grid-cols-2 gap-2 @[20rem]:grid-cols-3">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="gas-limit" className="text-sm font-medium">
+                    <label htmlFor="gas-limit" className="text-xs font-medium">
                       Gas Limit
                     </label>
                     <Input
@@ -414,7 +425,7 @@ export function MintTasksPage() {
                     />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="max-fee" className="text-sm font-medium">
+                    <label htmlFor="max-fee" className="text-xs font-medium">
                       Max Fee (Gwei)
                     </label>
                     <Input
@@ -429,7 +440,7 @@ export function MintTasksPage() {
                     />
                   </div>
                   <div className="col-span-2 flex flex-col gap-2 @[20rem]:col-span-1">
-                    <label htmlFor="priority-fee" className="text-sm font-medium">
+                    <label htmlFor="priority-fee" className="text-xs font-medium">
                       Priority Fee (Gwei)
                     </label>
                     <Input
@@ -448,7 +459,7 @@ export function MintTasksPage() {
             </Collapsible>
           </div>
 
-          <div className="flex shrink-0 flex-col gap-3 border-t px-4 py-3">
+          <div className="flex shrink-0 flex-col gap-3 border-t p-4">
             <div className="bg-muted rounded-lg border px-3 py-2 text-sm">
               <div className="flex items-center justify-between py-1">
                 <span>Quantity</span>
@@ -464,7 +475,7 @@ export function MintTasksPage() {
               </div>
             </div>
 
-            <Button size="lg" className="w-full" disabled>
+            <Button className="h-10 w-full" disabled>
               Start Mint
             </Button>
           </div>

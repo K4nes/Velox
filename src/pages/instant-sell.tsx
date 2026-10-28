@@ -64,7 +64,7 @@ export function InstantSellPage() {
           aria-labelledby="instant-sell-wallet-label"
         >
           <span id="instant-sell-wallet-label" className="text-xs font-medium">
-            Select Wallets / Batch Group
+            Wallet
           </span>
           <WalletSelect
             groups={walletGroups}
@@ -78,11 +78,11 @@ export function InstantSellPage() {
         </Button>
       </Card>
 
-      <div className="flex min-h-0 flex-1 gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
           <div className="flex h-12 items-center justify-between gap-2 border-b px-4">
             <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
-            <div className="relative w-40 shrink-0 xl:w-60">
+            <div className="relative w-60 shrink-0">
               <Search
                 aria-hidden
                 className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
@@ -103,13 +103,13 @@ export function InstantSellPage() {
           <div className="flex h-12 items-center justify-end gap-2 px-4">
             <Button variant="outline">Refresh</Button>
             <Button variant="outline">Select all</Button>
-            <Button variant="outline">Clear selection</Button>
+            <Button variant="outline">Clear</Button>
           </div>
 
           <Table aria-label="Held NFT inventory">
             <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
               <TableRow>
-                <TableHead className="text-muted-foreground px-4 text-[13px] font-medium">
+                <TableHead className="text-muted-foreground px-3 text-xs font-medium">
                   Token
                 </TableHead>
               </TableRow>
@@ -128,7 +128,7 @@ export function InstantSellPage() {
           </Table>
         </Card>
 
-        <div className="flex w-[300px] shrink-0 flex-col gap-4 xl:w-[380px]">
+        <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]">
           <Card className="shrink-0 gap-3 p-4">
             <h2 className="text-[13px] font-semibold">Net proceeds</h2>
             <div className="flex items-end gap-1.5">
@@ -176,9 +176,11 @@ export function InstantSellPage() {
                 />
               </div>
             </div>
-          </Card>
 
-          <Button className="h-10 w-full">Select NFTs to instant sell</Button>
+            <div className="mt-auto shrink-0 border-t p-4">
+              <Button className="h-10 w-full">Select NFTs to instant sell</Button>
+            </div>
+          </Card>
         </div>
       </div>
     </div>

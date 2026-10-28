@@ -1,7 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/app-layout'
 import { BulkSellPage } from '@/pages/bulk-sell'
-import { InboxPage } from '@/pages/inbox'
 import { InstantSellPage } from '@/pages/instant-sell'
 import { MintEligibilityPage } from '@/pages/mint/eligibility'
 import { MintTasksPage } from '@/pages/mint/tasks'
@@ -57,9 +56,8 @@ export const router = createBrowserRouter([
         element: <WalletProfilesPage />,
         handle: { title: 'Wallet Profiles' },
       },
-      { path: 'inbox', element: <InboxPage />, handle: { title: 'Inbox' } },
       { path: 'settings', element: <SettingsPage />, handle: { title: 'Settings' } },
-      { path: '*', element: <NotFoundPage /> },
+      { path: '*', element: <NotFoundPage />, handle: { title: 'Not found' } },
     ],
   },
 ])

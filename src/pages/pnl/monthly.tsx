@@ -31,11 +31,11 @@ export function PnlMonthlyPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
-          <div className="flex h-[60px] items-center justify-between border-b px-4">
+          <div className="flex h-12 items-center justify-between border-b px-4">
             <div className="flex flex-col">
-              <h2 className="text-base font-semibold">Net PnL</h2>
+              <h2 className="text-[13px] font-semibold">Net PnL</h2>
               <p className="text-xs text-muted-foreground">Daily · ETH</p>
             </div>
             <div className="flex flex-col items-end">
@@ -51,8 +51,8 @@ export function PnlMonthlyPage() {
         </Card>
 
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
-          <div className="flex h-[58px] items-center justify-between border-b px-4">
-            <span className="text-sm font-semibold" aria-live="polite">
+          <div className="flex h-12 items-center justify-between border-b px-4">
+            <span className="text-[13px] font-semibold" aria-live="polite">
               {month.toLocaleDateString('en-US', {
                 month: 'long',
                 year: 'numeric',
@@ -123,45 +123,42 @@ export function PnlMonthlyPage() {
       </div>
 
       <Card className="flex flex-1 flex-col gap-0 py-0">
-        <div className="flex h-[58px] items-center justify-end gap-3 px-4">
-          <div className="relative min-w-0 flex-1 lg:flex-none">
+        <div className="flex h-12 items-center justify-end gap-3 px-4">
+          <div className="relative w-60 shrink-0">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search collection..."
               aria-label="Search collection"
-              className="w-full pl-8 lg:w-60"
+              className="pl-8"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] text-muted-foreground">Sort:</span>
-            <Select defaultValue={sortOptions[0]}>
-              <SelectTrigger className="w-[158px]" aria-label="Sort collections">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" sideOffset={4}>
-                {sortOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select defaultValue={sortOptions[0]}>
+            <SelectTrigger className="w-[158px]" aria-label="Sort collections">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" sideOffset={4}>
+              {sortOptions.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="px-4 text-xs text-foreground/70">
+              <TableHead className="text-muted-foreground px-3 text-xs font-medium">
                 Collection
               </TableHead>
-              <TableHead className="w-[146px] px-4 text-xs text-foreground/70">
+              <TableHead className="text-muted-foreground w-[146px] px-3 text-xs font-medium">
                 Net PnL (ETH)
               </TableHead>
-              <TableHead className="w-[136px] px-4 text-xs text-foreground/70">
+              <TableHead className="text-muted-foreground w-[136px] px-3 text-xs font-medium">
                 USD Value
               </TableHead>
-              <TableHead className="w-[109px] px-4 text-xs text-foreground/70">
+              <TableHead className="text-muted-foreground w-[109px] px-3 text-xs font-medium">
                 Date
               </TableHead>
             </TableRow>

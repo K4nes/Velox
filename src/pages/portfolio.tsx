@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Image as ImageIcon, Scan, X } from 'lucide-react'
+import { Image as ImageIcon, Scan, Search, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -36,27 +36,7 @@ type Holding = {
   floorUsd: string
 }
 
-const collection = {
-  name: 'DRAW555',
-  marketplace: 'OpenSea',
-  slug: 'draw555',
-  contract: '0xfcf5b…ace1',
-  supply: 554,
-  revealed: '100%',
-}
-
-const holdings: Holding[] = [
-  {
-    id: 'tile-63',
-    name: 'Tile #63',
-    owner: 'mb-1',
-    rank: 29,
-    rankDetail: 'Top 5.2%',
-    tier: 'Rare',
-    floorPrice: '0.28 USDC',
-    floorUsd: '≈ $0.28',
-  },
-]
+const holdings: Holding[] = []
 
 const tiers = ['All', 'Legendary', 'Rare', 'Uncommon', 'Common'] as const
 
@@ -64,15 +44,8 @@ type Tier = (typeof tiers)[number]
 
 const sortOptions = ['Rarity rank · rarest first', 'Rarity rank · commonest first']
 
-const totalWallets = walletGroups.reduce(
-  (total, group) => total + group.wallets.length,
-  0
-)
-
 export function PortfolioPage() {
-  const [collectionUrl, setCollectionUrl] = useState(
-    'https://opensea.io/profile/holdings?collectionSlugs=draw555'
-  )
+  const [collectionUrl, setCollectionUrl] = useState('')
   const [selectedWallets, setSelectedWallets] = useState<string[]>(['mb-1'])
   const [tier, setTier] = useState<Tier>('All')
   const [query, setQuery] = useState('')
@@ -110,55 +83,18 @@ export function PortfolioPage() {
     )
   }
 
-  const owned = holdings.length
-  const best = holdings.length
-    ? holdings.reduce((rarest, holding) =>
-        holding.rank < rarest.rank ? holding : rarest
-      )
-    : null
-  const walletsHolding = new Set(holdings.map((holding) => holding.owner)).size
-  const revealedCount = Math.round(
-    (Number.parseFloat(collection.revealed) / 100) * collection.supply
-  )
-
   const stats = [
-    {
-      label: 'Total owned',
-      value: String(owned),
-      secondary: `${((owned / collection.supply) * 100).toFixed(2)}% of ${collection.supply} supply`,
-    },
-    {
-      label: 'Best rarity',
-      value: best ? `#${best.rank}` : '—',
-      secondary: best
-        ? `${best.tier} · ${best.rankDetail.toLowerCase()}`
-        : 'No held tokens',
-    },
-    {
-      label: 'Floor value',
-      value: best ? best.floorPrice : '—',
-      secondary: best ? `${owned} × floor ${best.floorUsd}` : 'No floor data',
-    },
-    {
-      label: 'Collection supply',
-      value: String(collection.supply),
-      secondary: `${owned} held in scope`,
-    },
-    {
-      label: 'Revealed',
-      value: `${revealedCount} / ${collection.supply}`,
-      secondary: `${collection.revealed} metadata live`,
-    },
-    {
-      label: 'Wallets holding',
-      value: String(walletsHolding),
-      secondary: `${selectedWallets.length} of ${totalWallets} selected`,
-    },
+    { label: 'Total owned', value: '—', secondary: '—' },
+    { label: 'Best rarity', value: '—', secondary: '—' },
+    { label: 'Floor value', value: '—', secondary: '—' },
+    { label: 'Collection supply', value: '—', secondary: '—' },
+    { label: 'Revealed', value: '—', secondary: '—' },
+    { label: 'Wallets holding', value: '—', secondary: '—' },
   ]
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <Card className="flex-col gap-4 p-4 lg:flex-row lg:items-end">
+      <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
             Collection URL or slug (OpenSea / Scatter)
@@ -169,7 +105,7 @@ export function PortfolioPage() {
               value={collectionUrl}
               onChange={(event) => setCollectionUrl(event.target.value)}
               placeholder="https://opensea.io/collection/… or https://scatter.art/…"
-              className="h-9 pr-8 text-[13px]"
+              className="pr-8"
             />
             {collectionUrl ? (
               <Button
@@ -186,22 +122,22 @@ export function PortfolioPage() {
         </div>
 
         <div
-          className="flex flex-col gap-1.5 lg:w-[300px]"
+          className="flex flex-col gap-1.5 lg:w-[280px]"
           role="group"
           aria-labelledby="wallets-label"
         >
           <span id="wallets-label" className="text-xs font-medium">
-            Select Wallets / Batch Group
+            Wallet
           </span>
           <WalletSelect
             groups={walletGroups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
-            className="h-9 w-full justify-start"
+            className="w-full"
           />
         </div>
 
-        <Button size="lg" className="shrink-0" disabled>
+        <Button className="shrink-0" disabled>
           <Scan />
           Scan portfolio
         </Button>
@@ -214,18 +150,17 @@ export function PortfolioPage() {
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">{collection.name}</h2>
+              <h2 className="text-base font-semibold">—</h2>
               <Badge
                 variant="outline"
                 className="px-1.5 text-[11px] tracking-[0.6px] uppercase"
               >
-                {collection.marketplace}
+                —
               </Badge>
-              <Badge variant="secondary">{collection.slug}</Badge>
+              <Badge variant="secondary">—</Badge>
             </div>
             <p className="text-muted-foreground text-[11px]">
-              Contract {collection.contract} • Supply {collection.supply} •
-              Revealed {collection.revealed}
+              Contract — • Supply — • Revealed —
             </p>
           </div>
         </div>
@@ -263,7 +198,6 @@ export function PortfolioPage() {
               <Button
                 key={option}
                 variant="ghost"
-                size="sm"
                 aria-pressed={active}
                 onClick={() => setTier(option)}
                 className={cn(
@@ -278,22 +212,10 @@ export function PortfolioPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="w-60">
-            <label htmlFor="token-search" className="sr-only">
-              Search token
-            </label>
-            <Input
-              id="token-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Token #ID"
-              className="h-9 w-full"
-            />
-          </div>
           <Select value={sort} onValueChange={setSort}>
             <SelectTrigger
               aria-label="Sort held tokens"
-              className="data-[size=default]:h-9 w-60 px-3"
+              className="w-60 px-3"
             >
               <SelectValue />
             </SelectTrigger>
@@ -309,6 +231,28 @@ export function PortfolioPage() {
       </div>
 
       <Card className="flex-1 gap-0 overflow-hidden py-0">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
+            <Badge variant="secondary">{visibleHoldings.length} items</Badge>
+          </div>
+          <div className="relative w-60 shrink-0">
+            <Search
+              aria-hidden
+              className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
+            />
+            <label htmlFor="token-search" className="sr-only">
+              Search token
+            </label>
+            <Input
+              id="token-search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Token #ID"
+              className="pl-8"
+            />
+          </div>
+        </div>
         <Table aria-label="Held NFT inventory">
           <TableHeader>
             <TableRow className="h-11 bg-muted hover:bg-muted">
@@ -327,7 +271,7 @@ export function PortfolioPage() {
                 Owner wallet
               </TableHead>
               <TableHead className="text-muted-foreground w-[180px] px-3 text-xs font-medium">
-                Rarity rank / {collection.supply}
+                Rarity rank
               </TableHead>
               <TableHead className="text-muted-foreground w-[130px] px-3 text-xs font-medium">
                 Tier
@@ -344,7 +288,7 @@ export function PortfolioPage() {
                   colSpan={6}
                   className="text-muted-foreground h-24 text-center"
                 >
-                  No held tokens match this filter.
+                  No held tokens yet.
                 </TableCell>
               </TableRow>
             ) : (
@@ -369,7 +313,7 @@ export function PortfolioPage() {
                   <TableCell className="px-3">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[13px] font-medium">
-                        #{holding.rank} / {collection.supply}
+                        #{holding.rank}
                       </span>
                       <span className="text-muted-foreground text-[11px]">
                         {holding.rankDetail}

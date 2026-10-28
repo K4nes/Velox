@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { Search } from 'lucide-react'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -66,12 +60,12 @@ export function PnlLifetimePage() {
               key={stat.label}
               className="bg-card flex flex-col gap-1 px-4 py-3 forced-colors:border-b"
             >
-              <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                 {stat.label}
               </dt>
               <dd className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold">{stat.value}</span>
-                <span className="text-muted-foreground text-xs">{stat.secondary}</span>
+                <span className="text-lg font-semibold">{stat.value}</span>
+                <span className="text-muted-foreground text-[11px]">{stat.secondary}</span>
               </dd>
             </div>
           ))}
@@ -79,16 +73,16 @@ export function PnlLifetimePage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle role="heading" aria-level={2}>Cumulative performance</CardTitle>
-            <CardAction className="flex flex-col items-end gap-0.5 text-right">
-              <span className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+        <Card className="gap-0 py-0">
+          <div className="flex h-12 items-center justify-between border-b px-4">
+            <h2 className="text-[13px] font-semibold">Cumulative performance</h2>
+            <div className="flex flex-col items-end gap-0.5 text-right">
+              <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                 All-time net
               </span>
-              <span className="text-xs font-semibold">{allTimeNet}</span>
-            </CardAction>
-          </CardHeader>
+              <span className="text-[11px] font-medium">{allTimeNet}</span>
+            </div>
+          </div>
           <CardContent className="flex flex-1 items-center justify-center">
             <h2 className="text-muted-foreground">No PnL records yet.</h2>
           </CardContent>
@@ -113,7 +107,7 @@ export function PnlLifetimePage() {
       </div>
 
       <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <div className="flex items-center justify-end gap-2.5 border-b px-4 py-3">
+        <div className="flex h-12 items-center justify-end gap-2.5 border-b px-4">
           <div className="relative w-60">
             <Search
               aria-hidden
@@ -130,15 +124,9 @@ export function PnlLifetimePage() {
               className="pl-8"
             />
           </div>
-          <span id="pnl-sort-label" className="sr-only" aria-hidden="true">
-            Sort PnL records
-          </span>
           <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger
-              aria-labelledby="pnl-sort-label pnl-sort-value"
-              className="w-[158px] px-3"
-            >
-              <SelectValue id="pnl-sort-value" />
+            <SelectTrigger aria-label="Sort PnL records" className="w-[158px] px-3">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" sideOffset={4}>
               {sortOptions.map((option) => (
@@ -154,7 +142,13 @@ export function PnlLifetimePage() {
           <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHead key={column.label} className={cn('px-4', column.className)}>
+                <TableHead
+                  key={column.label}
+                  className={cn(
+                    'text-muted-foreground px-3 text-xs font-medium',
+                    column.className
+                  )}
+                >
                   {column.label}
                 </TableHead>
               ))}

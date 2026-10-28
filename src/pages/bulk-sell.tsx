@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PackageOpen, Search } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -60,7 +60,7 @@ function BulkSellRail() {
   const [duration, setDuration] = useState<Duration>('30 days (1 month)')
 
   return (
-    <Card className="flex w-full shrink-0 flex-col gap-0 overflow-hidden py-0 lg:w-[340px]">
+    <Card className="flex w-full shrink-0 flex-col gap-0 overflow-hidden py-0 lg:w-[300px]">
       <Tabs
         value={tab}
         onValueChange={(value) => {
@@ -122,7 +122,7 @@ function BulkSellRail() {
 
             <Separator />
 
-            <p className="font-semibold">Order summary</p>
+            <p className="text-[13px] font-semibold">Order summary</p>
 
             <SummaryRow label="Items to list" value="0" />
             <SummaryRow label="Price" value="0 ETH" />
@@ -142,7 +142,7 @@ function BulkSellRail() {
 
             <Separator />
 
-            <p className="font-semibold">Cancel summary</p>
+            <p className="text-[13px] font-semibold">Cancel summary</p>
 
             <SummaryRow label="Listings to cancel" value="0" />
             <SummaryRow label="Ask value withdrawn" value="0 ETH" />
@@ -151,7 +151,7 @@ function BulkSellRail() {
           </div>
         </TabsContent>
 
-        <div className="mt-auto border-t p-4">
+        <div className="mt-auto shrink-0 border-t p-4">
           <Button
             aria-controls={tab === 'create' ? 'rail-create' : 'rail-cancel'}
             className="h-10 w-full"
@@ -190,7 +190,7 @@ export function BulkSellPage() {
           aria-labelledby="bulk-wallet-label"
         >
           <span id="bulk-wallet-label" className="text-xs font-medium">
-            Select Wallets / Batch Group
+            Wallet
           </span>
           <WalletSelect
             groups={walletGroups}
@@ -208,9 +208,7 @@ export function BulkSellPage() {
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <Card className="min-w-0 gap-0 overflow-hidden py-0 lg:flex-1">
           <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-            <CardTitle role="heading" aria-level={2}>
-              Inventory
-            </CardTitle>
+            <h2 className="truncate text-[13px] font-semibold">Inventory</h2>
             <div className="relative w-60">
               <Search
                 aria-hidden
