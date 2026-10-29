@@ -176,6 +176,10 @@ The fixed right-hand column of a workspace page.
 300px at `lg` and up, full width below it: the rail never sits beside the table under `lg`.
 The page-level CTA is the last card's footer — `mt-auto shrink-0 border-t p-4`, button
 `h-10 w-full`.
+A batch whose parameters live outside the rail, in the card above the table (`swap`), puts
+the CTA in the table card's footer instead, `h-10` and not `w-full`, beside the total at
+`xl`. The rail footer stays the rule wherever the action comes from a rail card
+(`bulk-sell`, `instant-sell`, `transfer`).
 
 ### Controls
 
@@ -212,8 +216,10 @@ Do not normalise these:
   around its Return link. Both take their title from the route.
 - `mint/eligibility`: the plain label row above the table is a scaffold that will hold the
   API values.
-- Empty states keep their page copy and their height; only the table shape (one full-width
-  row) is shared.
+- Empty states keep their page copy and their height. Icon-and-copy states use the shared
+  `EmptyState` in `src/components/`; `bulk-sell` still inlines its own. Tables whose empty
+  body is a single muted centred row (`portfolio`, `mint/tasks`, `mint/eligibility`) keep
+  that shape.
 
 ## Theme
 

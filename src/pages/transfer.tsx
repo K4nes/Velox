@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
 import { RefreshCw, ScanLine, Search, Send } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -16,24 +16,6 @@ import {
 } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
 import { walletGroups } from '@/config/wallets'
-
-function EmptyState({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon
-  title: string
-  description: string
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1.5 p-8 text-center">
-      <Icon aria-hidden className="text-muted-foreground size-6" />
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-muted-foreground max-w-sm text-xs">{description}</p>
-    </div>
-  )
-}
 
 export function TransferPage() {
   const [collectionUrl, setCollectionUrl] = useState('')

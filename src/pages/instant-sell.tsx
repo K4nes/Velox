@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { LucideIcon } from 'lucide-react'
 import { Gavel, RefreshCw, ScanLine, Search } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,24 +20,6 @@ const selectionStats = [
   { label: 'Avg offer', value: '–' },
   { label: 'Floor', value: '–' },
 ]
-
-function EmptyState({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon
-  title: string
-  description: string
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1.5 p-8 text-center">
-      <Icon aria-hidden className="text-muted-foreground size-6" />
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-muted-foreground max-w-sm text-xs">{description}</p>
-    </div>
-  )
-}
 
 export function InstantSellPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
