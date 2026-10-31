@@ -1,0 +1,154 @@
+import { createPublicClient, defineChain, http } from 'viem'
+import type { Chain } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { chainBySlug } from '@/config/chains'
+import type { ChainEntry } from '@/config/chains'
+import { buildMintTransaction } from '@/lib/opensea'
+import { resolveRpcUrl } from '@/lib/secrets'
+import { toPrivateKeyHex } from '@/lib/wallets'
+import type { StoredWallet } from '@/lib/wallets'
+
+export type MintGas = {
+  gasLimit?: bigint
+  maxFeePerGas?: bigint
+  maxPriorityFeePerGas?: bigint
+}
+
+export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
+  return defineChain({
+    id: entry.chainId,
+    name: entry.name,
+    nativeCurrency: entry.currency,
+    rpcUrls: { default: { http: [rpcUrl] } },
+  })
+}
+
+export async function clientFor(chainSlug: string) {
+  const entry = chainBySlug(chainSlug)
+  if (!entry) {
+    throw new Error(`Unsupported chain: ${chainSlug}`)
+  }
+
+  const rpcUrl = await resolveRpcUrl(entry.slug)
+  return createPublicClient({
+    chain: toViemChain(entry, rpcUrl),
+    transport: http(rpcUrl),
+  })
+}
+
+// A stage opens on the chain's clock, not the operator's. Reading the latest
+// block keeps the countdown honest when the desktop clock is minutes off, which
+// is exactly the window a scheduled mint has to fire in.
+export async function chainTime(chainSlug: string): Promise<number> {
+  const client = await clientFor(chainSlug)
+  const block = await client.getBlock({ blockTag: 'latest' })
+  return Number(block.timestamp) * 1000
+}
+
+// Two tasks can select the same wallet. The nonce is read from `pending` and the
+// transaction is signed right after, so the read and the send must be serialized
+// per address or both tasks sign the same nonce and the second replaces the
+// first in the pool, leaving a row marked broadcast for a hash that never mines.
+const inflight = new Map<string, Promise<unknown>>()
+
+export async function mintForWallet(input: {
+  slug: string
+  wallet: StoredWallet
+  quantity: number
+  gas: MintGas
+  shouldAbort?: () => boolean
+}): Promise<{ txHash: string; chain: string }> {
+  const key = input.wallet.address.toLowerCase()
+  const previous = inflight.get(key) ?? Promise.resolve()
+  const next = previous.then(
+    () => mintOnce(input),
+    () => mintOnce(input)
+  )
+  inflight.set(key, next)
+
+  try {
+    return await next
+  } finally {
+    if (inflight.get(key) === next) inflight.delete(key)
+  }
+}
+
+async function mintOnce(input: {
+  slug: string
+  wallet: StoredWallet
+  quantity: number
+  gas: MintGas
+  shouldAbort?: () => boolean
+}): Promise<{ txHash: string; chain: string }> {
+  const transaction = await buildMintTransaction(
+    input.slug,
+    input.wallet.address,
+    input.quantity
+  )
+
+  const entry = chainBySlug(transaction.chain)
+  if (!entry) {
+    throw new Error(`Unsupported chain: ${transaction.chain}`)
+  }
+
+  const client = await clientFor(entry.slug)
+  const account = privateKeyToAccount(toPrivateKeyHex(input.wallet.privateKey))
+  const to = transaction.to as `0x${string}`
+  const data = transaction.data as `0x${string}`
+  const value = BigInt(transaction.value)
+
+  let maxFeePerGas = input.gas.maxFeePerGas
+  let maxPriorityFeePerGas = input.gas.maxPriorityFeePerGas
+
+  if (maxFeePerGas === undefined || maxPriorityFeePerGas === undefined) {
+    const estimated = await client.estimateFeesPerGas()
+    maxFeePerGas ??= estimated.maxFeePerGas
+    maxPriorityFeePerGas ??= estimated.maxPriorityFeePerGas
+  }
+
+  // A tip above the cap is not signable: viem throws TipAboveFeeCapError, so a
+  // user who raises only the tip would fail every wallet instead of minting.
+  if (maxPriorityFeePerGas > maxFeePerGas) {
+    maxFeePerGas = maxPriorityFeePerGas
+  }
+
+  const gasLimit =
+    input.gas.gasLimit ?? (await client.estimateGas({ account, to, data, value }))
+  const nonce = await client.getTransactionCount({
+    address: account.address,
+    blockTag: 'pending',
+  })
+
+  const serializedTransaction = await account.signTransaction({
+    type: 'eip1559',
+    chainId: entry.chainId,
+    to,
+    data,
+    value,
+    gas: gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    nonce,
+  })
+
+  if (input.shouldAbort?.()) {
+    throw new Error('Mint stopped before broadcast')
+  }
+
+  const txHash = await client.sendRawTransaction({ serializedTransaction })
+
+  return { txHash, chain: transaction.chain }
+}
+
+export async function waitForMintReceipt(
+  chainSlug: string,
+  txHash: string
+): Promise<'success' | 'reverted'> {
+  const client = await clientFor(chainSlug)
+  const receipt = await client.waitForTransactionReceipt({
+    hash: txHash as `0x${string}`,
+    timeout: 90_000,
+  })
+
+  return receipt.status
+}

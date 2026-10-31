@@ -4,17 +4,12 @@ import { Plus, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-export type TaskStatus = 'idle' | 'running' | 'failed'
-
-export type TaskListItem = {
-  id: string
-  label: string
-  status: TaskStatus
-}
+import type { TaskListItem, TaskStatus } from '@/lib/mint-task'
 
 type TaskListProps = {
   items: TaskListItem[]
   activeId: string | null
+  busyIds?: string[]
   onSelect: (id: string) => void
   onClose: (id: string) => void
   onAdd: () => void
@@ -32,7 +27,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   failed: 'failed',
 }
 
-export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskListProps) {
+export function TaskList({ items, activeId, busyIds, onSelect, onClose, onAdd }: TaskListProps) {
   const listRef = useRef<HTMLUListElement>(null)
   const addRef = useRef<HTMLButtonElement>(null)
   const pendingFocus = useRef<number | 'last' | null>(null)
@@ -128,6 +123,8 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
       >
         {rows.map(({ item, position }, index) => {
           const selected = item.id === activeId
+          const busy = busyIds?.includes(item.id) ?? false
+          const status = busy ? 'running' : item.status
           return (
             <li key={item.id} className="group/task relative">
               <button
@@ -141,6 +138,7 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
                 }}
                 onKeyDown={(event) => {
                   if (event.key !== 'Delete') return
+                  if (busyIds?.includes(item.id)) return
                   event.preventDefault()
                   closeAt(index)
                 }}
@@ -155,21 +153,23 @@ export function TaskList({ items, activeId, onSelect, onClose, onAdd }: TaskList
               >
                 <span
                   aria-hidden
-                  className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[item.status])}
+                  className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[status])}
                 />
                 <span className="truncate" title={item.label}>
                   {item.label}
                 </span>
                 <span className="sr-only">{position}</span>
-                <span className="sr-only">{STATUS_LABEL[item.status]}</span>
+                <span className="sr-only">{STATUS_LABEL[status]}</span>
               </button>
               <button
                 type="button"
                 onClick={() => closeAt(index)}
+                disabled={busy}
                 aria-label={`Close ${item.label}${position}`}
                 className={cn(
                   'text-muted-foreground hover:bg-destructive/10 hover:text-destructive absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded transition',
-                  'opacity-0 group-hover/task:opacity-100 focus-visible:opacity-100 focus-visible:ring-ring/50 focus-visible:ring-[1px] focus-visible:outline-none'
+                  'opacity-0 group-hover/task:opacity-100 focus-visible:opacity-100 focus-visible:ring-ring/50 focus-visible:ring-[1px] focus-visible:outline-none',
+                  'disabled:pointer-events-none disabled:opacity-40'
                 )}
               >
                 <X className="size-3" />

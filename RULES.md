@@ -28,7 +28,7 @@ Animate UI has no primitive for every component (`button`, `card`, `input`,
 
 | Folder | Contents | Rule |
 | --- | --- | --- |
-| `components/ui/` | library components (shadcn + Animate UI) | vendored, don't edit |
+| `components/ui/` | library components (shadcn + Animate UI) | vendored; edit only what belongs to every instance |
 | `components/layout/` | page chrome: `app-layout`, `app-header`, `app-sidebar` | wraps every route |
 | `components/theme/` | `theme-provider` | app-wide provider |
 | `components/lightswind/` | `toggle-theme` | different vendor, not read by the animate CLI |
@@ -90,17 +90,25 @@ Never hardcode `isActive` in `config/nav.ts`. Derive it:
 
 ## Editing `ui/`
 
-Files in `ui/` are vendored: do not edit them. Style a library component from
-the call site with `className`, even when the same override appears on several
-pages.
+Files in `ui/` are vendored, but not read-only. Two kinds of change, two homes.
+
+**One call site, or a look that belongs to a page.** Style it at the call site with
+`className`, even when the same override appears on several pages.
 
 ```tsx
 <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
 <TabsTrigger value="check" className="focus-visible:ring-[1px]">
 ```
 
-`shadcn add --overwrite` and `animate` re-run against the registry, so a local
-edit inside `ui/` would be silently reverted anyway.
+**Every instance, and repeating it at every call site is the worse trade.** Edit the
+file in `ui/`. `autoComplete="off"` on `ui/input.tsx` is the worked example: it has to
+hold for every input, and the one call site that forgets the prop is the bug the
+default exists to prevent.
+
+`shadcn add --overwrite` and `animate` re-run against the registry and would revert a
+local edit. The command writes the named component and its `registryDependencies`, so one
+re-add can rewrite several files. Diff every file the command reports as overwritten, not
+just the one you named, and re-apply each edit.
 
 ## UI conventions
 
@@ -109,9 +117,8 @@ a page that differs is a bug, not a variant.
 
 ### Page shell
 
-- Container: `flex flex-1 flex-col gap-4 p-6`. Three page kinds differ, all listed under
-  Deliberate exceptions: the `mint/tasks` workspace, the unbuilt placeholders and the 404
-  page.
+- Container: `flex flex-1 flex-col gap-4 p-6`. Two page kinds differ, both listed under
+  Deliberate exceptions: the `mint/tasks` workspace and the 404 page.
 - The title lives on the route (`handle.title`) and renders once, in `app-header`.
   Never repeat it as an `h1` in the body.
 - Target is 1024px and up. Below that only the chrome collapses — the shell, the scan bar
@@ -210,21 +217,49 @@ secondary `text-[11px]`. Page-level tiles use this scale; the three-up strip ins
 Do not normalise these:
 
 - `mint/tasks`: the task list, the collection bar and the inventory table have no header bar.
+- `mint/tasks`: the Mint Stage picker lists every stage in the drop, on purpose. OpenSea picks
+  the stage server-side, so the picker is how the operator targets the stage they mean to mint
+  and reads that stage's price and cap. It is a configuration choice, not a claim about which
+  stage the endpoint will choose, and it must not be narrowed to the active stage.
+- `mint/tasks`: a re-check keeps the stage the operator picked. Checking again re-reads the drop
+  and the eligibility, but it must not move the picker: `check()` keeps `stageUuid` whenever the
+  new drop still lists that stage and only falls back to the live one when it does not. Defaulting
+  every check back to the live stage throws away the target the operator set up.
+- `mint/tasks`: Start Mint is a countdown, not a gate. A stage that has not opened yet keeps
+  Start Mint usable: pressing it arms the task, the button counts down against block time read
+  from the chain RPC, never the desktop clock, and the mint runs by itself the moment the stage
+  opens. Never disable Start Mint because the selected stage is not the live one; that turns a
+  scheduled mint into a dead button. The endpoint mints whatever stage is live, so the armed run
+  re-reads the drop at zero and sends only once the targeted stage is the live one.
+- `mint/tasks`: the quantity ceiling is whatever OpenSea returns, never a constant in this app.
+  Read it from `max_per_wallet` on the stage and `max_total_mintable_by_wallet` from the
+  eligibility check, take the smaller non-zero value, and leave the input unbounded when neither
+  has answered. Do not reintroduce a hardcoded 100 or any other ceiling.
+- `mint/tasks`: a row that reached the chain keeps its record through every re-check. Its
+  `mintedStages` list and its latest `txHash` survive a check whichever stage is selected, because
+  dropping them hides a landing and re-arms the wallet on that stage. `mintableRow` retires a wallet
+  for every stage in that list, since each stage carries its own cap. A row shows one attempt at a
+  time: starting a new mint replaces `status` and `txHash`, but never the list.
+- `mint/tasks`: FCFS stays disabled. `Mint Mode` renders the button with `title="Not available
+  yet"` and no handler behind it. Enabling it is a feature, not a cleanup.
+- `mint/tasks`: no status line under the collection field. Tasks mint independently, so one task
+  minting must never disable or explain another; check and mint failures surface as toasts, not
+  as a bar under the URL. Do not reintroduce `Another task is minting` or `Drop is not minting`.
 - `mint/tasks` is a workspace, not a document: `min-h-[calc(100svh-3rem)] flex-col p-6`,
   `lg:h-[calc(100svh-3rem)] lg:min-h-0 lg:overflow-hidden` - no `flex-1`, no `gap-4`.
-- Unbuilt pages render `<div className="p-6" />`; the 404 page renders `<div className="p-6">`
-  around its Return link. Both take their title from the route.
-- `mint/eligibility`: the plain label row above the table is a scaffold that will hold the
-  API values.
+- The 404 page renders `<div className="p-6">` around its Return link, and takes its title
+  from the route.
 - Empty states keep their page copy and their height. Icon-and-copy states use the shared
   `EmptyState` in `src/components/`; `bulk-sell` still inlines its own. Tables whose empty
-  body is a single muted centred row (`portfolio`, `mint/tasks`, `mint/eligibility`) keep
-  that shape.
+  body is a single muted centred row (`portfolio`, `mint/tasks`, `mint/eligibility`,
+  `wallet-profiles`) keep that shape.
 
 ## Theme
 
 `ThemeProvider` in `components/theme/theme-provider.tsx` is the single source of
-truth. Only it touches `localStorage` and the `dark` class.
+truth for theme state. Only it touches the theme's `localStorage` entry and the `dark`
+class. Other preferences keep their own key and their own owner, as `wallet-chain` does
+in `wallet-profiles`.
 
 ## Verification
 

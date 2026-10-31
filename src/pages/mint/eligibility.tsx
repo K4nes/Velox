@@ -1,59 +1,37 @@
-import { useState } from 'react'
-import { Eye, RefreshCw, Trash2 } from 'lucide-react'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { useEffect, useRef } from 'react'
+import { Bookmark } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EmptyState } from '@/components/empty-state'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  EligibilityResultSummary,
+  EligibilityResultTable,
+} from './eligibility-result-table'
+import { SnapshotCard, SnapshotDetail } from './snapshot-card'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
-
-type Snapshot = {
-  id: string
-  title: string
-  status: 'Upcoming' | 'Live' | 'Ended'
-  marketplace: string
-  chain: string
-  date: string
-}
-
-const snapshots: Snapshot[] = [
-  {
-    id: 'snap-1',
-    title: 'NFT Title',
-    status: 'Upcoming',
-    marketplace: 'OpenSea',
-    chain: 'Ethereum',
-    date: '12 Oct 2026, 14:30',
-  },
-  {
-    id: 'snap-2',
-    title: 'NFT Title',
-    status: 'Live',
-    marketplace: 'OpenSea',
-    chain: 'Ethereum',
-    date: '13 Oct 2026, 09:00',
-  },
-  {
-    id: 'snap-3',
-    title: 'NFT Title',
-    status: 'Ended',
-    marketplace: 'OpenSea',
-    chain: 'Ethereum',
-    date: '10 Oct 2026, 23:15',
-  },
-]
+import { useEligibilityCheck } from '@/hooks/use-eligibility-check'
+import { useSnapshotLibrary } from '@/hooks/use-snapshot-library'
+import { useWalletGroups } from '@/hooks/use-wallets'
 
 export function MintEligibilityPage() {
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
+  const library = useSnapshotLibrary()
+  const check = useEligibilityCheck(library.clearSaveError)
+  const { groups, error: walletsError } = useWalletGroups()
+  const selectedSnapshot = library.selectedSnapshot
+  const gridRef = useRef<HTMLDivElement>(null)
+  const restoreFocusId = useRef<string | null>(null)
+
+  useEffect(() => {
+    const id = restoreFocusId.current
+    if (selectedSnapshot || !id) return
+    restoreFocusId.current = null
+    gridRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-snapshot-id="${id}"]`)
+      ?.focus()
+  }, [selectedSnapshot])
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -79,6 +57,9 @@ export function MintEligibilityPage() {
               <Input
                 id="eligibility-collection-url"
                 placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+                disabled={check.running}
+                value={check.url}
+                onChange={(event) => check.changeUrl(event.target.value)}
               />
             </div>
             <div
@@ -90,113 +71,120 @@ export function MintEligibilityPage() {
                 Wallet
               </span>
               <WalletSelect
-                groups={walletGroups}
-                selected={selectedWallets}
-                onSelectedChange={setSelectedWallets}
+                groups={groups}
+                selected={check.selectedWallets}
+                onSelectedChange={check.changeWallets}
+                disabled={check.running}
                 aria-labelledby="eligibility-wallet-label"
                 className="w-full"
               />
+              {walletsError ? (
+                <p role="alert" className="text-destructive text-xs">
+                  Wallet list unavailable. {walletsError}
+                </p>
+              ) : null}
             </div>
-            <Button className="shrink-0">Check</Button>
+            <Button
+              className="shrink-0"
+              onClick={() => void check.check()}
+              disabled={
+                check.running ||
+                check.selectedWallets.length === 0 ||
+                !check.url.trim()
+              }
+            >
+              {check.running ? <Spinner data-icon="inline-start" /> : null}
+              Check
+            </Button>
           </Card>
-          <Card className="flex flex-1 flex-col gap-3 p-4">
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <span>NFT Title</span>
-              <span>Label Marketplace</span>
-              <span>Chain</span>
+          <Card className="flex flex-1 flex-col gap-0 overflow-hidden py-0">
+            <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                {check.checked ? (
+                  <EligibilityResultSummary
+                    name={check.checked.drop.name}
+                    imageUrl={check.checked.imageUrl}
+                    marketplace={check.checked.marketplace}
+                    chain={check.checked.chainName}
+                  />
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {library.saveError ? (
+                  <span className="text-destructive text-xs">
+                    {library.saveError}
+                  </span>
+                ) : null}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (check.checked) void library.save(check.checked)
+                  }}
+                  disabled={!check.checked || library.saving}
+                >
+                  {library.saving ? 'Saving…' : 'Save snapshot'}
+                </Button>
+              </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <Table>
-                <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
-                  <TableRow>
-                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                      #
-                    </TableHead>
-                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                      Wallet Profile
-                    </TableHead>
-                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                      Address
-                    </TableHead>
-                    <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                      Mint Stage
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell
-                      colSpan={4}
-                      className="text-muted-foreground h-24 text-center"
-                    >
-                      No data yet
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
+            <EligibilityResultTable
+              state={check.tableState}
+              stageColumns={check.checked?.stageColumns ?? []}
+            />
           </Card>
         </TabsContent>
 
         <TabsContent value="snapshot" className="flex flex-1 flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {snapshots.map((snapshot) => (
-              <Card key={snapshot.id} className="flex flex-col">
-                <CardHeader>
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-[13px] font-semibold">{snapshot.title}</CardTitle>
-                    <Badge
-                      variant="outline"
-                      className={
-                        snapshot.status === 'Live'
-                          ? 'border-success/30 bg-success/10 text-success'
-                          : snapshot.status === 'Upcoming'
-                            ? 'border-warning/30 bg-warning/10 text-warning'
-                            : 'text-muted-foreground'
-                      }
-                    >
-                      {snapshot.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  <div className="flex justify-between gap-2">
-                    <span>Marketplace</span>
-                    <span className="text-foreground">{snapshot.marketplace}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span>Chain</span>
-                    <span className="text-foreground">{snapshot.chain}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span>Date</span>
-                    <span className="text-foreground">{snapshot.date}</span>
-                  </div>
-                </CardContent>
-                <CardFooter className="justify-between gap-2">
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <RefreshCw />
-                      Refresh
-                    </Button>
-                    <Button size="sm">
-                      <Eye />
-                      View Snapshot
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Delete snapshot"
-                    className="hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-
+          {library.loading ? (
+            <p className="text-muted-foreground text-xs">Loading snapshots…</p>
+          ) : library.snapshotsError ? (
+            <p className="text-destructive text-xs">{library.snapshotsError}</p>
+          ) : (
+            <>
+              {library.deleteError ? (
+                <p className="text-destructive text-xs">{library.deleteError}</p>
+              ) : null}
+              {library.snapshots.length === 0 ? (
+                <EmptyState
+                  icon={Bookmark}
+                  title="No snapshots yet"
+                  description="Run a check, then save it from the Check Eligible tab."
+                />
+              ) : selectedSnapshot ? (
+                <SnapshotDetail
+                  snapshot={selectedSnapshot}
+                  onBack={() => {
+                    restoreFocusId.current = selectedSnapshot.id
+                    library.setSelectedSnapshotId(null)
+                  }}
+                  onRefresh={() => void library.refresh(selectedSnapshot)}
+                  refreshing={library.refreshingId === selectedSnapshot.id}
+                  busy={library.refreshingId !== null}
+                  refreshError={
+                    library.refreshError?.id === selectedSnapshot.id
+                      ? library.refreshError.message
+                      : null
+                  }
+                />
+              ) : (
+                <div
+                  ref={gridRef}
+                  className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                >
+                  {library.snapshots.map((snapshot) => (
+                    <SnapshotCard
+                      key={snapshot.id}
+                      snapshot={snapshot}
+                      busy={library.deletingId !== null}
+                      deleting={library.deletingId === snapshot.id}
+                      onView={library.setSelectedSnapshotId}
+                      onDelete={(id) => void library.remove(id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -1,0 +1,150 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { fetchBalances } from '@/lib/balances'
+
+type BalanceErrors = Record<string, { message: string; addresses: string[] }>
+
+export function useWalletBalances(chainSlug: string, addressKey: string) {
+  const [balances, setBalances] = useState<Record<string, bigint>>({})
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<BalanceErrors>({})
+  const balanceRun = useRef(0)
+  const attemptedRef = useRef(new Set<string>())
+
+  const runRefresh = useCallback(
+    async (addresses: string[]) => {
+      const run = balanceRun.current + 1
+      balanceRun.current = run
+      setLoading(true)
+
+      try {
+        const next = await fetchBalances(chainSlug, addresses)
+        if (balanceRun.current !== run) {
+          return
+        }
+        // Only the addresses that came back are cached, so the refresh button
+        // retries the rest instead of them staying blank for the session.
+        for (const address of Object.keys(next.balances)) {
+          attemptedRef.current.add(`${chainSlug}:${address}`)
+        }
+        setBalances((current) => {
+          const merged = { ...current }
+          for (const [address, value] of Object.entries(next.balances)) {
+            merged[`${chainSlug}:${address}`] = value
+          }
+          // A failed address keeps no value: an old number rendered as current
+          // reads as a fresh balance the run never read.
+          for (const address of next.failed) {
+            delete merged[`${chainSlug}:${address.toLowerCase()}`]
+          }
+          return merged
+        })
+        // This run only speaks for the addresses it asked for; a failure it did
+        // not re-read still stands.
+        setErrors((current) => {
+          const failed = new Set(current[chainSlug]?.addresses ?? [])
+          for (const address of addresses) {
+            failed.delete(address.toLowerCase())
+          }
+          for (const address of next.failed) {
+            failed.add(address.toLowerCase())
+          }
+          const state = { ...current }
+          if (failed.size === 0) {
+            delete state[chainSlug]
+          } else {
+            state[chainSlug] = {
+              message: `${failed.size} balance${failed.size === 1 ? '' : 's'} could not be read.`,
+              addresses: [...failed],
+            }
+          }
+          return state
+        })
+      } catch (failure) {
+        if (balanceRun.current !== run) {
+          return
+        }
+        // Nothing came back, so every cached value for this run is stale.
+        setBalances((current) => {
+          const merged = { ...current }
+          for (const address of addresses) {
+            delete merged[`${chainSlug}:${address.toLowerCase()}`]
+          }
+          return merged
+        })
+        setErrors((current) => {
+          const failed = new Set(current[chainSlug]?.addresses ?? [])
+          for (const address of addresses) {
+            failed.add(address.toLowerCase())
+          }
+          return {
+            ...current,
+            [chainSlug]: {
+              message:
+                failure instanceof Error ? failure.message : String(failure),
+              addresses: [...failed],
+            },
+          }
+        })
+      } finally {
+        if (balanceRun.current === run) {
+          setLoading(false)
+        }
+      }
+    },
+    [chainSlug]
+  )
+
+  useEffect(() => {
+    const present = new Set(
+      addressKey ? addressKey.toLowerCase().split(',') : []
+    )
+    // A failure record survives only while the wallet it names is still here.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setErrors((current) => {
+      const entry = current[chainSlug]
+      if (!entry) {
+        return current
+      }
+      const kept = entry.addresses.filter((address) => present.has(address))
+      if (kept.length === entry.addresses.length) {
+        return current
+      }
+      const state = { ...current }
+      if (kept.length === 0) {
+        delete state[chainSlug]
+      } else {
+        state[chainSlug] = {
+          message: `${kept.length} balance${kept.length === 1 ? '' : 's'} could not be read.`,
+          addresses: kept,
+        }
+      }
+      return state
+    })
+
+    if (!addressKey) {
+      return
+    }
+    // A wallet mutation rewrites the key, and re-reading every address each time
+    // would hammer the endpoint for values that are already cached.
+    const pending = addressKey
+      .split(',')
+      .filter(
+        (address) =>
+          !attemptedRef.current.has(`${chainSlug}:${address.toLowerCase()}`)
+      )
+    if (pending.length === 0) {
+      return
+    }
+    // The effect exists to read the chain, and the loading flag has to flip
+    // before the request so the refresh icon can spin during it.
+    // oxlint-disable-next-line react/set-state-in-effect
+    void runRefresh(pending)
+  }, [addressKey, chainSlug, runRefresh])
+
+  return {
+    balances,
+    loading,
+    errorMessage: addressKey ? (errors[chainSlug]?.message ?? null) : null,
+    runRefresh,
+  }
+}
