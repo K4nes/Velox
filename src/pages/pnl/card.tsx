@@ -9,66 +9,53 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
 import { chainBySlug } from '@/config/chains'
-import { useEthPrice } from '@/hooks/use-eth-price'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
-import {
-  persistImages,
-  readImageFile,
-  readStoredImages,
-  type CardImage,
-} from '@/lib/card-images'
-import { getCollection, slugFromUrl, type CollectionInfo } from '@/lib/opensea'
-import {
-  fetchCollectionTrades,
-  summarize,
-  type PnlStats,
-} from '@/lib/pnl-trades'
+import { persistImages, readImageFile } from '@/lib/card-images'
+import { getCollection, slugFromUrl } from '@/lib/opensea'
+import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
 import { CardPreview, formats } from './card-preview'
 import type { Format, ImagePosition } from './card-preview'
+import { MAX_IMAGES, pnlCard, usePnlCard } from './card-state'
 
-const MAX_IMAGES = 3
 const DEFAULT_POSITION: ImagePosition = { x: 50, y: 50 }
 
 export function PnlCardPage() {
-  const [collectionUrl, setCollectionUrl] = useState('')
-  const [collection, setCollection] = useState<CollectionInfo | null>(null)
-  const [uploads, setUploads] = useState<CardImage[]>(() =>
-    readStoredImages().slice(0, MAX_IMAGES),
-  )
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [positions, setPositions] = useState<Record<string, ImagePosition>>({})
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [format, setFormat] = useState<Format>('Landscape')
+  const {
+    collectionUrl,
+    collection,
+    walletIds,
+    format,
+    uploads,
+    activeImageId,
+    positions,
+    version,
+    read,
+    quote,
+  } = usePnlCard()
   const [running, setRunning] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [wallets, setWallets] = useState<StoredWallet[]>([])
-  const [statsRead, setStatsRead] = useState<{
-    key: string
-    stats: PnlStats | null
-  } | null>(null)
-  const [statsVersion, setStatsVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const savedUploads = useRef(uploads)
-  const { price, loading: priceLoading, refresh } = useEthPrice()
   const { groups } = useWalletGroups()
   const chain = collection === null ? undefined : chainBySlug(collection.chain)
   const explorerApi = chain?.explorerApi ?? ''
   const contract = collection?.contractAddress ?? ''
   const wrappedNative = chain?.wrappedNative ?? ''
   const addresses = wallets
-    .filter((wallet) => selectedWallets.includes(wallet.id))
+    .filter((wallet) => walletIds.includes(wallet.id))
     .map((wallet) => wallet.address)
     .join(',')
   const requestKey =
     explorerApi === '' || contract === '' || addresses === ''
       ? ''
       : `${explorerApi}|${contract}|${addresses}`
-  const stats = statsRead !== null && statsRead.key === requestKey ? statsRead.stats : null
-  const statsLoading = requestKey !== '' && statsRead?.key !== requestKey
+  const stats = read !== null && read.key === requestKey ? read.stats : null
+  const statsLoading = requestKey !== '' && read?.key !== requestKey
   const busy = running || statsLoading
 
   useEffect(() => {
@@ -89,10 +76,18 @@ export function PnlCardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    void pnlCard.loadQuote()
+  }, [])
+
   // A re-check of the same collection keeps the same request key, so the version
-  // is what makes the chain read happen again.
+  // is what makes the chain read happen again. A remount finds the answer still
+  // in the store and skips the read entirely.
   useEffect(() => {
     if (requestKey === '') return
+    if (read !== null && read.key === requestKey && read.version === version) {
+      return
+    }
 
     let cancelled = false
     const controller = new AbortController()
@@ -106,7 +101,11 @@ export function PnlCardPage() {
     )
       .then(({ trades, truncated }) => {
         if (cancelled) return
-        setStatsRead({ key: requestKey, stats: summarize(trades) })
+        pnlCard.setRead({
+          key: requestKey,
+          version,
+          stats: summarize(trades),
+        })
         if (truncated) {
           toast.info('These numbers only cover the newest transfers', {
             id: 'pnl-truncated',
@@ -115,7 +114,7 @@ export function PnlCardPage() {
       })
       .catch((failure) => {
         if (cancelled) return
-        setStatsRead({ key: requestKey, stats: null })
+        pnlCard.setRead({ key: requestKey, version, stats: null })
         toast.error(failure instanceof Error ? failure.message : String(failure))
       })
 
@@ -123,7 +122,15 @@ export function PnlCardPage() {
       cancelled = true
       controller.abort()
     }
-  }, [explorerApi, contract, addresses, wrappedNative, requestKey, statsVersion])
+  }, [
+    explorerApi,
+    contract,
+    addresses,
+    wrappedNative,
+    requestKey,
+    version,
+    read,
+  ])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only
@@ -140,7 +147,7 @@ export function PnlCardPage() {
   }, [uploads])
 
   const active =
-    uploads.find((image) => image.id === activeId) ?? uploads[0] ?? null
+    uploads.find((image) => image.id === activeImageId) ?? uploads[0] ?? null
   const position =
     active === null ? DEFAULT_POSITION : (positions[active.id] ?? DEFAULT_POSITION)
 
@@ -150,7 +157,7 @@ export function PnlCardPage() {
       toast.error('Collection URL not recognised')
       return
     }
-    if (selectedWallets.length === 0) {
+    if (walletIds.length === 0) {
       toast.error('Select a wallet first')
       return
     }
@@ -158,8 +165,8 @@ export function PnlCardPage() {
     setRunning(true)
     try {
       const info = await getCollection(slug)
-      setCollection(info)
-      void refresh()
+      pnlCard.setCollection(info)
+      void pnlCard.loadQuote(true)
       const chainEntry = chainBySlug(info.chain)
       if (chainEntry === undefined || chainEntry.explorerApi === '') {
         toast.error(
@@ -167,7 +174,7 @@ export function PnlCardPage() {
         )
         return
       }
-      setStatsVersion((current) => current + 1)
+      pnlCard.bumpVersion()
     } catch (failure) {
       toast.error(failure instanceof Error ? failure.message : String(failure))
     } finally {
@@ -177,7 +184,7 @@ export function PnlCardPage() {
 
   function moveImage(next: ImagePosition) {
     if (active === null) return
-    setPositions((current) => ({ ...current, [active.id]: next }))
+    pnlCard.setPosition(active.id, next)
   }
 
   async function pickImage(event: ChangeEvent<HTMLInputElement>) {
@@ -187,7 +194,7 @@ export function PnlCardPage() {
 
     try {
       const src = await readImageFile(file)
-      setUploads((current) =>
+      pnlCard.setUploads((current) =>
         current.length >= MAX_IMAGES
           ? current
           : [...current, { id: uid(), src, label: file.name }],
@@ -198,7 +205,9 @@ export function PnlCardPage() {
   }
 
   function removeImage(id: string) {
-    setUploads((current) => current.filter((image) => image.id !== id))
+    pnlCard.setUploads((current) =>
+      current.filter((image) => image.id !== id),
+    )
   }
 
   async function exportCard() {
@@ -227,7 +236,7 @@ export function PnlCardPage() {
       value={format}
       onValueChange={(value) => {
         if ((formats as readonly string[]).includes(value)) {
-          setFormat(value as Format)
+          pnlCard.setFormat(value as Format)
         }
       }}
       className="flex flex-1 flex-col gap-4 p-6"
@@ -240,7 +249,7 @@ export function PnlCardPage() {
           <Input
             id="collection-url"
             value={collectionUrl}
-            onChange={(event) => setCollectionUrl(event.target.value)}
+            onChange={(event) => pnlCard.setCollectionUrl(event.target.value)}
             placeholder="https://opensea.io/collection/… or https://scatter.art/…"
           />
         </div>
@@ -254,8 +263,8 @@ export function PnlCardPage() {
           </span>
           <WalletSelect
             groups={groups}
-            selected={selectedWallets}
-            onSelectedChange={setSelectedWallets}
+            selected={walletIds}
+            onSelectedChange={pnlCard.setWalletIds}
             className="w-full"
           />
         </div>
@@ -284,8 +293,8 @@ export function PnlCardPage() {
               image={active}
               position={position}
               onPosition={moveImage}
-              price={price}
-              priceLoading={priceLoading}
+              price={quote.price}
+              priceLoading={quote.loading}
               stats={stats}
             />
           )}
@@ -317,7 +326,7 @@ export function PnlCardPage() {
                 type="button"
                 aria-label={image.label === '' ? 'Collection image' : image.label}
                 aria-pressed={image.id === active?.id}
-                onClick={() => setActiveId(image.id)}
+                onClick={() => pnlCard.setActiveImageId(image.id)}
                 className={cn(
                   'block h-9 w-16 overflow-hidden rounded-lg border',
                   image.id === active?.id && 'ring-2 ring-ring',
