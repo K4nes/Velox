@@ -1,84 +1,103 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ChartLine, Download, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
 import { walletGroups } from '@/config/wallets'
+import { useEthPrice } from '@/hooks/use-eth-price'
+import { getCollection, slugFromUrl } from '@/lib/opensea'
 import { cn } from '@/lib/utils'
+import { CardPreview, formats } from './card-preview'
+import type { CardImage, Format, ImagePosition } from './card-preview'
 
-const formats = ['Landscape', 'Portrait'] as const
-
-type Format = (typeof formats)[number]
-
-const stats = [
-  { label: 'Realized', value: '0.0000 ETH' },
-  { label: 'Unrealized', value: '0.0000 ETH' },
-  { label: 'Invested', value: '0.0000 ETH' },
-  { label: 'Current value', value: '0.0000 ETH' },
-]
-
-function CardPreview({ format }: { format: Format }) {
-  return (
-    <div
-      className={cn(
-        '@container relative overflow-hidden rounded-xl',
-        format === 'Landscape'
-          ? 'aspect-[959/600] w-[min(100%,calc((100svh-16rem)*959/600))] max-w-3xl'
-          : 'aspect-[600/959] w-[min(100%,max(14rem,calc((100vh-20rem)*600/959)))]',
-      )}
-    >
-      <img
-        src="/pnl-card-preview.png"
-        alt=""
-        className="absolute inset-0 size-full object-cover"
-      />
-      <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
-
-      <div className="absolute inset-x-5 top-5 flex items-start justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:top-3">
-        <span className="bg-pnl-overlay text-pnl-on-image rounded-lg px-3 py-2 text-base font-medium whitespace-nowrap">
-          PnL Card Preview
-        </span>
-        <span className="bg-pnl-overlay text-pnl-on-image-muted rounded-lg px-2.5 py-1 text-xs whitespace-nowrap">
-          ETH/USD $3000.00
-        </span>
-      </div>
-
-      <div className="absolute inset-x-5 bottom-5 flex items-end justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:bottom-3">
-        <div className="grid min-w-0 max-w-[360px] flex-1 grid-cols-2 gap-2">
-          {stats.map((stat) => (
-            <div
-              key={stat.label}
-              className="bg-pnl-overlay flex min-w-0 flex-col justify-center gap-0.5 rounded-lg px-3 py-2"
-            >
-              <span className="text-pnl-on-image-muted text-xs">
-                {stat.label}
-              </span>
-              <span className="text-pnl-on-image text-base font-medium whitespace-nowrap">
-                {stat.value}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-col items-end gap-0.5">
-          <span className="text-pnl-on-image-muted text-xs">Total PnL</span>
-          <span className="text-pnl-on-image text-lg font-semibold">
-            0.0000 ETH
-          </span>
-          <span className="text-pnl-on-image-muted text-xs">$0.00</span>
-        </div>
-      </div>
-    </div>
-  )
-}
+const MAX_IMAGES = 3
+const DEFAULT_POSITION: ImagePosition = { x: 50, y: 50 }
 
 export function PnlCardPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
+  const [collection, setCollection] = useState<{
+    name: string
+    imageUrl: string
+  } | null>(null)
+  const [uploads, setUploads] = useState<CardImage[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [positions, setPositions] = useState<Record<string, ImagePosition>>({})
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [format, setFormat] = useState<Format>('Landscape')
+  const [running, setRunning] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const uploadsRef = useRef(uploads)
+  const { price, loading: priceLoading, refresh } = useEthPrice()
+
+  useEffect(() => {
+    uploadsRef.current = uploads
+  }, [uploads])
+
+  // Adding an image appends to the list, so revoking on change frees URLs the
+  // strip still shows. Only unmounting the page gives them back.
+  useEffect(
+    () => () => {
+      for (const image of uploadsRef.current) URL.revokeObjectURL(image.src)
+    },
+    [],
+  )
+
+  const images: CardImage[] = [
+    ...(collection !== null && collection.imageUrl !== ''
+      ? [{ id: 'collection', src: collection.imageUrl, label: collection.name }]
+      : []),
+    ...uploads,
+  ].slice(0, MAX_IMAGES)
+
+  const active =
+    images.find((image) => image.id === activeId) ?? images[0] ?? null
+  const position =
+    active === null ? DEFAULT_POSITION : (positions[active.id] ?? DEFAULT_POSITION)
+
+  async function check() {
+    const slug = slugFromUrl(collectionUrl)
+    if (slug === null) {
+      toast.error('Collection URL not recognised')
+      return
+    }
+
+    setRunning(true)
+    try {
+      const info = await getCollection(slug)
+      setCollection({ name: info.name, imageUrl: info.imageUrl })
+      setActiveId('collection')
+      void refresh()
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  function moveImage(next: ImagePosition) {
+    if (active === null) return
+    setPositions((current) => ({ ...current, [active.id]: next }))
+  }
+
+  function pickImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file === undefined) return
+
+    setUploads((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        src: URL.createObjectURL(file),
+        label: file.name,
+      },
+    ])
+  }
 
   return (
     <Tabs
@@ -117,8 +136,12 @@ export function PnlCardPage() {
             className="w-full"
           />
         </div>
-        <Button className="shrink-0">
-          <ChartLine />
+        <Button
+          className="shrink-0"
+          onClick={() => void check()}
+          disabled={running || collectionUrl.trim() === ''}
+        >
+          {running ? <Spinner /> : <ChartLine />}
           Check PnL
         </Button>
       </Card>
@@ -129,7 +152,15 @@ export function PnlCardPage() {
           value={option}
           className="flex min-h-0 flex-1 items-center justify-center focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <CardPreview format={option} />
+          <CardPreview
+            format={option}
+            name={collection?.name ?? ''}
+            image={active}
+            position={position}
+            onPosition={moveImage}
+            price={price}
+            priceLoading={priceLoading}
+          />
         </TabsContent>
       ))}
 
@@ -152,18 +183,41 @@ export function PnlCardPage() {
           <span className="text-muted-foreground text-xs font-medium">
             Image
           </span>
-          <img
-            src="/pnl-card-preview.png"
-            alt=""
-            className="h-9 w-16 rounded-lg border object-cover"
-          />
-          <Button variant="outline" className="h-9 w-16" aria-label="Add image">
+          {images.map((image) => (
+            <button
+              key={image.id}
+              type="button"
+              aria-label={image.label === '' ? 'Collection image' : image.label}
+              aria-pressed={image.id === active?.id}
+              onClick={() => setActiveId(image.id)}
+              className={cn(
+                'h-9 w-16 overflow-hidden rounded-lg border',
+                image.id === active?.id && 'ring-2 ring-ring',
+              )}
+            >
+              <img src={image.src} alt="" className="size-full object-cover" />
+            </button>
+          ))}
+          <Button
+            variant="outline"
+            className="h-9 w-16"
+            aria-label="Add image"
+            onClick={() => fileInput.current?.click()}
+            disabled={images.length >= MAX_IMAGES}
+          >
             <Plus />
           </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={pickImage}
+          />
         </div>
         <Button className="shrink-0">
           <Download />
-          Export PNG
+          Export Card
         </Button>
       </Card>
     </Tabs>
