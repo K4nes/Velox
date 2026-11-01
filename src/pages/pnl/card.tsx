@@ -174,7 +174,7 @@ export function PnlCardPage() {
     try {
       const outcome = await saveCard(
         node,
-        `pnl-${collection?.slug ?? 'card'}-${format.toLowerCase()}.png`,
+        `${collection?.slug ?? 'pnl'}-card.png`,
       )
       if (outcome === 'saved') toast.success('Card saved')
       if (outcome === 'downloaded') {
