@@ -22,6 +22,7 @@ const currency = new Intl.NumberFormat('en-US', {
 
 type OverlayProps = {
   name: string
+  logo: string
   price: number | null
   priceLoading: boolean
 }
@@ -46,14 +47,22 @@ function PriceChip({ price, priceLoading, className }: PriceChipProps) {
   )
 }
 
-function LandscapeOverlay({ name, price, priceLoading }: OverlayProps) {
+function LandscapeOverlay({ name, logo, price, priceLoading }: OverlayProps) {
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
 
       <div className="pointer-events-none absolute inset-x-5 top-5 flex items-start justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:top-3">
-        <span className="bg-pnl-overlay text-pnl-on-image rounded-lg px-3 py-2 text-base font-medium whitespace-nowrap">
-          {name === '' ? 'No collection' : name}
+        <span className="bg-pnl-overlay text-pnl-on-image flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-base font-medium">
+          {logo !== '' && (
+            <img
+              src={logo}
+              alt=""
+              draggable={false}
+              className="size-6 shrink-0 rounded-md object-cover"
+            />
+          )}
+          <span className="truncate">{name === '' ? 'No collection' : name}</span>
         </span>
         <PriceChip
           price={price}
@@ -91,14 +100,24 @@ function LandscapeOverlay({ name, price, priceLoading }: OverlayProps) {
   )
 }
 
-function PortraitOverlay({ name, price, priceLoading }: OverlayProps) {
+function PortraitOverlay({ name, logo, price, priceLoading }: OverlayProps) {
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/95 via-black/80 to-transparent" />
 
       <div className="pointer-events-none absolute inset-x-[6.33cqmin] top-[6.33cqmin] flex items-start justify-between gap-[2.5cqmin]">
-        <span className="bg-pnl-overlay text-pnl-on-image min-w-0 truncate rounded-[2.33cqmin] px-[3.67cqmin] py-[2.17cqmin] text-[5.17cqmin] font-medium">
-          {name === '' ? 'No collection' : name}
+        <span className="bg-pnl-overlay text-pnl-on-image flex min-w-0 items-center gap-[1.83cqmin] rounded-[2.33cqmin] px-[3.67cqmin] py-[2.17cqmin] font-medium">
+          {logo !== '' && (
+            <img
+              src={logo}
+              alt=""
+              draggable={false}
+              className="size-[6cqmin] shrink-0 rounded-[1.2cqmin] object-cover"
+            />
+          )}
+          <span className="truncate text-[5.17cqmin]">
+            {name === '' ? 'No collection' : name}
+          </span>
         </span>
         <PriceChip
           price={price}
@@ -140,6 +159,7 @@ function PortraitOverlay({ name, price, priceLoading }: OverlayProps) {
 type CardPreviewProps = {
   format: Format
   name: string
+  logo: string
   image: CardImage | null
   position: ImagePosition
   onPosition: (next: ImagePosition) => void
@@ -150,6 +170,7 @@ type CardPreviewProps = {
 export function CardPreview({
   format,
   name,
+  logo,
   image,
   position,
   onPosition,
@@ -195,7 +216,7 @@ export function CardPreview({
     }
   }
 
-  const overlay: OverlayProps = { name, price, priceLoading }
+  const overlay: OverlayProps = { name, logo, price, priceLoading }
 
   return (
     <div
@@ -216,7 +237,7 @@ export function CardPreview({
       {image === null ? (
         <div className="bg-muted flex size-full items-center justify-center">
           <span className="text-muted-foreground text-sm">
-            No collection image
+            No image yet
           </span>
         </div>
       ) : (

@@ -48,15 +48,8 @@ export function PnlCardPage() {
     }
   }, [uploads])
 
-  const images: CardImage[] = [
-    ...(collection !== null && collection.imageUrl !== ''
-      ? [{ id: 'collection', src: collection.imageUrl, label: collection.name }]
-      : []),
-    ...uploads,
-  ].slice(0, MAX_IMAGES)
-
   const active =
-    images.find((image) => image.id === activeId) ?? images[0] ?? null
+    uploads.find((image) => image.id === activeId) ?? uploads[0] ?? null
   const position =
     active === null ? DEFAULT_POSITION : (positions[active.id] ?? DEFAULT_POSITION)
 
@@ -71,7 +64,6 @@ export function PnlCardPage() {
     try {
       const info = await getCollection(slug)
       setCollection({ name: info.name, imageUrl: info.imageUrl })
-      setActiveId('collection')
       void refresh()
     } catch (failure) {
       toast.error(failure instanceof Error ? failure.message : String(failure))
@@ -103,10 +95,6 @@ export function PnlCardPage() {
   }
 
   function removeImage(id: string) {
-    if (id === 'collection') {
-      setCollection(null)
-      return
-    }
     setUploads((current) => current.filter((image) => image.id !== id))
   }
 
@@ -166,6 +154,7 @@ export function PnlCardPage() {
           <CardPreview
             format={option}
             name={collection?.name ?? ''}
+            logo={collection?.imageUrl ?? ''}
             image={active}
             position={position}
             onPosition={moveImage}
@@ -194,7 +183,7 @@ export function PnlCardPage() {
           <span className="text-muted-foreground text-xs font-medium">
             Image
           </span>
-          {images.map((image) => (
+          {uploads.map((image) => (
             <div key={image.id} className="relative">
               <button
                 type="button"
@@ -223,7 +212,7 @@ export function PnlCardPage() {
             className="h-9 w-16"
             aria-label="Add image"
             onClick={() => fileInput.current?.click()}
-            disabled={images.length >= MAX_IMAGES}
+            disabled={uploads.length >= MAX_IMAGES}
           >
             <Plus />
           </Button>
