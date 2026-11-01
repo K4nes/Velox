@@ -1,11 +1,10 @@
 import { useRef, type PointerEvent } from 'react'
+import type { CardImage } from '@/lib/card-images'
 import { cn } from '@/lib/utils'
 
 export const formats = ['Landscape', 'Portrait'] as const
 
 export type Format = (typeof formats)[number]
-
-export type CardImage = { id: string; src: string; label: string }
 
 export type ImagePosition = { x: number; y: number }
 

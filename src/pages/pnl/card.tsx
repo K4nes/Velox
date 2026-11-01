@@ -10,10 +10,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
 import { walletGroups } from '@/config/wallets'
 import { useEthPrice } from '@/hooks/use-eth-price'
+import {
+  persistImages,
+  readImageFile,
+  readStoredImages,
+  type CardImage,
+} from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
 import { cn } from '@/lib/utils'
 import { CardPreview, formats } from './card-preview'
-import type { CardImage, Format, ImagePosition } from './card-preview'
+import type { Format, ImagePosition } from './card-preview'
 
 const MAX_IMAGES = 3
 const DEFAULT_POSITION: ImagePosition = { x: 50, y: 50 }
@@ -24,28 +30,22 @@ export function PnlCardPage() {
     name: string
     imageUrl: string
   } | null>(null)
-  const [uploads, setUploads] = useState<CardImage[]>([])
+  const [uploads, setUploads] = useState<CardImage[]>(() =>
+    readStoredImages().slice(0, MAX_IMAGES),
+  )
   const [activeId, setActiveId] = useState<string | null>(null)
   const [positions, setPositions] = useState<Record<string, ImagePosition>>({})
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [format, setFormat] = useState<Format>('Landscape')
   const [running, setRunning] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
-  const uploadsRef = useRef(uploads)
   const { price, loading: priceLoading, refresh } = useEthPrice()
 
   useEffect(() => {
-    uploadsRef.current = uploads
+    if (!persistImages(uploads)) {
+      toast.error('Images are too large to save in this browser')
+    }
   }, [uploads])
-
-  // Adding an image appends to the list, so revoking on change frees URLs the
-  // strip still shows. Only unmounting the page gives them back.
-  useEffect(
-    () => () => {
-      for (const image of uploadsRef.current) URL.revokeObjectURL(image.src)
-    },
-    [],
-  )
 
   const images: CardImage[] = [
     ...(collection !== null && collection.imageUrl !== ''
@@ -84,19 +84,21 @@ export function PnlCardPage() {
     setPositions((current) => ({ ...current, [active.id]: next }))
   }
 
-  function pickImage(event: ChangeEvent<HTMLInputElement>) {
+  async function pickImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (file === undefined) return
 
-    setUploads((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        src: URL.createObjectURL(file),
-        label: file.name,
-      },
-    ])
+    try {
+      const src = await readImageFile(file)
+      setUploads((current) =>
+        current.length >= MAX_IMAGES
+          ? current
+          : [...current, { id: crypto.randomUUID(), src, label: file.name }],
+      )
+    } catch {
+      toast.error('Could not read that image')
+    }
   }
 
   return (
