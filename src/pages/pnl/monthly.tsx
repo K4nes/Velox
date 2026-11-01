@@ -1,5 +1,16 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Search,
+  X,
+} from 'lucide-react'
+import { Area } from '@/components/dither-kit/area'
+import { AreaChart } from '@/components/dither-kit/area-chart'
+import { Tooltip } from '@/components/dither-kit/tooltip'
+import { XAxis } from '@/components/dither-kit/x-axis'
+import { YAxis } from '@/components/dither-kit/y-axis'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Card } from '@/components/ui/card'
@@ -19,15 +30,66 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { usePnlRecords } from '@/hooks/use-pnl-records'
+import {
+  dailyNetSeries,
+  dayKey,
+  formatNetPnl,
+  monthNet,
+  recordUsd,
+  recordsInMonth,
+  type PnlRecord,
+} from '@/lib/pnl-records'
+import { formatEth } from '@/lib/pnl-trades'
 
 const sortOptions = ['Newest First', 'Oldest First']
 
+const dayFormat = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+})
+
+const recordDateFormat = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
 export function PnlMonthlyPage() {
+  const { records, loading, error } = usePnlRecords()
   const [month, setMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
-  const [selectedDay, setSelectedDay] = useState(() => new Date())
+  const [selectedDay, setSelectedDay] = useState<Date>()
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState(sortOptions[0])
+
+  const monthRecords = recordsInMonth(records, month)
+  const totals = monthNet(monthRecords)
+  const series = dailyNetSeries(records, month)
+  const day = selectedDay ? dayKey(selectedDay) : null
+  const dayLabel = selectedDay ? dayFormat.format(selectedDay) : null
+  const search = query.trim().toLowerCase()
+
+  const rows = monthRecords
+    .filter((record) => day === null || record.day === day)
+    .filter((record) => matchesQuery(record, search))
+    .sort((a, b) =>
+      sort === sortOptions[0]
+        ? b.createdAt - a.createdAt
+        : a.createdAt - b.createdAt
+    )
+
+  const selectMonth = (next: Date) => {
+    setMonth(new Date(next.getFullYear(), next.getMonth(), 1))
+    setSelectedDay(undefined)
+  }
+
+  const shiftMonth = (offset: number) => {
+    selectMonth(new Date(month.getFullYear(), month.getMonth() + offset, 1))
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -42,12 +104,45 @@ export function PnlMonthlyPage() {
               <span className="text-[11px] font-medium text-muted-foreground tracking-[0.6px] uppercase">
                 Month net
               </span>
-              <span className="text-xs font-medium">0.0000 ETH</span>
+              <span className="text-xs font-medium">
+                {formatEth(totals.wei)} ETH
+              </span>
+              {totals.usd === '—' ? null : (
+                <span className="text-[11px] text-muted-foreground">
+                  {totals.usd}
+                </span>
+              )}
             </div>
           </div>
-          <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
-            No PnL records yet.
-          </div>
+          {monthRecords.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
+              No PnL records yet.
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1">
+              <AreaChart
+                data={series}
+                config={{
+                  net: {
+                    label: 'Net PnL',
+                    color: totals.wei < 0n ? 'red' : 'green',
+                  },
+                }}
+                bloom="aura"
+                className="h-full w-full"
+              >
+                <XAxis dataKey="day" tickFormatter={String} />
+                <YAxis tickFormatter={(value: number) => value.toFixed(2)} />
+                <Tooltip
+                  labelKey="day"
+                  valueFormatter={(value: number) =>
+                    `${value.toFixed(4)} ETH`
+                  }
+                />
+                <Area dataKey="net" variant="gradient" />
+              </AreaChart>
+            </div>
+          )}
         </Card>
 
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
@@ -63,12 +158,7 @@ export function PnlMonthlyPage() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Previous month"
-                onClick={() =>
-                  setMonth(
-                    (current) =>
-                      new Date(current.getFullYear(), current.getMonth() - 1, 1)
-                  )
-                }
+                onClick={() => shiftMonth(-1)}
               >
                 <ChevronLeft />
               </Button>
@@ -76,12 +166,7 @@ export function PnlMonthlyPage() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Next month"
-                onClick={() =>
-                  setMonth(
-                    (current) =>
-                      new Date(current.getFullYear(), current.getMonth() + 1, 1)
-                  )
-                }
+                onClick={() => shiftMonth(1)}
               >
                 <ChevronRight />
               </Button>
@@ -91,15 +176,15 @@ export function PnlMonthlyPage() {
             <div className="rounded-lg bg-muted/40 p-2 ring-1 ring-foreground/10">
               <Calendar
                 mode="single"
-                required
                 month={month}
-                onMonthChange={setMonth}
+                onMonthChange={selectMonth}
                 selected={selectedDay}
-                onSelect={(date) => {
+                onSelect={(date: Date | undefined) => {
                   setSelectedDay(date)
                   if (
-                    date.getFullYear() !== month.getFullYear() ||
-                    date.getMonth() !== month.getMonth()
+                    date &&
+                    (date.getFullYear() !== month.getFullYear() ||
+                      date.getMonth() !== month.getMonth())
                   ) {
                     setMonth(new Date(date.getFullYear(), date.getMonth(), 1))
                   }
@@ -124,15 +209,28 @@ export function PnlMonthlyPage() {
 
       <Card className="flex flex-1 flex-col gap-0 py-0">
         <div className="flex h-12 items-center justify-end gap-3 px-4">
+          {dayLabel ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setSelectedDay(undefined)}
+              aria-label={`Clear ${dayLabel} filter`}
+            >
+              {dayLabel}
+              <X />
+            </Button>
+          ) : null}
           <div className="relative w-60 shrink-0">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search collection..."
               aria-label="Search collection"
               className="pl-8"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-          <Select defaultValue={sortOptions[0]}>
+          <Select value={sort} onValueChange={setSort}>
             <SelectTrigger className="w-[158px]" aria-label="Sort collections">
               <SelectValue />
             </SelectTrigger>
@@ -145,6 +243,10 @@ export function PnlMonthlyPage() {
             </SelectContent>
           </Select>
         </div>
+
+        {error ? (
+          <p className="px-4 pb-2 text-xs text-muted-foreground">{error}</p>
+        ) : null}
 
         <Table>
           <TableHeader>
@@ -164,17 +266,67 @@ export function PnlMonthlyPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow className="hover:bg-transparent">
-              <TableCell
-                colSpan={4}
-                className="h-10 text-center text-[13px] text-muted-foreground"
-              >
-                No PnL records yet.
-              </TableCell>
-            </TableRow>
+            {rows.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell
+                  colSpan={4}
+                  className="h-10 text-center text-[13px] text-muted-foreground"
+                >
+                  {emptyMessage(loading, day !== null)}
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((record) => (
+                <TableRow key={record.id} className="hover:bg-transparent">
+                  <TableCell className="px-3">
+                    <div className="flex items-center gap-2.5">
+                      {record.imageUrl ? (
+                        <img
+                          src={record.imageUrl}
+                          alt=""
+                          className="size-8 rounded-lg border object-cover"
+                        />
+                      ) : (
+                        <div className="flex size-8 items-center justify-center rounded-lg border bg-muted">
+                          <ImageIcon className="size-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        <span className="text-[13px] font-medium">
+                          {record.name}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {record.chain}
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-3 text-[13px] font-medium">
+                    {formatNetPnl(record)}
+                  </TableCell>
+                  <TableCell className="px-3 text-[13px]">
+                    {recordUsd(record)}
+                  </TableCell>
+                  <TableCell className="px-3 text-[13px] text-muted-foreground">
+                    {recordDateFormat.format(record.createdAt)}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Card>
     </div>
   )
+}
+
+function matchesQuery(record: PnlRecord, query: string): boolean {
+  if (query.length === 0) return true
+  const fields = [record.name, record.slug, record.chain]
+  return fields.some((field) => field.toLowerCase().includes(query))
+}
+
+function emptyMessage(loading: boolean, filtered: boolean): string {
+  if (loading) return 'Loading records…'
+  return filtered ? 'No PnL records on this day.' : 'No PnL records yet.'
 }
