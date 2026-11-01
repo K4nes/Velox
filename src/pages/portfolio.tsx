@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
+import { useWalletGroups } from '@/hooks/use-wallets'
 import { cn } from '@/lib/utils'
 
 type Holding = {
@@ -46,11 +46,12 @@ const sortOptions = ['Rarity rank · rarest first', 'Rarity rank · commonest fi
 
 export function PortfolioPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
-  const [selectedWallets, setSelectedWallets] = useState<string[]>(['mb-1'])
+  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [tier, setTier] = useState<Tier>('All')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState(sortOptions[0])
   const [picked, setPicked] = useState<string[]>([])
+  const { groups } = useWalletGroups()
 
   const term = query.trim().toLowerCase()
   const searchedHoldings = holdings.filter((holding) =>
@@ -130,7 +131,7 @@ export function PortfolioPage() {
             Wallet
           </span>
           <WalletSelect
-            groups={walletGroups}
+            groups={groups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
             className="w-full"

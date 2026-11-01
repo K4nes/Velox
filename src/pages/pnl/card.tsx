@@ -8,8 +8,8 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
 import { useEthPrice } from '@/hooks/use-eth-price'
+import { useWalletGroups } from '@/hooks/use-wallets'
 import {
   persistImages,
   readImageFile,
@@ -40,6 +40,7 @@ export function PnlCardPage() {
   const [running, setRunning] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const { price, loading: priceLoading, refresh } = useEthPrice()
+  const { groups } = useWalletGroups()
 
   useEffect(() => {
     if (!persistImages(uploads)) {
@@ -140,7 +141,7 @@ export function PnlCardPage() {
             Wallet
           </span>
           <WalletSelect
-            groups={walletGroups}
+            groups={groups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
             className="w-full"

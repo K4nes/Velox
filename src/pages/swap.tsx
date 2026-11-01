@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
+import { useWalletGroups } from '@/hooks/use-wallets'
 
 const chains = ['Ethereum', 'Base', 'Robinhood Chain']
 const assets = ['WETH · Wrapped Ether', 'ETH · Ether', 'USDC · USD Coin']
@@ -52,6 +52,7 @@ export function SwapPage() {
   const [slippage, setSlippage] = useState(slippageOptions[0])
   const [defaultAmount, setDefaultAmount] = useState('')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
+  const { groups } = useWalletGroups()
 
   const sellSymbol = sellAsset.split(' · ')[0]
   const buySymbol = buyAsset.split(' · ')[0]
@@ -108,7 +109,7 @@ export function SwapPage() {
               Wallet
             </span>
             <WalletSelect
-              groups={walletGroups}
+              groups={groups}
               selected={selectedWallets}
               onSelectedChange={setSelectedWallets}
               aria-labelledby="swap-wallet-label"
