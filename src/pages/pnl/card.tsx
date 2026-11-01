@@ -11,6 +11,7 @@ import { WalletSelect } from '@/components/wallet-select'
 import { chainBySlug } from '@/config/chains'
 import { useEthPrice } from '@/hooks/use-eth-price'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { exportCard as saveCard } from '@/lib/card-export'
 import {
   persistImages,
   readImageFile,
@@ -42,6 +43,7 @@ export function PnlCardPage() {
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [format, setFormat] = useState<Format>('Landscape')
   const [running, setRunning] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [wallets, setWallets] = useState<StoredWallet[]>([])
   const [statsRead, setStatsRead] = useState<{
     key: string
@@ -49,6 +51,7 @@ export function PnlCardPage() {
   } | null>(null)
   const [statsVersion, setStatsVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
   const { price, loading: priceLoading, refresh } = useEthPrice()
   const { groups } = useWalletGroups()
   const explorerApi =
@@ -163,6 +166,27 @@ export function PnlCardPage() {
     setUploads((current) => current.filter((image) => image.id !== id))
   }
 
+  async function exportCard() {
+    const node = cardRef.current
+    if (node === null) return
+
+    setExporting(true)
+    try {
+      const outcome = await saveCard(
+        node,
+        `pnl-${collection?.slug ?? 'card'}-${format.toLowerCase()}.png`,
+      )
+      if (outcome === 'saved') toast.success('Card saved')
+      if (outcome === 'downloaded') {
+        toast.success('Card saved to your Downloads folder')
+      }
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <Tabs
       value={format}
@@ -216,17 +240,20 @@ export function PnlCardPage() {
           value={option}
           className="flex min-h-0 flex-1 items-center justify-center [container-type:size] focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <CardPreview
-            format={option}
-            name={collection?.name ?? ''}
-            logo={collection?.imageUrl ?? ''}
-            image={active}
-            position={position}
-            onPosition={moveImage}
-            price={price}
-            priceLoading={priceLoading}
-            stats={stats}
-          />
+          {option === format && (
+            <CardPreview
+              cardRef={cardRef}
+              format={option}
+              name={collection?.name ?? ''}
+              logo={collection?.imageUrl ?? ''}
+              image={active}
+              position={position}
+              onPosition={moveImage}
+              price={price}
+              priceLoading={priceLoading}
+              stats={stats}
+            />
+          )}
         </TabsContent>
       ))}
 
@@ -290,8 +317,12 @@ export function PnlCardPage() {
             onChange={pickImage}
           />
         </div>
-        <Button className="shrink-0">
-          <Download />
+        <Button
+          className="shrink-0"
+          onClick={() => void exportCard()}
+          disabled={exporting}
+        >
+          {exporting ? <Spinner /> : <Download />}
           Export Card
         </Button>
       </Card>

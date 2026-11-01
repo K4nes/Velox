@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react'
+import { useRef, type PointerEvent, type Ref } from 'react'
 import type { CardImage } from '@/lib/card-images'
 import { formatEth, toUsd, type PnlStats } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
@@ -186,6 +186,7 @@ function PortraitOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps)
 }
 
 type CardPreviewProps = {
+  cardRef: Ref<HTMLDivElement>
   format: Format
   name: string
   logo: string
@@ -198,6 +199,7 @@ type CardPreviewProps = {
 }
 
 export function CardPreview({
+  cardRef,
   format,
   name,
   logo,
@@ -257,6 +259,7 @@ export function CardPreview({
 
   return (
     <div
+      ref={cardRef}
       className={cn(
         // Portrait sizes its overlay in cqmin, so the frame is a size container.
         '[container-type:size] relative overflow-hidden rounded-xl',
