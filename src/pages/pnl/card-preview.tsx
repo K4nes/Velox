@@ -1,5 +1,6 @@
 import { useRef, type PointerEvent } from 'react'
 import type { CardImage } from '@/lib/card-images'
+import { formatEth, toUsd, type PnlStats } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 
 export const formats = ['Landscape', 'Portrait'] as const
@@ -8,23 +9,51 @@ export type Format = (typeof formats)[number]
 
 export type ImagePosition = { x: number; y: number }
 
-const stats = [
-  { label: 'Realized', value: '0.0000 ETH' },
-  { label: 'Unrealized', value: '0.0000 ETH' },
-  { label: 'Invested', value: '0.0000 ETH' },
-  { label: 'Current value', value: '0.0000 ETH' },
-]
+const DASH = '—'
+
+const pnlLabels = ['Realized', 'Unrealized', 'Invested', 'Current value']
+
+type PnlDisplay = {
+  rows: { label: string; value: string }[]
+  totalEth: string
+  totalUsd: string
+}
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
 })
 
+function pnlDisplay(stats: PnlStats | null, price: number | null): PnlDisplay {
+  if (stats === null) {
+    return {
+      rows: pnlLabels.map((label) => ({ label, value: DASH })),
+      totalEth: DASH,
+      totalUsd: DASH,
+    }
+  }
+
+  const eth = (value: bigint) => `${formatEth(value)} ETH`
+  const total = stats.realized + stats.unrealized
+
+  return {
+    rows: [
+      { label: 'Realized', value: eth(stats.realized) },
+      { label: 'Unrealized', value: eth(stats.unrealized) },
+      { label: 'Invested', value: eth(stats.invested) },
+      { label: 'Current value', value: eth(stats.currentValue) },
+    ],
+    totalEth: eth(total),
+    totalUsd: toUsd(total, price),
+  }
+}
+
 type OverlayProps = {
   name: string
   logo: string
   price: number | null
   priceLoading: boolean
+  pnl: PnlDisplay
 }
 
 type PriceChipProps = {
@@ -47,7 +76,7 @@ function PriceChip({ price, priceLoading, className }: PriceChipProps) {
   )
 }
 
-function LandscapeOverlay({ name, logo, price, priceLoading }: OverlayProps) {
+function LandscapeOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps) {
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
@@ -73,7 +102,7 @@ function LandscapeOverlay({ name, logo, price, priceLoading }: OverlayProps) {
 
       <div className="pointer-events-none absolute inset-x-5 bottom-5 flex items-end justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:bottom-3 @max-[440px]:flex-col @max-[440px]:items-stretch">
         <div className="grid min-w-0 max-w-[360px] flex-1 grid-cols-2 gap-2 @max-[440px]:max-w-none">
-          {stats.map((stat) => (
+          {pnl.rows.map((stat) => (
             <div
               key={stat.label}
               className="bg-pnl-overlay flex min-w-0 flex-col justify-center gap-0.5 rounded-lg px-3 py-2 @max-[440px]:px-2.5 @max-[440px]:py-1.5"
@@ -91,16 +120,16 @@ function LandscapeOverlay({ name, logo, price, priceLoading }: OverlayProps) {
         <div className="flex flex-col items-end gap-0.5">
           <span className="text-pnl-on-image-muted text-xs">Total PnL</span>
           <span className="text-pnl-on-image text-lg font-semibold @max-[440px]:text-base">
-            0.0000 ETH
+            {pnl.totalEth}
           </span>
-          <span className="text-pnl-on-image-muted text-xs">$0.00</span>
+          <span className="text-pnl-on-image-muted text-xs">{pnl.totalUsd}</span>
         </div>
       </div>
     </>
   )
 }
 
-function PortraitOverlay({ name, logo, price, priceLoading }: OverlayProps) {
+function PortraitOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps) {
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/95 via-black/80 to-transparent" />
@@ -128,7 +157,7 @@ function PortraitOverlay({ name, logo, price, priceLoading }: OverlayProps) {
 
       <div className="pointer-events-none absolute inset-x-[6.33cqmin] bottom-[6.33cqmin] flex flex-col">
         <dl className="grid grid-cols-2 gap-x-[2.5cqmin] gap-y-[3.67cqmin]">
-          {stats.map((stat) => (
+          {pnl.rows.map((stat) => (
             <div key={stat.label} className="flex min-w-0 flex-col gap-[0.83cqmin]">
               <dt className="text-pnl-on-image-muted text-[3.5cqmin]">
                 {stat.label}
@@ -145,10 +174,10 @@ function PortraitOverlay({ name, logo, price, priceLoading }: OverlayProps) {
             Total PnL
           </span>
           <span className="text-pnl-on-image text-[10.67cqmin] leading-none font-semibold whitespace-nowrap">
-            0.0000 ETH
+            {pnl.totalEth}
           </span>
           <span className="text-pnl-on-image-muted text-[4.5cqmin]">
-            $0.00
+            {pnl.totalUsd}
           </span>
         </div>
       </div>
@@ -165,6 +194,7 @@ type CardPreviewProps = {
   onPosition: (next: ImagePosition) => void
   price: number | null
   priceLoading: boolean
+  stats: PnlStats | null
 }
 
 export function CardPreview({
@@ -176,6 +206,7 @@ export function CardPreview({
   onPosition,
   price,
   priceLoading,
+  stats,
 }: CardPreviewProps) {
   const drag = useRef<{
     clientX: number
@@ -216,7 +247,13 @@ export function CardPreview({
     }
   }
 
-  const overlay: OverlayProps = { name, logo, price, priceLoading }
+  const overlay: OverlayProps = {
+    name,
+    logo,
+    price,
+    priceLoading,
+    pnl: pnlDisplay(stats, price),
+  }
 
   return (
     <div

@@ -4,6 +4,7 @@ export type ChainEntry = {
   name: string
   currency: { name: string; symbol: string; decimals: number }
   rpcUrl: string
+  explorerApi: string
 }
 
 export const chains: ChainEntry[] = [
@@ -13,6 +14,7 @@ export const chains: ChainEntry[] = [
     name: 'Ethereum',
     currency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    explorerApi: '',
   },
   {
     slug: 'robinhood',
@@ -20,6 +22,7 @@ export const chains: ChainEntry[] = [
     name: 'Robinhood Chain',
     currency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrl: 'https://rpc.mainnet.chain.robinhood.com',
+    explorerApi: 'https://robinhoodchain.blockscout.com/api/v2',
   },
   {
     slug: 'base',
@@ -27,6 +30,7 @@ export const chains: ChainEntry[] = [
     name: 'Base',
     currency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrl: 'https://mainnet.base.org',
+    explorerApi: '',
   },
   {
     slug: 'ape_chain',
@@ -34,6 +38,7 @@ export const chains: ChainEntry[] = [
     name: 'ApeChain',
     currency: { name: 'ApeCoin', symbol: 'APE', decimals: 18 },
     rpcUrl: 'https://rpc.apechain.com/http',
+    explorerApi: '',
   },
 ]
 

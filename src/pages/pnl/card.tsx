@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
+import { chainBySlug } from '@/config/chains'
 import { useEthPrice } from '@/hooks/use-eth-price'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import {
@@ -16,8 +17,14 @@ import {
   readStoredImages,
   type CardImage,
 } from '@/lib/card-images'
-import { getCollection, slugFromUrl } from '@/lib/opensea'
+import { getCollection, slugFromUrl, type CollectionInfo } from '@/lib/opensea'
+import {
+  fetchCollectionTrades,
+  summarize,
+  type PnlStats,
+} from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
+import { listWallets, type StoredWallet } from '@/lib/wallets'
 import { CardPreview, formats } from './card-preview'
 import type { Format, ImagePosition } from './card-preview'
 
@@ -26,10 +33,7 @@ const DEFAULT_POSITION: ImagePosition = { x: 50, y: 50 }
 
 export function PnlCardPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
-  const [collection, setCollection] = useState<{
-    name: string
-    imageUrl: string
-  } | null>(null)
+  const [collection, setCollection] = useState<CollectionInfo | null>(null)
   const [uploads, setUploads] = useState<CardImage[]>(() =>
     readStoredImages().slice(0, MAX_IMAGES),
   )
@@ -38,9 +42,69 @@ export function PnlCardPage() {
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [format, setFormat] = useState<Format>('Landscape')
   const [running, setRunning] = useState(false)
+  const [wallets, setWallets] = useState<StoredWallet[]>([])
+  const [statsRead, setStatsRead] = useState<{
+    key: string
+    stats: PnlStats | null
+  } | null>(null)
+  const [statsVersion, setStatsVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const { price, loading: priceLoading, refresh } = useEthPrice()
   const { groups } = useWalletGroups()
+  const explorerApi =
+    collection === null ? '' : (chainBySlug(collection.chain)?.explorerApi ?? '')
+  const contract = collection?.contractAddress ?? ''
+  const addresses = wallets
+    .filter((wallet) => selectedWallets.includes(wallet.id))
+    .map((wallet) => wallet.address)
+    .join(',')
+  const requestKey =
+    explorerApi === '' || contract === '' || addresses === ''
+      ? ''
+      : `${explorerApi}|${contract}|${addresses}`
+  const stats = statsRead !== null && statsRead.key === requestKey ? statsRead.stats : null
+  const statsLoading = requestKey !== '' && statsRead?.key !== requestKey
+  const busy = running || statsLoading
+
+  useEffect(() => {
+    let cancelled = false
+
+    listWallets()
+      .then((all) => {
+        if (!cancelled) setWallets(all)
+      })
+      .catch((failure) => {
+        if (!cancelled) {
+          toast.error(failure instanceof Error ? failure.message : String(failure))
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // A re-check of the same collection keeps the same request key, so the version
+  // is what makes the chain read happen again.
+  useEffect(() => {
+    if (requestKey === '') return
+
+    let cancelled = false
+
+    fetchCollectionTrades(explorerApi, contract, addresses.split(','))
+      .then((trades) => {
+        if (!cancelled) setStatsRead({ key: requestKey, stats: summarize(trades) })
+      })
+      .catch((failure) => {
+        if (cancelled) return
+        setStatsRead({ key: requestKey, stats: null })
+        toast.error(failure instanceof Error ? failure.message : String(failure))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [explorerApi, contract, addresses, requestKey, statsVersion])
 
   useEffect(() => {
     if (!persistImages(uploads)) {
@@ -63,7 +127,8 @@ export function PnlCardPage() {
     setRunning(true)
     try {
       const info = await getCollection(slug)
-      setCollection({ name: info.name, imageUrl: info.imageUrl })
+      setCollection(info)
+      setStatsVersion((current) => current + 1)
       void refresh()
     } catch (failure) {
       toast.error(failure instanceof Error ? failure.message : String(failure))
@@ -138,9 +203,9 @@ export function PnlCardPage() {
         <Button
           className="shrink-0"
           onClick={() => void check()}
-          disabled={running || collectionUrl.trim() === ''}
+          disabled={busy || collectionUrl.trim() === ''}
         >
-          {running ? <Spinner /> : <ChartLine />}
+          {busy ? <Spinner /> : <ChartLine />}
           Check PnL
         </Button>
       </Card>
@@ -160,6 +225,7 @@ export function PnlCardPage() {
             onPosition={moveImage}
             price={price}
             priceLoading={priceLoading}
+            stats={stats}
           />
         </TabsContent>
       ))}
