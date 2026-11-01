@@ -84,7 +84,7 @@ export function CardPreview({
       className={cn(
         '@container relative overflow-hidden rounded-xl',
         format === 'Landscape'
-          ? 'aspect-[959/600] w-[min(100%,calc((100svh-16rem)*959/600))] max-w-3xl'
+          ? 'aspect-[959/600] w-[min(100cqw,calc(100cqh*959/600))]'
           : 'aspect-[600/959] w-[min(100%,max(14rem,calc((100vh-20rem)*600/959)))]',
         image !== null && 'cursor-grab touch-none select-none active:cursor-grabbing',
       )}

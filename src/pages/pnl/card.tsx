@@ -150,7 +150,7 @@ export function PnlCardPage() {
         <TabsContent
           key={option}
           value={option}
-          className="flex min-h-0 flex-1 items-center justify-center focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="flex min-h-0 flex-1 items-center justify-center [container-type:size] focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           <CardPreview
             format={option}
