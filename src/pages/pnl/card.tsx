@@ -13,6 +13,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
+import { savePnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
@@ -162,6 +163,29 @@ export function PnlCardPage() {
     version,
     read,
   ])
+
+  // Every resolved check lands in the Monthly PnL library under today's day, so
+  // a re-check of the same collection and wallets updates that day instead of
+  // stacking a duplicate row.
+  useEffect(() => {
+    if (stats === null || collection === null || addresses === '') return
+    // A collection nobody traded has no PnL to keep, so it stays out of the
+    // library instead of becoming a zero row.
+    if (stats.held + stats.sold === 0) return
+
+    savePnlRecord({
+      slug: collection.slug,
+      name: collection.name,
+      imageUrl: collection.imageUrl,
+      chain: collection.chain,
+      contract: collection.contractAddress,
+      wallets: addresses.split(','),
+      stats,
+      ethPriceUsd: quote.price,
+    }).catch((failure: unknown) => {
+      toast.error(failure instanceof Error ? failure.message : String(failure))
+    })
+  }, [stats, collection, addresses, quote.price])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only
