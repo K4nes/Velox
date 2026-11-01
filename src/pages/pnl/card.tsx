@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { ChartLine, Download, Plus } from 'lucide-react'
+import { ChartLine, Download, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -101,6 +101,14 @@ export function PnlCardPage() {
     }
   }
 
+  function removeImage(id: string) {
+    if (id === 'collection') {
+      setCollection(null)
+      return
+    }
+    setUploads((current) => current.filter((image) => image.id !== id))
+  }
+
   return (
     <Tabs
       value={format}
@@ -186,19 +194,28 @@ export function PnlCardPage() {
             Image
           </span>
           {images.map((image) => (
-            <button
-              key={image.id}
-              type="button"
-              aria-label={image.label === '' ? 'Collection image' : image.label}
-              aria-pressed={image.id === active?.id}
-              onClick={() => setActiveId(image.id)}
-              className={cn(
-                'h-9 w-16 overflow-hidden rounded-lg border',
-                image.id === active?.id && 'ring-2 ring-ring',
-              )}
-            >
-              <img src={image.src} alt="" className="size-full object-cover" />
-            </button>
+            <div key={image.id} className="relative">
+              <button
+                type="button"
+                aria-label={image.label === '' ? 'Collection image' : image.label}
+                aria-pressed={image.id === active?.id}
+                onClick={() => setActiveId(image.id)}
+                className={cn(
+                  'block h-9 w-16 overflow-hidden rounded-lg border',
+                  image.id === active?.id && 'ring-2 ring-ring',
+                )}
+              >
+                <img src={image.src} alt="" className="size-full object-cover" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${image.label === '' ? 'image' : image.label}`}
+                onClick={() => removeImage(image.id)}
+                className="bg-background text-muted-foreground hover:text-foreground absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
           ))}
           <Button
             variant="outline"
