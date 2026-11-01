@@ -25,7 +25,7 @@ import {
   type PnlStats,
 } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
-import { listWallets, type StoredWallet } from '@/lib/wallets'
+import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
 import { CardPreview, formats } from './card-preview'
 import type { Format, ImagePosition } from './card-preview'
 
@@ -52,11 +52,13 @@ export function PnlCardPage() {
   const [statsVersion, setStatsVersion] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
+  const savedUploads = useRef(uploads)
   const { price, loading: priceLoading, refresh } = useEthPrice()
   const { groups } = useWalletGroups()
-  const explorerApi =
-    collection === null ? '' : (chainBySlug(collection.chain)?.explorerApi ?? '')
+  const chain = collection === null ? undefined : chainBySlug(collection.chain)
+  const explorerApi = chain?.explorerApi ?? ''
   const contract = collection?.contractAddress ?? ''
+  const wrappedNative = chain?.wrappedNative ?? ''
   const addresses = wallets
     .filter((wallet) => selectedWallets.includes(wallet.id))
     .map((wallet) => wallet.address)
@@ -93,10 +95,23 @@ export function PnlCardPage() {
     if (requestKey === '') return
 
     let cancelled = false
+    const controller = new AbortController()
 
-    fetchCollectionTrades(explorerApi, contract, addresses.split(','))
-      .then((trades) => {
-        if (!cancelled) setStatsRead({ key: requestKey, stats: summarize(trades) })
+    fetchCollectionTrades(
+      explorerApi,
+      contract,
+      addresses.split(','),
+      wrappedNative,
+      controller.signal,
+    )
+      .then(({ trades, truncated }) => {
+        if (cancelled) return
+        setStatsRead({ key: requestKey, stats: summarize(trades) })
+        if (truncated) {
+          toast.info('These numbers only cover the newest transfers', {
+            id: 'pnl-truncated',
+          })
+        }
       })
       .catch((failure) => {
         if (cancelled) return
@@ -106,12 +121,21 @@ export function PnlCardPage() {
 
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [explorerApi, contract, addresses, requestKey, statsVersion])
+  }, [explorerApi, contract, addresses, wrappedNative, requestKey, statsVersion])
 
   useEffect(() => {
-    if (!persistImages(uploads)) {
+    // Mounting would write the list the browser already holds, which can only
+    // toast a storage error the user did not cause.
+    if (savedUploads.current === uploads) return
+    savedUploads.current = uploads
+    const stored = persistImages(uploads)
+    if (stored === 'quota') {
       toast.error('Images are too large to save in this browser')
+    }
+    if (stored === 'blocked') {
+      toast.error('This browser will not store images, so the card resets on reload')
     }
   }, [uploads])
 
@@ -126,13 +150,24 @@ export function PnlCardPage() {
       toast.error('Collection URL not recognised')
       return
     }
+    if (selectedWallets.length === 0) {
+      toast.error('Select a wallet first')
+      return
+    }
 
     setRunning(true)
     try {
       const info = await getCollection(slug)
       setCollection(info)
-      setStatsVersion((current) => current + 1)
       void refresh()
+      const chainEntry = chainBySlug(info.chain)
+      if (chainEntry === undefined || chainEntry.explorerApi === '') {
+        toast.error(
+          `PnL is not available on ${chainEntry?.name ?? info.chain}`,
+        )
+        return
+      }
+      setStatsVersion((current) => current + 1)
     } catch (failure) {
       toast.error(failure instanceof Error ? failure.message : String(failure))
     } finally {
@@ -155,7 +190,7 @@ export function PnlCardPage() {
       setUploads((current) =>
         current.length >= MAX_IMAGES
           ? current
-          : [...current, { id: crypto.randomUUID(), src, label: file.name }],
+          : [...current, { id: uid(), src, label: file.name }],
       )
     } catch {
       toast.error('Could not read that image')

@@ -1,5 +1,8 @@
 const MAX_PAGES = 5
+const REQUEST_TIMEOUT_MS = 15_000
+const FLOW_CONCURRENCY = 4
 const WEI = 10n ** 18n
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 export type ChainTrade = {
   wallet: string
@@ -7,7 +10,10 @@ export type ChainTrade = {
   side: 'buy' | 'sell'
   amount: bigint
   blockNumber: number
+  burn: boolean
 }
+
+export type TradesRead = { trades: ChainTrade[]; truncated: boolean }
 
 export type PnlStats = {
   realized: bigint
@@ -22,31 +28,43 @@ type RawTransfer = {
   from?: { hash?: string }
   to?: { hash?: string }
   total?: { token_id?: string | null; value?: string }
-  token?: { type?: string }
+  token?: { address_hash?: string; decimals?: string | number | null }
   transaction_hash?: string
   block_number?: number | string
 }
 
-type RawTransferPage = {
-  items?: RawTransfer[]
+type ExplorerPage<T> = {
+  items?: T[]
   next_page_params?: Record<string, string | number | boolean> | null
 }
 
 type RawTransaction = {
+  from?: { hash?: string } | null
   to?: { hash?: string } | null
   value?: string
 }
 
-type Erc20Flow = { from: string; to: string; amount: bigint }
-
-type TxFlows = {
-  native: bigint
-  receiver: string | null
-  erc20: Erc20Flow[]
+type RawInternalTransaction = {
+  from?: { hash?: string }
+  to?: { hash?: string }
+  value?: string
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
+type Flow = { from: string; to: string; amount: bigint }
+
+type TxFlows = {
+  sender: string | null
+  receiver: string | null
+  value: bigint
+  internals: Flow[]
+  erc20: Flow[]
+}
+
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const response = await fetch(url, {
+    signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+  })
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText} from ${url}`)
   }
@@ -56,6 +74,20 @@ async function getJson<T>(url: string): Promise<T> {
 function parseWei(raw: string | undefined): bigint | null {
   if (raw === undefined || !/^\d+$/.test(raw)) return null
   return BigInt(raw)
+}
+
+function parseDecimals(raw: string | number | null | undefined): number | null {
+  if (typeof raw === 'number') return Number.isInteger(raw) && raw >= 0 ? raw : null
+  if (typeof raw === 'string' && /^\d+$/.test(raw)) return Number(raw)
+  return null
+}
+
+// Every amount in this module is wei, so a token amount is rescaled to 18
+// decimals before it can be compared with a native payment.
+function asWei(amount: bigint, decimals: number): bigint {
+  if (decimals === 18) return amount
+  if (decimals < 18) return amount * 10n ** BigInt(18 - decimals)
+  return amount / 10n ** BigInt(decimals - 18)
 }
 
 function blockNumberOf(transfer: RawTransfer): number {
@@ -68,19 +100,25 @@ function blockNumberOf(transfer: RawTransfer): number {
   return 0
 }
 
-async function listTransfers(
-  explorerApi: string,
-  contract: string,
-  address: string,
-): Promise<RawTransfer[]> {
-  const base = `${explorerApi}/addresses/${address}/token-transfers`
-  let query = new URLSearchParams({ type: 'ERC-721', token: contract })
-  const transfers: RawTransfer[] = []
+type TransferList = { transfers: RawTransfer[]; truncated: boolean }
+
+// Returns true when the page cap cut the list short.
+async function collectPages<T>(
+  base: string,
+  initial: URLSearchParams,
+  signal: AbortSignal | undefined,
+  visit: (items: T[]) => void,
+): Promise<boolean> {
+  let query = new URLSearchParams(initial)
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const body = await getJson<RawTransferPage>(`${base}?${query.toString()}`)
-    transfers.push(...(body.items ?? []))
-    if (body.next_page_params === null || body.next_page_params === undefined) break
+    const search = query.toString()
+    const url = search === '' ? base : `${base}?${search}`
+    const body = await getJson<ExplorerPage<T>>(url, signal)
+    visit(body.items ?? [])
+    if (body.next_page_params === null || body.next_page_params === undefined) {
+      return false
+    }
 
     query = new URLSearchParams(query)
     for (const [key, value] of Object.entries(body.next_page_params)) {
@@ -88,44 +126,104 @@ async function listTransfers(
     }
   }
 
-  return transfers
+  return true
 }
 
-// An NFT movement carries a token id, and some explorers still report a value
-// for it, so the id test is what separates a fungible amount from a token count.
-function isFungible(item: RawTransfer): boolean {
-  const type = item.token?.type
-  if (type !== undefined) return type === 'ERC-20'
-  const tokenId = item.total?.token_id
-  return tokenId === undefined || tokenId === null
+async function listTransfers(
+  explorerApi: string,
+  contract: string,
+  address: string,
+  signal?: AbortSignal,
+): Promise<TransferList> {
+  const transfers: RawTransfer[] = []
+  const truncated = await collectPages<RawTransfer>(
+    `${explorerApi}/addresses/${address}/token-transfers`,
+    new URLSearchParams({ type: 'ERC-721', token: contract }),
+    signal,
+    (items) => {
+      transfers.push(...items)
+    },
+  )
+
+  // The explorer lists newest first. Reversing restores the order the chain
+  // executed the transfers, which the stable sort in summarize preserves.
+  return { transfers: transfers.reverse(), truncated }
 }
 
-async function loadFlows(explorerApi: string, hash: string): Promise<TxFlows> {
-  const [transaction, page] = await Promise.all([
-    getJson<RawTransaction>(`${explorerApi}/transactions/${hash}`),
-    getJson<RawTransferPage>(`${explorerApi}/transactions/${hash}/token-transfers`),
-  ])
+type FlowRead = { flows: TxFlows; truncated: boolean }
 
-  const erc20: Erc20Flow[] = []
-  for (const item of page.items ?? []) {
-    const amount = parseWei(item.total?.value)
-    const from = item.from?.hash?.toLowerCase()
-    const to = item.to?.hash?.toLowerCase()
-    if (amount === null || !isFungible(item)) continue
-    if (from === undefined || to === undefined) continue
-    erc20.push({ from, to, amount })
+async function loadFlows(
+  explorerApi: string,
+  hash: string,
+  wrappedNative: string,
+  signal?: AbortSignal,
+): Promise<FlowRead> {
+  const base = `${explorerApi}/transactions/${hash}`
+  const transaction = await getJson<RawTransaction>(base, signal)
+  const root = {
+    from: transaction.from?.hash?.toLowerCase() ?? null,
+    to: transaction.to?.hash?.toLowerCase() ?? null,
+    value: parseWei(transaction.value) ?? 0n,
   }
 
+  const internals: Flow[] = []
+  const erc20: Flow[] = []
+  const wrapped = wrappedNative.toLowerCase()
+
+  const [internalsCut, transfersCut] = await Promise.all([
+    collectPages<RawInternalTransaction>(
+      `${base}/internal-transactions`,
+      new URLSearchParams(),
+      signal,
+      (items) => {
+        for (const item of items) {
+          const amount = parseWei(item.value)
+          const from = item.from?.hash?.toLowerCase()
+          const to = item.to?.hash?.toLowerCase()
+          if (amount === null || amount === 0n) continue
+          if (from === undefined || to === undefined) continue
+          // The explorer lists the root call again as an internal one, so all
+          // three fields have to match for it to be the same native leg.
+          if (from === root.from && to === root.to && amount === root.value) continue
+          internals.push({ from, to, amount })
+        }
+      },
+    ),
+    // Only the wrapped native token moves money. Any other ERC-20 in the same
+    // transaction is an airdrop or a fee token and must not shift the price.
+    collectPages<RawTransfer>(
+      `${base}/token-transfers`,
+      new URLSearchParams(),
+      signal,
+      (items) => {
+        for (const item of items) {
+          if (item.token?.address_hash?.toLowerCase() !== wrapped) continue
+          const amount = parseWei(item.total?.value)
+          const from = item.from?.hash?.toLowerCase()
+          const to = item.to?.hash?.toLowerCase()
+          if (amount === null || from === undefined || to === undefined) continue
+          const decimals = parseDecimals(item.token?.decimals) ?? 18
+          erc20.push({ from, to, amount: asWei(amount, decimals) })
+        }
+      },
+    ),
+  ])
+
   return {
-    native: parseWei(transaction.value) ?? 0n,
-    receiver: transaction.to?.hash?.toLowerCase() ?? null,
-    erc20,
+    flows: {
+      sender: root.from,
+      receiver: root.to,
+      value: root.value,
+      internals,
+      erc20,
+    },
+    truncated: internalsCut || transfersCut,
   }
 }
 
 type MoneyFlow = { inflow: bigint; outflow: bigint }
 
-type WalletTransfer = { tokenId: string; blockNumber: number }
+type WalletTransfer = { tokenId: string; blockNumber: number; burn: boolean }
 
 type TradeGroup = {
   hash: string
@@ -133,17 +231,18 @@ type TradeGroup = {
   transfers: WalletTransfer[]
 }
 
+function addFlow(money: MoneyFlow, wallet: string, flow: Flow): void {
+  if (flow.to === wallet) money.inflow += flow.amount
+  if (flow.from === wallet) money.outflow += flow.amount
+}
+
 function moneyFlow(wallet: string, flows: TxFlows): MoneyFlow {
-  const receivesNative = flows.receiver === wallet
-  let inflow = receivesNative ? flows.native : 0n
-  let outflow = receivesNative ? 0n : flows.native
-
-  for (const flow of flows.erc20) {
-    if (flow.to === wallet) inflow += flow.amount
-    if (flow.from === wallet) outflow += flow.amount
-  }
-
-  return { inflow, outflow }
+  const money: MoneyFlow = { inflow: 0n, outflow: 0n }
+  if (flows.receiver === wallet) money.inflow += flows.value
+  if (flows.sender === wallet) money.outflow += flows.value
+  for (const flow of flows.internals) addFlow(money, wallet, flow)
+  for (const flow of flows.erc20) addFlow(money, wallet, flow)
+  return money
 }
 
 function groupAmount(side: ChainTrade['side'], flow: MoneyFlow): bigint {
@@ -158,29 +257,53 @@ function splitEvenly(total: bigint, count: number): bigint[] {
   return shares
 }
 
+async function mapPool<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const index = next
+      next += 1
+      results[index] = await run(items[index])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
 export async function fetchCollectionTrades(
   explorerApi: string,
   contract: string,
   addresses: string[],
-): Promise<ChainTrade[]> {
+  wrappedNative: string,
+  signal?: AbortSignal,
+): Promise<TradesRead> {
   const wallets = [...new Set(addresses.map((address) => address.toLowerCase()))]
-  const flows = new Map<string, Promise<TxFlows>>()
+  const flows = new Map<string, Promise<FlowRead>>()
   const trades: ChainTrade[] = []
+  let truncated = false
 
-  function flowsFor(hash: string): Promise<TxFlows> {
+  function flowsFor(hash: string): Promise<FlowRead> {
     const key = hash.toLowerCase()
     const cached = flows.get(key)
     if (cached !== undefined) return cached
-    const pending = loadFlows(explorerApi, key)
+    const pending = loadFlows(explorerApi, key, wrappedNative, signal)
     flows.set(key, pending)
     return pending
   }
 
   for (const wallet of wallets) {
-    const transfers = await listTransfers(explorerApi, contract, wallet)
+    const listed = await listTransfers(explorerApi, contract, wallet, signal)
+    if (listed.truncated) truncated = true
     const groups = new Map<string, TradeGroup>()
 
-    for (const transfer of transfers) {
+    for (const transfer of listed.transfers) {
       const hash = transfer.transaction_hash
       const tokenId = transfer.total?.token_id
       const from = transfer.from?.hash?.toLowerCase()
@@ -197,36 +320,39 @@ export async function fetchCollectionTrades(
         group = { hash, side, transfers: [] }
         groups.set(key, group)
       }
-      group.transfers.push({ tokenId, blockNumber: blockNumberOf(transfer) })
+      group.transfers.push({
+        tokenId,
+        blockNumber: blockNumberOf(transfer),
+        burn: to === ZERO_ADDRESS,
+      })
     }
 
-    const grouped = await Promise.all(
-      [...groups.values()].map(async (group): Promise<ChainTrade[]> => {
-        const flow = moneyFlow(wallet, await flowsFor(group.hash))
-        const total = groupAmount(group.side, flow)
-        if (total <= 0n) return []
-
-        const shares = splitEvenly(total, group.transfers.length)
-        return group.transfers.map((transfer, index) => ({
-          wallet,
-          tokenId: transfer.tokenId,
-          side: group.side,
-          amount: shares[index],
-          blockNumber: transfer.blockNumber,
-        }))
-      }),
-    )
+    const grouped = await mapPool([...groups.values()], FLOW_CONCURRENCY, async (group) => {
+      const read = await flowsFor(group.hash)
+      const flow = moneyFlow(wallet, read.flows)
+      const shares = splitEvenly(groupAmount(group.side, flow), group.transfers.length)
+      return group.transfers.map((transfer, index) => ({
+        wallet,
+        tokenId: transfer.tokenId,
+        side: group.side,
+        amount: shares[index],
+        blockNumber: transfer.blockNumber,
+        burn: transfer.burn,
+      }))
+    })
 
     for (const rows of grouped) trades.push(...rows)
   }
 
-  return trades
+  for (const read of await Promise.all(flows.values())) {
+    if (read.truncated) truncated = true
+  }
+
+  return { trades, truncated }
 }
 
 type TokenBook = {
-  buys: bigint
-  sells: bigint
-  buyCount: number
+  lots: bigint[]
   sellCount: number
   lastSell: bigint | null
 }
@@ -235,43 +361,49 @@ export function summarize(trades: ChainTrade[]): PnlStats {
   const ordered = [...trades].sort((a, b) => a.blockNumber - b.blockNumber)
   const books = new Map<string, TokenBook>()
   let collectionMark: bigint | null = null
+  let realized = 0n
 
   for (const trade of ordered) {
     const key = `${trade.wallet.toLowerCase()}:${trade.tokenId}`
     let book = books.get(key)
     if (book === undefined) {
-      book = { buys: 0n, sells: 0n, buyCount: 0, sellCount: 0, lastSell: null }
+      book = { lots: [], sellCount: 0, lastSell: null }
       books.set(key, book)
     }
 
     if (trade.side === 'buy') {
-      book.buys += trade.amount
-      book.buyCount += 1
-    } else {
-      book.sells += trade.amount
-      book.sellCount += 1
+      book.lots.push(trade.amount)
+      continue
+    }
+
+    book.sellCount += 1
+
+    const cost = book.lots.shift()
+    // An empty queue means the buy sits outside the read window. A zero basis
+    // would turn the whole proceeds into profit, so this sale books nothing.
+    if (cost !== undefined) realized += trade.amount - cost
+
+    // A burn or a free transfer out is not a sale, so it says nothing about
+    // what the tokens still held are worth.
+    if (trade.amount > 0n && !trade.burn) {
       book.lastSell = trade.amount
       collectionMark = trade.amount
     }
   }
 
-  let realized = 0n
   let invested = 0n
   let currentValue = 0n
   let held = 0
   let sold = 0
 
   for (const book of books.values()) {
-    if (book.sellCount > 0) {
-      realized += book.sells - book.buys
-      sold += 1
-    }
+    if (book.sellCount > 0) sold += 1
+    if (book.lots.length === 0) continue
 
-    if (book.buyCount > book.sellCount) {
-      invested += book.buys
-      currentValue += book.lastSell ?? collectionMark ?? book.buys
-      held += 1
-    }
+    const basis = book.lots.reduce((sum, lot) => sum + lot, 0n)
+    invested += basis
+    currentValue += book.lastSell ?? collectionMark ?? basis
+    held += 1
   }
 
   return {

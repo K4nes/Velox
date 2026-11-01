@@ -31,13 +31,18 @@ export function readStoredImages(): CardImage[] {
   }
 }
 
-export function persistImages(images: CardImage[]): boolean {
+export function persistImages(
+  images: CardImage[],
+): 'saved' | 'quota' | 'blocked' {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(images))
-    return true
-  } catch {
-    // Quota is the only expected failure; the card still shows the image.
-    return false
+    return 'saved'
+  } catch (failure) {
+    // A blocked origin throws a SecurityError instead. The card still shows
+    // the image either way, so only quota is worth telling the user about.
+    return failure instanceof Error && failure.name === 'QuotaExceededError'
+      ? 'quota'
+      : 'blocked'
   }
 }
 
