@@ -1,7 +1,12 @@
-export type StoreName = 'folders' | 'wallets' | 'secrets' | 'snapshots'
+export type StoreName =
+  | 'folders'
+  | 'wallets'
+  | 'secrets'
+  | 'snapshots'
+  | 'pnl-records'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
@@ -27,6 +32,9 @@ export function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('snapshots')) {
         db.createObjectStore('snapshots', { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains('pnl-records')) {
+        db.createObjectStore('pnl-records', { keyPath: 'id' })
       }
     }
 
