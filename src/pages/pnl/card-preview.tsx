@@ -125,17 +125,17 @@ export function CardPreview({
         </span>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-5 bottom-5 flex items-end justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:bottom-3">
-        <div className="grid min-w-0 max-w-[360px] flex-1 grid-cols-2 gap-2">
+      <div className="pointer-events-none absolute inset-x-5 bottom-5 flex items-end justify-between gap-4 @max-[420px]:inset-x-3 @max-[420px]:bottom-3 @max-[440px]:flex-col @max-[440px]:items-stretch">
+        <div className="grid min-w-0 max-w-[360px] flex-1 grid-cols-2 gap-2 @max-[440px]:max-w-none">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="bg-pnl-overlay flex min-w-0 flex-col justify-center gap-0.5 rounded-lg px-3 py-2"
+              className="bg-pnl-overlay flex min-w-0 flex-col justify-center gap-0.5 rounded-lg px-3 py-2 @max-[440px]:px-2.5 @max-[440px]:py-1.5"
             >
-              <span className="text-pnl-on-image-muted text-xs">
+              <span className="text-pnl-on-image-muted text-xs @max-[440px]:text-[11px]">
                 {stat.label}
               </span>
-              <span className="text-pnl-on-image text-base font-medium whitespace-nowrap">
+              <span className="text-pnl-on-image text-base font-medium whitespace-nowrap @max-[440px]:text-sm">
                 {stat.value}
               </span>
             </div>
@@ -144,7 +144,7 @@ export function CardPreview({
 
         <div className="flex flex-col items-end gap-0.5">
           <span className="text-pnl-on-image-muted text-xs">Total PnL</span>
-          <span className="text-pnl-on-image text-lg font-semibold">
+          <span className="text-pnl-on-image text-lg font-semibold @max-[440px]:text-base">
             0.0000 ETH
           </span>
           <span className="text-pnl-on-image-muted text-xs">$0.00</span>
