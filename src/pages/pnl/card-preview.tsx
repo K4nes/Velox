@@ -11,12 +11,32 @@ export type ImagePosition = { x: number; y: number }
 
 const DASH = '—'
 
-const pnlLabels = ['Realized', 'Unrealized', 'Invested', 'Current value']
+type Tone = 'positive' | 'negative' | 'neutral'
+
+const valueTone: Record<Tone, string> = {
+  positive: 'text-pnl-positive',
+  negative: 'text-pnl-negative',
+  neutral: 'text-pnl-on-image',
+}
+
+function toneOf(value: bigint): Tone {
+  if (value > 0n) return 'positive'
+  if (value < 0n) return 'negative'
+  return 'neutral'
+}
+
+const statRows = [
+  { label: 'Realized', read: (stats: PnlStats) => stats.realized, signed: true },
+  { label: 'Unrealized', read: (stats: PnlStats) => stats.unrealized, signed: true },
+  { label: 'Invested', read: (stats: PnlStats) => stats.invested, signed: false },
+  { label: 'Current value', read: (stats: PnlStats) => stats.currentValue, signed: false },
+] as const
 
 type PnlDisplay = {
-  rows: { label: string; value: string }[]
+  rows: { label: string; value: string; tone: Tone }[]
   totalEth: string
   totalUsd: string
+  totalTone: Tone
 }
 
 const currency = new Intl.NumberFormat('en-US', {
@@ -27,9 +47,10 @@ const currency = new Intl.NumberFormat('en-US', {
 function pnlDisplay(stats: PnlStats | null, price: number | null): PnlDisplay {
   if (stats === null) {
     return {
-      rows: pnlLabels.map((label) => ({ label, value: DASH })),
+      rows: statRows.map(({ label }) => ({ label, value: DASH, tone: 'neutral' })),
       totalEth: DASH,
       totalUsd: DASH,
+      totalTone: 'neutral',
     }
   }
 
@@ -37,14 +58,14 @@ function pnlDisplay(stats: PnlStats | null, price: number | null): PnlDisplay {
   const total = stats.realized + stats.unrealized
 
   return {
-    rows: [
-      { label: 'Realized', value: eth(stats.realized) },
-      { label: 'Unrealized', value: eth(stats.unrealized) },
-      { label: 'Invested', value: eth(stats.invested) },
-      { label: 'Current value', value: eth(stats.currentValue) },
-    ],
+    rows: statRows.map(({ label, read, signed }) => {
+      const value = read(stats)
+      const tone: Tone = signed ? toneOf(value) : 'neutral'
+      return { label, value: eth(value), tone }
+    }),
     totalEth: eth(total),
     totalUsd: toUsd(total, price),
+    totalTone: toneOf(total),
   }
 }
 
@@ -110,7 +131,12 @@ function LandscapeOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps
               <span className="text-pnl-on-image-muted text-xs @max-[440px]:text-[11px]">
                 {stat.label}
               </span>
-              <span className="text-pnl-on-image text-base font-medium whitespace-nowrap @max-[440px]:text-sm">
+              <span
+                className={cn(
+                  'text-base font-medium whitespace-nowrap @max-[440px]:text-sm',
+                  valueTone[stat.tone],
+                )}
+              >
                 {stat.value}
               </span>
             </div>
@@ -119,7 +145,12 @@ function LandscapeOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps
 
         <div className="flex flex-col items-end gap-0.5">
           <span className="text-pnl-on-image-muted text-xs">Total PnL</span>
-          <span className="text-pnl-on-image text-lg font-semibold @max-[440px]:text-base">
+          <span
+            className={cn(
+              'text-lg font-semibold @max-[440px]:text-base',
+              valueTone[pnl.totalTone],
+            )}
+          >
             {pnl.totalEth}
           </span>
           <span className="text-pnl-on-image-muted text-xs">{pnl.totalUsd}</span>
@@ -132,7 +163,7 @@ function LandscapeOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps
 function PortraitOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps) {
   return (
     <>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/95 via-black/80 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/80 via-black/28 via-42% to-transparent" />
 
       <div className="pointer-events-none absolute inset-x-[6.33cqmin] top-[6.33cqmin] flex items-start justify-between gap-[2.5cqmin]">
         <span className="bg-pnl-overlay text-pnl-on-image flex min-w-0 items-center gap-[1.83cqmin] rounded-[2.33cqmin] px-[3.67cqmin] py-[2.17cqmin] font-medium">
@@ -155,28 +186,41 @@ function PortraitOverlay({ name, logo, price, priceLoading, pnl }: OverlayProps)
         />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-[6.33cqmin] bottom-[6.33cqmin] flex flex-col">
-        <dl className="grid grid-cols-2 gap-x-[2.5cqmin] gap-y-[3.67cqmin]">
+      <div className="pointer-events-none absolute inset-x-[6.33cqmin] bottom-[6.33cqmin] flex items-end justify-between gap-[3cqmin]">
+        <dl className="flex min-w-0 flex-col gap-[1.83cqmin]">
           {pnl.rows.map((stat) => (
-            <div key={stat.label} className="flex min-w-0 flex-col gap-[0.83cqmin]">
+            <div
+              key={stat.label}
+              className="bg-pnl-overlay flex w-fit min-w-0 flex-col gap-[0.5cqmin] rounded-[2cqmin] px-[2.5cqmin] py-[1.5cqmin]"
+            >
               <dt className="text-pnl-on-image-muted text-[3.5cqmin]">
                 {stat.label}
               </dt>
-              <dd className="text-pnl-on-image text-[4.5cqmin] font-medium whitespace-nowrap">
+              <dd
+                className={cn(
+                  'text-[4.5cqmin] font-medium whitespace-nowrap',
+                  valueTone[stat.tone],
+                )}
+              >
                 {stat.value}
               </dd>
             </div>
           ))}
         </dl>
 
-        <div className="mt-[8.5cqmin] flex flex-col gap-[1.5cqmin]">
+        <div className="flex shrink-0 flex-col items-end gap-[1cqmin] [text-shadow:0_1px_2px_rgba(0,0,0,0.65),0_1px_6px_rgba(0,0,0,0.45)]">
           <span className="text-pnl-on-image-muted text-[3.83cqmin]">
             Total PnL
           </span>
-          <span className="text-pnl-on-image text-[10.67cqmin] leading-none font-semibold whitespace-nowrap">
+          <span
+            className={cn(
+              'text-[8.5cqmin] leading-none font-semibold whitespace-nowrap',
+              valueTone[pnl.totalTone],
+            )}
+          >
             {pnl.totalEth}
           </span>
-          <span className="text-pnl-on-image-muted text-[4.5cqmin]">
+          <span className="text-pnl-on-image-muted text-[4.17cqmin]">
             {pnl.totalUsd}
           </span>
         </div>
@@ -230,15 +274,33 @@ export function CardPreview({
     if (start === null) return
 
     const rect = event.currentTarget.getBoundingClientRect()
+    const node = event.currentTarget.querySelector('img')
+    // object-position spans the cover overflow, not the box, so the pointer
+    // delta is divided by the overflow on each axis.
+    const image =
+      node !== null && node.naturalWidth > 0 && node.naturalHeight > 0 ? node : null
+
+    if (image === null) return
+
+    const cover = Math.max(
+      rect.width / image.naturalWidth,
+      rect.height / image.naturalHeight,
+    )
+    const spanX = image.naturalWidth * cover - rect.width
+    const spanY = image.naturalHeight * cover - rect.height
+
+    const nextX =
+      spanX <= 0
+        ? start.position.x
+        : start.position.x - ((event.clientX - start.clientX) / spanX) * 100
+    const nextY =
+      spanY <= 0
+        ? start.position.y
+        : start.position.y - ((event.clientY - start.clientY) / spanY) * 100
+
     onPosition({
-      x: Math.min(
-        100,
-        Math.max(0, start.position.x - ((event.clientX - start.clientX) / rect.width) * 100),
-      ),
-      y: Math.min(
-        100,
-        Math.max(0, start.position.y - ((event.clientY - start.clientY) / rect.height) * 100),
-      ),
+      x: Math.min(100, Math.max(0, nextX)),
+      y: Math.min(100, Math.max(0, nextY)),
     })
   }
 
