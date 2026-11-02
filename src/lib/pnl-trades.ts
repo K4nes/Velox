@@ -77,8 +77,14 @@ function parseWei(raw: string | undefined): bigint | null {
 }
 
 function parseDecimals(raw: string | number | null | undefined): number | null {
-  if (typeof raw === 'number') return Number.isInteger(raw) && raw >= 0 ? raw : null
-  if (typeof raw === 'string' && /^\d+$/.test(raw)) return Number(raw)
+  // The explorer is a remote input, so the exponent is bounded before 10n ** n.
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw >= 0 && raw <= 36 ? raw : null
+  }
+  if (typeof raw === 'string' && /^\d+$/.test(raw)) {
+    const value = Number(raw)
+    return value <= 36 ? value : null
+  }
   return null
 }
 
@@ -373,6 +379,8 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
     if (trade.side === 'buy') {
       book.lots.push(trade.amount)
+      // The wallet's own sale is older than this lot, so it cannot mark it.
+      book.lastSell = null
       continue
     }
 

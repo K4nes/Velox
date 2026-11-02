@@ -55,7 +55,9 @@ export function PnlCardPage() {
       ? ''
       : `${explorerApi}|${contract}|${addresses}`
   const stats = read !== null && read.key === requestKey ? read.stats : null
-  const statsLoading = requestKey !== '' && read?.key !== requestKey
+  const statsLoading =
+    requestKey !== '' &&
+    (read === null || read.key !== requestKey || read.version !== version)
   const busy = running || statsLoading
 
   useEffect(() => {
@@ -86,6 +88,11 @@ export function PnlCardPage() {
   useEffect(() => {
     if (requestKey === '') return
     if (read !== null && read.key === requestKey && read.version === version) {
+      if (read.truncated) {
+        toast.info('These numbers only cover the newest transfers', {
+          id: 'pnl-truncated',
+        })
+      }
       return
     }
 
@@ -105,6 +112,7 @@ export function PnlCardPage() {
           key: requestKey,
           version,
           stats: summarize(trades),
+          truncated,
         })
         if (truncated) {
           toast.info('These numbers only cover the newest transfers', {
@@ -114,7 +122,7 @@ export function PnlCardPage() {
       })
       .catch((failure) => {
         if (cancelled) return
-        pnlCard.setRead({ key: requestKey, version, stats: null })
+        pnlCard.setRead({ key: requestKey, version, stats: null, truncated: false })
         toast.error(failure instanceof Error ? failure.message : String(failure))
       })
 
@@ -284,20 +292,18 @@ export function PnlCardPage() {
           value={option}
           className="flex min-h-0 flex-1 items-center justify-center [container-type:size] focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          {option === format && (
-            <CardPreview
-              cardRef={cardRef}
-              format={option}
-              name={collection?.name ?? ''}
-              logo={collection?.imageUrl ?? ''}
-              image={active}
-              position={position}
-              onPosition={moveImage}
-              price={quote.price}
-              priceLoading={quote.loading}
-              stats={stats}
-            />
-          )}
+          <CardPreview
+            cardRef={option === format ? cardRef : null}
+            format={option}
+            name={collection?.name ?? ''}
+            logo={collection?.imageUrl ?? ''}
+            image={active}
+            position={position}
+            onPosition={moveImage}
+            price={quote.price}
+            priceLoading={quote.loading}
+            stats={stats}
+          />
         </TabsContent>
       ))}
 

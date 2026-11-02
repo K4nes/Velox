@@ -7,7 +7,12 @@ import type { Format, ImagePosition } from './card-preview'
 
 export const MAX_IMAGES = 3
 
-export type PnlRead = { key: string; version: number; stats: PnlStats | null }
+export type PnlRead = {
+  key: string
+  version: number
+  stats: PnlStats | null
+  truncated: boolean
+}
 
 type State = {
   collectionUrl: string
