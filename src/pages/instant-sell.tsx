@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
+import { useWalletGroups } from '@/hooks/use-wallets'
 
 const feeRows = [
   { label: 'Gross proceeds', value: '0' },
@@ -25,6 +25,7 @@ export function InstantSellPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [filter, setFilter] = useState('')
+  const { groups } = useWalletGroups()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -49,7 +50,7 @@ export function InstantSellPage() {
             Wallet
           </span>
           <WalletSelect
-            groups={walletGroups}
+            groups={groups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
             className="w-full"

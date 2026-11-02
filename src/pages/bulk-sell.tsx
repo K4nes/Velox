@@ -14,7 +14,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
+import { useWalletGroups } from '@/hooks/use-wallets'
 
 const durations = [
   '1 day',
@@ -168,6 +168,7 @@ export function BulkSellPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [filter, setFilter] = useState('')
+  const { groups } = useWalletGroups()
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -193,7 +194,7 @@ export function BulkSellPage() {
             Wallet
           </span>
           <WalletSelect
-            groups={walletGroups}
+            groups={groups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
             className="w-full"

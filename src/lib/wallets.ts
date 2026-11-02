@@ -109,7 +109,7 @@ export function removeWallet(id: string): Promise<void> {
   return remove('wallets', id)
 }
 
-function uid() {
+export function uid() {
   try {
     if (typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID()

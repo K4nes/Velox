@@ -15,7 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
-import { walletGroups } from '@/config/wallets'
+import { useWalletGroups } from '@/hooks/use-wallets'
 
 export function TransferPage() {
   const [collectionUrl, setCollectionUrl] = useState('')
@@ -24,6 +24,7 @@ export function TransferPage() {
   const [destinationWallets, setDestinationWallets] = useState<string[]>([])
   const [address, setAddress] = useState('')
   const [addressTouched, setAddressTouched] = useState(false)
+  const { groups } = useWalletGroups()
 
   const trimmedAddress = address.trim()
   const addressInvalid =
@@ -56,7 +57,7 @@ export function TransferPage() {
             Wallet
           </span>
           <WalletSelect
-            groups={walletGroups}
+            groups={groups}
             selected={selectedWallets}
             onSelectedChange={setSelectedWallets}
             aria-labelledby="transfer-wallet-label"
@@ -150,7 +151,7 @@ export function TransferPage() {
             </h2>
 
             <WalletSelect
-              groups={walletGroups}
+              groups={groups}
               selected={destinationWallets}
               onSelectedChange={setDestinationWallets}
               single

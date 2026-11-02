@@ -1,60 +1,72 @@
 import type { IncomingHttpHeaders, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 import { AUTH_PATHS, handleAuth } from './auth.ts'
+import { PRICE_PATHS, handlePrice } from './price.ts'
 
 const MAX_BODY_BYTES = 1 << 20
+const API_PATHS: readonly string[] = [...AUTH_PATHS, ...PRICE_PATHS]
 
-export function authPlugin(): Plugin {
+export function apiPlugin({ cmcApiKey }: { cmcApiKey: string | undefined }): Plugin {
   return {
-    name: 'velox-auth',
+    name: 'velox-api',
     configureServer(server) {
-      server.middlewares.use(middleware)
+      server.middlewares.use(middleware(cmcApiKey))
     },
     configurePreviewServer(server) {
-      server.middlewares.use(middleware)
+      server.middlewares.use(middleware(cmcApiKey))
     },
   }
 }
 
-async function middleware(req: Connect.IncomingMessage, res: ServerResponse, next: Connect.NextFunction): Promise<void> {
-  let pathname: string
-  try {
-    pathname = new URL(req.url ?? '/', 'http://localhost').pathname
-  } catch {
-    writeJson(res, 400, { error: 'bad request' })
-    return
-  }
-
-  if (!AUTH_PATHS.includes(pathname)) {
-    next()
-    return
-  }
-
-  if (!isLocalOrigin(req.headers.origin)) {
-    writeJson(res, 403, { error: 'origin not allowed' })
-    return
-  }
-
-  try {
-    const body = await readBody(req)
-    const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url ?? '/'}`, {
-      method: req.method,
-      headers: toHeaders(req.headers),
-      body: body.length === 0 ? undefined : body,
-    })
-    await writeResponse(res, await handleAuth(request))
-  } catch (failure) {
-    if (res.headersSent) return
-    if (failure instanceof BodyTooLargeError) {
-      writeJson(res, 413, { error: 'request body too large' })
+function middleware(cmcApiKey: string | undefined) {
+  return async (req: Connect.IncomingMessage, res: ServerResponse, next: Connect.NextFunction): Promise<void> => {
+    let pathname: string
+    try {
+      pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+    } catch {
+      writeJson(res, 400, { error: 'bad request' })
       return
     }
-    writeJson(res, 500, { error: 'auth proxy failed' })
+
+    if (!API_PATHS.includes(pathname)) {
+      next()
+      return
+    }
+
+    if (!isLocalOrigin(req.headers.origin, req.headers['sec-fetch-site'])) {
+      writeJson(res, 403, { error: 'origin not allowed' })
+      return
+    }
+
+    try {
+      const body = await readBody(req)
+      const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url ?? '/'}`, {
+        method: req.method,
+        headers: toHeaders(req.headers),
+        body: body.length === 0 ? undefined : body,
+      })
+      const response = PRICE_PATHS.includes(pathname)
+        ? await handlePrice(request, cmcApiKey ?? '')
+        : await handleAuth(request)
+      await writeResponse(res, response)
+    } catch (failure) {
+      if (res.headersSent) return
+      if (failure instanceof BodyTooLargeError) {
+        writeJson(res, 413, { error: 'request body too large' })
+        return
+      }
+      writeJson(res, 500, { error: 'api proxy failed' })
+    }
   }
 }
 
-function isLocalOrigin(origin: string | undefined): boolean {
-  if (origin === undefined) return true
+// A cross-site image or script request carries no Origin, so the fetch metadata
+// header is the only signal that tells it apart from the app's own call.
+function isLocalOrigin(
+  origin: string | undefined,
+  site: string | string[] | undefined,
+): boolean {
+  if (origin === undefined) return site !== 'cross-site'
   try {
     const { hostname } = new URL(origin)
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
