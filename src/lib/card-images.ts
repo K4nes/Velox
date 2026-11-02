@@ -38,8 +38,11 @@ export function persistImages(
     localStorage.setItem(STORAGE_KEY, JSON.stringify(images))
     return 'saved'
   } catch (failure) {
-    // A blocked origin throws a SecurityError instead of a quota error.
-    return failure instanceof Error && failure.name === 'QuotaExceededError'
+    // A blocked origin throws a SecurityError instead of a quota error, and
+    // Firefox names its quota error NS_ERROR_DOM_QUOTA_REACHED.
+    return failure instanceof Error &&
+      (failure.name === 'QuotaExceededError' ||
+        failure.name === 'NS_ERROR_DOM_QUOTA_REACHED')
       ? 'quota'
       : 'blocked'
   }

@@ -13,7 +13,11 @@ export type ChainTrade = {
   burn: boolean
 }
 
-export type TradesRead = { trades: ChainTrade[]; truncated: boolean }
+export type TradesRead = {
+  trades: ChainTrade[]
+  truncated: boolean
+  unpriced: boolean
+}
 
 export type PnlStats = {
   realized: bigint
@@ -58,6 +62,7 @@ type TxFlows = {
   value: bigint
   internals: Flow[]
   erc20: Flow[]
+  otherTokens: Flow[]
 }
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -174,6 +179,7 @@ async function loadFlows(
 
   const internals: Flow[] = []
   const erc20: Flow[] = []
+  const otherTokens: Flow[] = []
   const wrapped = wrappedNative.toLowerCase()
 
   const [internalsCut, transfersCut] = await Promise.all([
@@ -196,20 +202,22 @@ async function loadFlows(
       },
     ),
     // Only the wrapped native token moves money. Any other ERC-20 in the same
-    // transaction is an airdrop or a fee token and must not shift the price.
+    // transaction is an airdrop or a fee token and must not shift the price, so
+    // its legs are kept only to spot a purchase this card cannot price.
     collectPages<RawTransfer>(
       `${base}/token-transfers`,
       new URLSearchParams(),
       signal,
       (items) => {
         for (const item of items) {
-          if (item.token?.address_hash?.toLowerCase() !== wrapped) continue
           const amount = parseWei(item.total?.value)
           const from = item.from?.hash?.toLowerCase()
           const to = item.to?.hash?.toLowerCase()
           if (amount === null || from === undefined || to === undefined) continue
           const decimals = parseDecimals(item.token?.decimals) ?? 18
-          erc20.push({ from, to, amount: asWei(amount, decimals) })
+          const leg = { from, to, amount: asWei(amount, decimals) }
+          if (item.token?.address_hash?.toLowerCase() === wrapped) erc20.push(leg)
+          else otherTokens.push(leg)
         }
       },
     ),
@@ -222,6 +230,7 @@ async function loadFlows(
       value: root.value,
       internals,
       erc20,
+      otherTokens,
     },
     truncated: internalsCut || transfersCut,
   }
@@ -294,6 +303,7 @@ export async function fetchCollectionTrades(
   const flows = new Map<string, Promise<FlowRead>>()
   const trades: ChainTrade[] = []
   let truncated = false
+  let unpriced = false
 
   function flowsFor(hash: string): Promise<FlowRead> {
     const key = hash.toLowerCase()
@@ -333,10 +343,29 @@ export async function fetchCollectionTrades(
       })
     }
 
+    // One transaction can carry both directions for the same wallet. The money
+    // it moved cannot be split between them, so both groups are left out.
+    const sides = new Map<string, number>()
+    for (const group of groups.values()) {
+      const key = group.hash.toLowerCase()
+      sides.set(key, (sides.get(key) ?? 0) + 1)
+    }
+
     const grouped = await mapPool([...groups.values()], FLOW_CONCURRENCY, async (group) => {
       const read = await flowsFor(group.hash)
       const flow = moneyFlow(wallet, read.flows)
-      const shares = splitEvenly(groupAmount(group.side, flow), group.transfers.length)
+      const amount = groupAmount(group.side, flow)
+      const paidInAnotherToken = read.flows.otherTokens.some(
+        (leg) => leg.from === wallet || leg.to === wallet,
+      )
+      const ambiguous = (sides.get(group.hash.toLowerCase()) ?? 0) > 1
+
+      if (ambiguous || (group.side === 'buy' && amount === 0n && paidInAnotherToken)) {
+        unpriced = true
+        return []
+      }
+
+      const shares = splitEvenly(amount, group.transfers.length)
       return group.transfers.map((transfer, index) => ({
         wallet,
         tokenId: transfer.tokenId,
@@ -354,7 +383,7 @@ export async function fetchCollectionTrades(
     if (read.truncated) truncated = true
   }
 
-  return { trades, truncated }
+  return { trades, truncated, unpriced }
 }
 
 type TokenBook = {
@@ -389,7 +418,10 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     const cost = book.lots.shift()
     // An empty queue means the buy sits outside the read window. A zero basis
     // would turn the whole proceeds into profit, so this sale books nothing.
-    if (cost !== undefined) realized += trade.amount - cost
+    // A transfer out that paid nothing is not a sale either, so it books nothing.
+    if (cost !== undefined && (trade.amount > 0n || trade.burn)) {
+      realized += trade.amount - cost
+    }
 
     // A burn or a free transfer out is not a sale, so it says nothing about
     // what the tokens still held are worth.

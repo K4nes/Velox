@@ -12,6 +12,8 @@ export type PnlRead = {
   version: number
   stats: PnlStats | null
   truncated: boolean
+  unpriced: boolean
+  error: string | null
 }
 
 type State = {

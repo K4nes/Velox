@@ -93,6 +93,14 @@ export function PnlCardPage() {
           id: 'pnl-truncated',
         })
       }
+      if (read.unpriced) {
+        toast.info('Some trades are left out because their payment is unclear', {
+          id: 'pnl-unpriced',
+        })
+      }
+      if (read.error !== null) {
+        toast.error(read.error, { id: 'pnl-read-error' })
+      }
       return
     }
 
@@ -106,24 +114,39 @@ export function PnlCardPage() {
       wrappedNative,
       controller.signal,
     )
-      .then(({ trades, truncated }) => {
+      .then(({ trades, truncated, unpriced }) => {
         if (cancelled) return
         pnlCard.setRead({
           key: requestKey,
           version,
           stats: summarize(trades),
           truncated,
+          unpriced,
+          error: null,
         })
         if (truncated) {
           toast.info('These numbers only cover the newest transfers', {
             id: 'pnl-truncated',
           })
         }
+        if (unpriced) {
+          toast.info('Some trades are left out because their payment is unclear', {
+            id: 'pnl-unpriced',
+          })
+        }
       })
       .catch((failure) => {
         if (cancelled) return
-        pnlCard.setRead({ key: requestKey, version, stats: null, truncated: false })
-        toast.error(failure instanceof Error ? failure.message : String(failure))
+        const message = failure instanceof Error ? failure.message : String(failure)
+        pnlCard.setRead({
+          key: requestKey,
+          version,
+          stats: null,
+          truncated: false,
+          unpriced: false,
+          error: message,
+        })
+        toast.error(message)
       })
 
     return () => {
