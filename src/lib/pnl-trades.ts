@@ -433,8 +433,9 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     receives.add(index)
   }
 
-  // A handoff lands only after the sell that feeds it, and a wallet that sells
-  // or burns the token in the same block has to wait for its own handoff.
+  // A block is walked in dependency order, so a handoff lands before the wallet
+  // that receives it spends or re-buys the token. Order inside a book is the
+  // chunk order, which is already the chain order for that wallet.
   const blocks = new Map<number, number[]>()
   ordered.forEach((trade, index) => {
     const rows = blocks.get(trade.blockNumber)
@@ -444,41 +445,70 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   const sequence: number[] = []
 
+  const handoffByBook = new Map<string, number[]>()
+  for (const [source] of handsOff) {
+    const key = bookKey(ordered[source])
+    const list = handoffByBook.get(key)
+    if (list === undefined) handoffByBook.set(key, [source])
+    else list.push(source)
+  }
+
   for (const rows of blocks.values()) {
-    const handoffs = rows.filter((index) => handsOff.has(index))
-    const receiving = new Set<string>()
-    for (const index of handoffs) {
-      const receiver = handsOff.get(index)
-      if (receiver !== undefined) receiving.add(bookKey(ordered[receiver]))
+    const position = new Map<number, number>()
+    rows.forEach((index, order) => position.set(index, order))
+
+    const next = new Map<number, number[]>()
+    const indegree = new Map<number, number>()
+    const link = (from: number, to: number) => {
+      const edges = next.get(from)
+      if (edges === undefined) next.set(from, [to])
+      else edges.push(to)
+      indegree.set(to, (indegree.get(to) ?? 0) + 1)
     }
 
-    const consumers = new Set<number>()
+    const lastOf = new Map<string, number>()
     for (const index of rows) {
-      if (handsOff.has(index) || ordered[index].side === 'buy') continue
-      if (receiving.has(bookKey(ordered[index]))) consumers.add(index)
+      const key = bookKey(ordered[index])
+      const previous = lastOf.get(key)
+      if (previous !== undefined) link(previous, index)
+      lastOf.set(key, index)
     }
 
-    sequence.push(...rows.filter((index) => !handoffs.includes(index) && !consumers.has(index)))
-
-    const waiting = new Set(handoffs)
-    let progress = true
-    while (waiting.size > 0 && progress) {
-      progress = false
-      for (const index of [...waiting]) {
-        const own = bookKey(ordered[index])
-        const blocked = [...waiting].some((other) => {
-          if (other === index) return false
-          const receiver = handsOff.get(other)
-          return receiver !== undefined && bookKey(ordered[receiver]) === own
-        })
-        if (blocked) continue
-        sequence.push(index)
-        waiting.delete(index)
-        progress = true
+    // A handoff out of a book waits for the handoff that fills that book.
+    for (const [source, receiver] of handsOff) {
+      if (!position.has(source) || !position.has(receiver)) continue
+      link(source, receiver)
+      for (const other of handoffByBook.get(bookKey(ordered[receiver])) ?? []) {
+        if (other !== source && position.has(other)) link(source, other)
       }
     }
 
-    sequence.push(...waiting, ...consumers)
+    const ready = rows.filter((index) => (indegree.get(index) ?? 0) === 0)
+    const walked = new Set<number>()
+    let cursor = 0
+
+    while (cursor < ready.length) {
+      const index = ready[cursor]
+      cursor += 1
+      sequence.push(index)
+      walked.add(index)
+      for (const target of next.get(index) ?? []) {
+        const left = (indegree.get(target) ?? 0) - 1
+        indegree.set(target, left)
+        if (left !== 0) continue
+        let insert = cursor
+        while (
+          insert < ready.length &&
+          (position.get(ready[insert]) ?? 0) < (position.get(target) ?? 0)
+        ) {
+          insert += 1
+        }
+        ready.splice(insert, 0, target)
+      }
+    }
+
+    // A handoff cycle cannot be ordered, so those rows keep their chunk order.
+    sequence.push(...rows.filter((index) => !walked.has(index)))
   }
 
   let collectionMark: bigint | null = null
