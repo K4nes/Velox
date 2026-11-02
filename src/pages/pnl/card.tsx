@@ -55,7 +55,9 @@ export function PnlCardPage() {
     explorerApi === '' || contract === '' || addresses === ''
       ? ''
       : `${explorerApi}|${contract}|${addresses}`
-  const stats = read !== null && read.key === requestKey ? read.stats : null
+  const currentRead =
+    read !== null && read.key === requestKey && read.version === version ? read : null
+  const stats = currentRead?.stats ?? null
   const statsLoading =
     requestKey !== '' &&
     (read === null || read.key !== requestKey || read.version !== version)
@@ -166,13 +168,15 @@ export function PnlCardPage() {
     read,
   ])
 
-  // The write belongs to the check, so it is keyed on the read's own timestamp.
-  // A remount replays the stored read, and that replay then rewrites the same
-  // row instead of inventing a row for the new day.
+  // The write belongs to the check, so it is keyed on the read's own timestamp
+  // and only fires for the request that produced it. A remount replays the
+  // stored read and rewrites the same row instead of inventing one for the day
+  // it was reopened, and a new collection or wallet set cannot inherit the
+  // previous check's numbers while its own read is still missing.
   useEffect(() => {
-    if (read === null || read.stats === null) return
+    if (currentRead === null || currentRead.stats === null) return
     if (collection === null || addresses === '') return
-    if (read.stats.held + read.stats.sold === 0) return
+    if (currentRead.stats.held + currentRead.stats.sold === 0) return
 
     upsertPnlRecord({
       slug: collection.slug,
@@ -181,15 +185,15 @@ export function PnlCardPage() {
       chain: collection.chain,
       contract: collection.contractAddress,
       wallets: addresses.split(','),
-      stats: read.stats,
-      truncated: read.truncated,
-      unpriced: read.unpriced,
+      stats: currentRead.stats,
+      truncated: currentRead.truncated,
+      unpriced: currentRead.unpriced,
       ethPriceUsd: quote.price,
-      now: read.at,
+      now: currentRead.at,
     }).catch((failure: unknown) => {
       toast.error(failure instanceof Error ? failure.message : String(failure))
     })
-  }, [read, collection, addresses, quote.price])
+  }, [currentRead, collection, addresses, quote.price])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only

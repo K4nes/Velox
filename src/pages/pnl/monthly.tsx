@@ -329,6 +329,6 @@ function matchesQuery(record: PnlRecord, query: string): boolean {
 
 function emptyMessage(loading: boolean, filtered: boolean, searched: boolean): string {
   if (loading) return 'Loading records…'
-  if (searched) return 'No collections match your search.'
-  return filtered ? 'No PnL records on this day.' : 'No PnL records yet.'
+  if (filtered) return 'No PnL records on this day.'
+  return searched ? 'No collections match your search.' : 'No PnL records yet.'
 }

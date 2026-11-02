@@ -1,4 +1,4 @@
-import { getAll, put } from '@/lib/db'
+import { getAll, get, put } from '@/lib/db'
 import { formatEth, type PnlStats } from '@/lib/pnl-trades'
 
 // Re-checking the same collection, wallet set and day rewrites that row instead
@@ -72,6 +72,21 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
     unpriced: input.unpriced,
   }
 
+  // The same check replayed through a remount must not swap a stored quote for
+  // a newer one, and a partial re-read must not replace the day's complete
+  // measurement with an incomplete one.
+  const existing = await get<PnlRecord>('pnl-records', record.id)
+  if (existing !== undefined) {
+    if (!isComplete(record) && isComplete(existing)) return existing
+    if (
+      existing.createdAt === record.createdAt &&
+      existing.ethPriceUsd !== null &&
+      record.ethPriceUsd !== null
+    ) {
+      return existing
+    }
+  }
+
   await put<PnlRecord>('pnl-records', record)
   return record
 }
@@ -112,36 +127,41 @@ export function isComplete(record: PnlRecord): boolean {
 
 type DayDelta = { day: string; wei: bigint; ethPriceUsd: number | null }
 
-// The newest complete check of a collection wins its day, then each snapshot is
-// measured against the previous one for the same collection, whatever wallet set
-// that earlier check used. A collection's first check counts in full, since
-// nothing before it says how much of that PnL predates storage. Partial reads
-// drop out first, so a day they cover keeps the last complete measurement.
+function seriesKey(record: PnlRecord): string {
+  return `${record.contract.toLowerCase()}|${[...record.wallets].sort().join(',')}`
+}
+
+// The newest complete check of a collection and wallet set wins its day, then
+// each snapshot is measured against the previous check of that same set. Sets
+// stay separate, like the ids do, so a check of wallet B is not folded into the
+// series of wallet A. A set's first check counts in full, since nothing before
+// it says how much of that PnL predates storage. Partial reads drop out first,
+// so a day they cover keeps the last complete measurement.
 export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   const latest = new Map<string, PnlRecord>()
 
   for (const record of records) {
     if (!isComplete(record)) continue
-    const key = `${record.contract.toLowerCase()}|${record.day}`
+    const key = `${seriesKey(record)}|${record.day}`
     const current = latest.get(key)
     if (current === undefined || record.createdAt > current.createdAt) {
       latest.set(key, record)
     }
   }
 
-  const byContract = new Map<string, PnlRecord[]>()
+  const bySeries = new Map<string, PnlRecord[]>()
   for (const record of latest.values()) {
-    const key = record.contract.toLowerCase()
-    const group = byContract.get(key)
+    const key = seriesKey(record)
+    const group = bySeries.get(key)
     if (group === undefined) {
-      byContract.set(key, [record])
+      bySeries.set(key, [record])
     } else {
       group.push(record)
     }
   }
 
   const deltas: DayDelta[] = []
-  for (const group of byContract.values()) {
+  for (const group of bySeries.values()) {
     group.sort((a, b) => a.day.localeCompare(b.day))
     let previous = 0n
     for (const record of group) {
