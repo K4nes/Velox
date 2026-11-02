@@ -146,7 +146,7 @@ export function PnlCardPage() {
           unpriced: false,
           error: message,
         })
-        toast.error(message)
+        toast.error(message, { id: 'pnl-read-error' })
       })
 
     return () => {
@@ -190,6 +190,10 @@ export function PnlCardPage() {
     }
     if (walletIds.length === 0) {
       toast.error('Select a wallet first')
+      return
+    }
+    if (addresses === '') {
+      toast.error('The selected wallets are no longer available')
       return
     }
 

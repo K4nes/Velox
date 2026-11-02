@@ -329,6 +329,8 @@ export async function fetchCollectionTrades(
 
       const side = to === wallet ? 'buy' : from === wallet ? 'sell' : null
       if (side === null) continue
+      // A transfer a wallet makes to itself does not move the token.
+      if (from === to) continue
 
       const key = `${hash.toLowerCase()}:${side}`
       let group = groups.get(key)
@@ -395,19 +397,46 @@ type TokenBook = {
 export function summarize(trades: ChainTrade[]): PnlStats {
   const ordered = [...trades].sort((a, b) => a.blockNumber - b.blockNumber)
   const books = new Map<string, TokenBook>()
-  let collectionMark: bigint | null = null
-  let realized = 0n
-
-  for (const trade of ordered) {
+  const bookFor = (trade: ChainTrade): TokenBook => {
     const key = `${trade.wallet.toLowerCase()}:${trade.tokenId}`
     let book = books.get(key)
     if (book === undefined) {
       book = { lots: [], sellCount: 0, lastSell: null }
       books.set(key, book)
     }
+    return book
+  }
+
+  // A transfer between two selected wallets moves the token and its basis, so
+  // the receiving wallet has to pick up the cost the sender paid for the lot.
+  const handsOff = new Map<number, number>()
+  const receives = new Set<number>()
+  const outgoing = new Map<string, number[]>()
+
+  for (const [index, trade] of ordered.entries()) {
+    if (trade.amount !== 0n || trade.burn) continue
+    const key = `${trade.blockNumber}:${trade.tokenId}`
+    if (trade.side === 'sell') {
+      const queue = outgoing.get(key)
+      if (queue === undefined) outgoing.set(key, [index])
+      else queue.push(index)
+      continue
+    }
+    const source = outgoing.get(key)?.shift()
+    if (source === undefined) continue
+    handsOff.set(source, index)
+    receives.add(index)
+  }
+
+  let collectionMark: bigint | null = null
+  let realized = 0n
+
+  for (const [index, trade] of ordered.entries()) {
+    const book = bookFor(trade)
 
     if (trade.side === 'buy') {
-      book.lots.push(trade.amount)
+      // The receiving wallet of a transfer already holds the sender's basis.
+      if (!receives.has(index)) book.lots.push(trade.amount)
       // The wallet's own sale is older than this lot, so it cannot mark it.
       book.lastSell = null
       continue
@@ -416,10 +445,14 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     book.sellCount += 1
 
     const cost = book.lots.shift()
-    // An empty queue means the buy sits outside the read window. A zero basis
-    // would turn the whole proceeds into profit, so this sale books nothing.
-    // A transfer out that paid nothing is not a sale either, so it books nothing.
-    if (cost !== undefined && (trade.amount > 0n || trade.burn)) {
+    const receiver = handsOff.get(index)
+
+    if (receiver !== undefined) {
+      if (cost !== undefined) bookFor(ordered[receiver]).lots.push(cost)
+    } else if (cost !== undefined && (trade.amount > 0n || trade.burn)) {
+      // An empty queue means the buy sits outside the read window. A zero basis
+      // would turn the whole proceeds into profit, so this sale books nothing.
+      // A transfer out that paid nothing is not a sale either.
       realized += trade.amount - cost
     }
 
