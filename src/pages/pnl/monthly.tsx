@@ -273,7 +273,7 @@ export function PnlMonthlyPage() {
                   colSpan={4}
                   className="h-10 text-center text-[13px] text-muted-foreground"
                 >
-                  {emptyMessage(loading, day !== null)}
+                  {emptyMessage(loading, day !== null, search !== '')}
                 </TableCell>
               </TableRow>
             ) : (
@@ -327,7 +327,8 @@ function matchesQuery(record: PnlRecord, query: string): boolean {
   return fields.some((field) => field.toLowerCase().includes(query))
 }
 
-function emptyMessage(loading: boolean, filtered: boolean): string {
+function emptyMessage(loading: boolean, filtered: boolean, searched: boolean): string {
   if (loading) return 'Loading records…'
+  if (searched) return 'No collections match your search.'
   return filtered ? 'No PnL records on this day.' : 'No PnL records yet.'
 }
