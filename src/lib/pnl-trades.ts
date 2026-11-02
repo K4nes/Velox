@@ -427,7 +427,7 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   for (const [index, trade] of ordered.entries()) {
     if (trade.amount !== 0n || trade.burn || trade.side !== 'sell') continue
-    const key = `${trade.blockNumber}:${trade.tokenId}:${trade.counterparty}`
+    const key = `${trade.blockNumber}:${trade.tokenId}:${trade.wallet.toLowerCase()}:${trade.counterparty}`
     const queue = outgoing.get(key)
     if (queue === undefined) outgoing.set(key, [index])
     else queue.push(index)
@@ -436,7 +436,7 @@ export function summarize(trades: ChainTrade[]): PnlStats {
   for (const [index, trade] of ordered.entries()) {
     if (trade.amount !== 0n || trade.burn || trade.side !== 'buy') continue
     const source = outgoing.get(
-      `${trade.blockNumber}:${trade.tokenId}:${trade.wallet.toLowerCase()}`,
+      `${trade.blockNumber}:${trade.tokenId}:${trade.counterparty}:${trade.wallet.toLowerCase()}`,
     )?.shift()
     if (source === undefined) continue
     handsOff.set(source, index)
@@ -454,14 +454,6 @@ export function summarize(trades: ChainTrade[]): PnlStats {
   })
 
   const sequence: number[] = []
-
-  const handoffByBook = new Map<string, number[]>()
-  for (const [source] of handsOff) {
-    const key = bookKey(ordered[source])
-    const list = handoffByBook.get(key)
-    if (list === undefined) handoffByBook.set(key, [source])
-    else list.push(source)
-  }
 
   for (const rows of blocks.values()) {
     const position = new Map<number, number>()
@@ -484,13 +476,10 @@ export function summarize(trades: ChainTrade[]): PnlStats {
       lastOf.set(key, index)
     }
 
-    // A handoff out of a book waits for the handoff that fills that book.
+    // Every edge inside a book plus the handoff edges already order a chain, so
+    // a round trip in one block stays acyclic and keeps its chunk order.
     for (const [source, receiver] of handsOff) {
-      if (!position.has(source) || !position.has(receiver)) continue
-      link(source, receiver)
-      for (const other of handoffByBook.get(bookKey(ordered[receiver])) ?? []) {
-        if (other !== source && position.has(other)) link(source, other)
-      }
+      if (position.has(source) && position.has(receiver)) link(source, receiver)
     }
 
     const ready = rows.filter((index) => (indegree.get(index) ?? 0) === 0)
