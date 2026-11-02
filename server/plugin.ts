@@ -33,7 +33,7 @@ function middleware(cmcApiKey: string | undefined) {
       return
     }
 
-    if (!isLocalOrigin(req.headers.origin)) {
+    if (!isLocalOrigin(req.headers.origin, req.headers['sec-fetch-site'])) {
       writeJson(res, 403, { error: 'origin not allowed' })
       return
     }
@@ -60,8 +60,13 @@ function middleware(cmcApiKey: string | undefined) {
   }
 }
 
-function isLocalOrigin(origin: string | undefined): boolean {
-  if (origin === undefined) return true
+// A cross-site image or script request carries no Origin, so the fetch metadata
+// header is the only signal that tells it apart from the app's own call.
+function isLocalOrigin(
+  origin: string | undefined,
+  site: string | string[] | undefined,
+): boolean {
+  if (origin === undefined) return site !== 'cross-site'
   try {
     const { hostname } = new URL(origin)
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
