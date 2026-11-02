@@ -409,20 +409,23 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   // A transfer between two selected wallets moves the token and its basis, so
   // the receiving wallet has to pick up the cost the sender paid for the lot.
+  // Both sides are collected before they are paired, because the wallet chunks
+  // arrive in whatever order the wallet store lists them.
   const handsOff = new Map<number, number>()
   const receives = new Set<number>()
   const outgoing = new Map<string, number[]>()
 
   for (const [index, trade] of ordered.entries()) {
-    if (trade.amount !== 0n || trade.burn) continue
+    if (trade.amount !== 0n || trade.burn || trade.side !== 'sell') continue
     const key = `${trade.blockNumber}:${trade.tokenId}`
-    if (trade.side === 'sell') {
-      const queue = outgoing.get(key)
-      if (queue === undefined) outgoing.set(key, [index])
-      else queue.push(index)
-      continue
-    }
-    const source = outgoing.get(key)?.shift()
+    const queue = outgoing.get(key)
+    if (queue === undefined) outgoing.set(key, [index])
+    else queue.push(index)
+  }
+
+  for (const [index, trade] of ordered.entries()) {
+    if (trade.amount !== 0n || trade.burn || trade.side !== 'buy') continue
+    const source = outgoing.get(`${trade.blockNumber}:${trade.tokenId}`)?.shift()
     if (source === undefined) continue
     handsOff.set(source, index)
     receives.add(index)
