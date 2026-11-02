@@ -344,15 +344,16 @@ export function PnlCardPage() {
               </button>
             </div>
           ))}
-          <Button
-            variant="outline"
-            className="h-9 w-16"
-            aria-label="Add image"
-            onClick={() => fileInput.current?.click()}
-            disabled={uploads.length >= MAX_IMAGES}
-          >
-            <Plus />
-          </Button>
+          {uploads.length < MAX_IMAGES && (
+            <Button
+              variant="outline"
+              className="h-9 w-16"
+              aria-label="Add image"
+              onClick={() => fileInput.current?.click()}
+            >
+              <Plus />
+            </Button>
+          )}
           <input
             ref={fileInput}
             type="file"
