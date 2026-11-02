@@ -13,7 +13,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
-import { savePnlRecord } from '@/lib/pnl-records'
+import { upsertPnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
@@ -124,6 +124,7 @@ export function PnlCardPage() {
           truncated,
           unpriced,
           error: null,
+          at: Date.now(),
         })
         if (truncated) {
           toast.info('These numbers only cover the newest transfers', {
@@ -146,6 +147,7 @@ export function PnlCardPage() {
           truncated: false,
           unpriced: false,
           error: message,
+          at: Date.now(),
         })
         toast.error(message, { id: 'pnl-read-error' })
       })
@@ -164,28 +166,30 @@ export function PnlCardPage() {
     read,
   ])
 
-  // Every resolved check lands in the Monthly PnL library under today's day, so
-  // a re-check of the same collection and wallets updates that day instead of
-  // stacking a duplicate row.
+  // The write belongs to the check, so it is keyed on the read's own timestamp.
+  // A remount replays the stored read, and that replay then rewrites the same
+  // row instead of inventing a row for the new day.
   useEffect(() => {
-    if (stats === null || collection === null || addresses === '') return
-    // A collection nobody traded has no PnL to keep, so it stays out of the
-    // library instead of becoming a zero row.
-    if (stats.held + stats.sold === 0) return
+    if (read === null || read.stats === null) return
+    if (collection === null || addresses === '') return
+    if (read.stats.held + read.stats.sold === 0) return
 
-    savePnlRecord({
+    upsertPnlRecord({
       slug: collection.slug,
       name: collection.name,
       imageUrl: collection.imageUrl,
       chain: collection.chain,
       contract: collection.contractAddress,
       wallets: addresses.split(','),
-      stats,
+      stats: read.stats,
+      truncated: read.truncated,
+      unpriced: read.unpriced,
       ethPriceUsd: quote.price,
+      now: read.at,
     }).catch((failure: unknown) => {
       toast.error(failure instanceof Error ? failure.message : String(failure))
     })
-  }, [stats, collection, addresses, quote.price])
+  }, [read, collection, addresses, quote.price])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only

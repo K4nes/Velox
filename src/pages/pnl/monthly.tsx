@@ -35,6 +35,7 @@ import {
   dailyNetSeries,
   dayKey,
   formatNetPnl,
+  isComplete,
   monthNet,
   recordUsd,
   recordsInMonth,
@@ -67,7 +68,7 @@ export function PnlMonthlyPage() {
   const [sort, setSort] = useState(sortOptions[0])
 
   const monthRecords = recordsInMonth(records, month)
-  const totals = monthNet(monthRecords)
+  const totals = monthNet(records, month)
   const series = dailyNetSeries(records, month)
   const day = selectedDay ? dayKey(selectedDay) : null
   const dayLabel = selectedDay ? dayFormat.format(selectedDay) : null
@@ -296,7 +297,7 @@ export function PnlMonthlyPage() {
                           {record.name}
                         </span>
                         <span className="text-[11px] text-muted-foreground">
-                          {record.chain}
+                          {isComplete(record) ? record.chain : `${record.chain} · partial read`}
                         </span>
                       </div>
                     </div>

@@ -1,9 +1,10 @@
 import { getAll, put } from '@/lib/db'
 import { formatEth, type PnlStats } from '@/lib/pnl-trades'
 
-// One row per collection, wallet set and local day. Re-checking the same
-// collection on the same day rewrites that row instead of stacking a second
-// sample, so the daily series never double counts a refresh.
+// Re-checking the same collection, wallet set and day rewrites that row instead
+// of stacking a second sample. Every row holds the collection's cumulative PnL
+// at that check, so the page derives a day's change by subtracting the previous
+// check rather than summing the rows.
 export type PnlRecord = {
   id: string
   createdAt: number
@@ -16,6 +17,8 @@ export type PnlRecord = {
   wallets: string[]
   netPnl: string
   ethPriceUsd: number | null
+  truncated: boolean
+  unpriced: boolean
 }
 
 export type PnlRecordInput = {
@@ -27,6 +30,8 @@ export type PnlRecordInput = {
   wallets: string[]
   stats: PnlStats
   ethPriceUsd: number | null
+  truncated: boolean
+  unpriced: boolean
   now?: number
 }
 
@@ -47,7 +52,7 @@ export function recordId(contract: string, wallets: string[], day: string): stri
   return `${contract.toLowerCase()}|${addresses.join(',')}|${day}`
 }
 
-export async function savePnlRecord(input: PnlRecordInput): Promise<PnlRecord> {
+export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord> {
   const createdAt = input.now ?? Date.now()
   const day = dayKey(new Date(createdAt))
   const wallets = [...new Set(input.wallets.map((wallet) => wallet.toLowerCase()))].sort()
@@ -63,6 +68,8 @@ export async function savePnlRecord(input: PnlRecordInput): Promise<PnlRecord> {
     wallets,
     netPnl: (input.stats.realized + input.stats.unrealized).toString(),
     ethPriceUsd: input.ethPriceUsd,
+    truncated: input.truncated,
+    unpriced: input.unpriced,
   }
 
   await put<PnlRecord>('pnl-records', record)
@@ -96,6 +103,57 @@ export function recordsInMonth(records: PnlRecord[], month: Date): PnlRecord[] {
   return records.filter((record) => record.day.startsWith(`${prefix}-`))
 }
 
+// A truncated or unpriced read measured part of the position, so it is not a
+// snapshot anything can be compared against. It stays visible in the table and
+// out of the totals.
+export function isComplete(record: PnlRecord): boolean {
+  return !record.truncated && !record.unpriced
+}
+
+type DayDelta = { day: string; wei: bigint; ethPriceUsd: number | null }
+
+// The newest complete check of a collection wins its day, then each snapshot is
+// measured against the previous one for the same collection, whatever wallet set
+// that earlier check used. A collection's first check counts in full, since
+// nothing before it says how much of that PnL predates storage. Partial reads
+// drop out first, so a day they cover keeps the last complete measurement.
+export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
+  const latest = new Map<string, PnlRecord>()
+
+  for (const record of records) {
+    if (!isComplete(record)) continue
+    const key = `${record.contract.toLowerCase()}|${record.day}`
+    const current = latest.get(key)
+    if (current === undefined || record.createdAt > current.createdAt) {
+      latest.set(key, record)
+    }
+  }
+
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of latest.values()) {
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) {
+      byContract.set(key, [record])
+    } else {
+      group.push(record)
+    }
+  }
+
+  const deltas: DayDelta[] = []
+  for (const group of byContract.values()) {
+    group.sort((a, b) => a.day.localeCompare(b.day))
+    let previous = 0n
+    for (const record of group) {
+      const wei = netWei(record)
+      deltas.push({ day: record.day, wei: wei - previous, ethPriceUsd: record.ethPriceUsd })
+      previous = wei
+    }
+  }
+
+  return deltas
+}
+
 // Every day of the month is present, so the area keeps a flat zero on days
 // without a check instead of stretching the neighbours across the gap.
 export function dailyNetSeries(
@@ -104,35 +162,42 @@ export function dailyNetSeries(
 ): { day: number; net: number }[] {
   const length = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
   const totals = new Array<number>(length).fill(0)
+  const prefix = monthPrefix(month)
 
-  for (const record of recordsInMonth(records, month)) {
-    const index = Number(record.day.slice(8, 10)) - 1
+  for (const delta of dailyDeltas(records)) {
+    if (!delta.day.startsWith(`${prefix}-`)) continue
+    const index = Number(delta.day.slice(8, 10)) - 1
     if (index >= 0 && index < length) {
-      totals[index] += netEth(record)
+      totals[index] += Number(delta.wei) / 10 ** 18
     }
   }
 
   return totals.map((net, index) => ({ day: index + 1, net }))
 }
 
-export function monthNet(records: PnlRecord[]): { wei: bigint; usd: string } {
+export function monthNet(records: PnlRecord[], month: Date): { wei: bigint; usd: string } {
+  const prefix = monthPrefix(month)
+  const deltas = dailyDeltas(records).filter((delta) =>
+    delta.day.startsWith(`${prefix}-`),
+  )
+
   let wei = 0n
   let usdTotal = 0
   let priced = 0
 
-  for (const record of records) {
-    wei += netWei(record)
-    if (record.ethPriceUsd !== null) {
-      usdTotal += netEth(record) * record.ethPriceUsd
+  for (const delta of deltas) {
+    wei += delta.wei
+    if (delta.ethPriceUsd !== null) {
+      usdTotal += (Number(delta.wei) / 10 ** 18) * delta.ethPriceUsd
       priced += 1
     }
   }
 
-  // Checks run at different times carry different quotes, so each record's USD
-  // value is converted at its own price and the month total is their sum. A
-  // record saved without a price makes the month figure incomplete, not zero.
+  // Checks run at different times carry different quotes, so each day's change
+  // is converted at the quote of the check that measured it. A check saved
+  // without a price makes the month figure incomplete, not zero.
   const value =
-    records.length > 0 && priced === records.length ? usd.format(usdTotal) : '—'
+    deltas.length > 0 && priced === deltas.length ? usd.format(usdTotal) : '—'
 
   return { wei, usd: value }
 }
