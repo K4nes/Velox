@@ -394,11 +394,13 @@ type TokenBook = {
   lastSell: bigint | null
 }
 
+const bookKey = (trade: ChainTrade) => `${trade.wallet.toLowerCase()}:${trade.tokenId}`
+
 export function summarize(trades: ChainTrade[]): PnlStats {
   const ordered = [...trades].sort((a, b) => a.blockNumber - b.blockNumber)
   const books = new Map<string, TokenBook>()
   const bookFor = (trade: ChainTrade): TokenBook => {
-    const key = `${trade.wallet.toLowerCase()}:${trade.tokenId}`
+    const key = bookKey(trade)
     let book = books.get(key)
     if (book === undefined) {
       book = { lots: [], sellCount: 0, lastSell: null }
@@ -431,10 +433,59 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     receives.add(index)
   }
 
+  // A handoff lands only after the sell that feeds it, and a wallet that sells
+  // or burns the token in the same block has to wait for its own handoff.
+  const blocks = new Map<number, number[]>()
+  ordered.forEach((trade, index) => {
+    const rows = blocks.get(trade.blockNumber)
+    if (rows === undefined) blocks.set(trade.blockNumber, [index])
+    else rows.push(index)
+  })
+
+  const sequence: number[] = []
+
+  for (const rows of blocks.values()) {
+    const handoffs = rows.filter((index) => handsOff.has(index))
+    const receiving = new Set<string>()
+    for (const index of handoffs) {
+      const receiver = handsOff.get(index)
+      if (receiver !== undefined) receiving.add(bookKey(ordered[receiver]))
+    }
+
+    const consumers = new Set<number>()
+    for (const index of rows) {
+      if (handsOff.has(index) || ordered[index].side === 'buy') continue
+      if (receiving.has(bookKey(ordered[index]))) consumers.add(index)
+    }
+
+    sequence.push(...rows.filter((index) => !handoffs.includes(index) && !consumers.has(index)))
+
+    const waiting = new Set(handoffs)
+    let progress = true
+    while (waiting.size > 0 && progress) {
+      progress = false
+      for (const index of [...waiting]) {
+        const own = bookKey(ordered[index])
+        const blocked = [...waiting].some((other) => {
+          if (other === index) return false
+          const receiver = handsOff.get(other)
+          return receiver !== undefined && bookKey(ordered[receiver]) === own
+        })
+        if (blocked) continue
+        sequence.push(index)
+        waiting.delete(index)
+        progress = true
+      }
+    }
+
+    sequence.push(...waiting, ...consumers)
+  }
+
   let collectionMark: bigint | null = null
   let realized = 0n
 
-  for (const [index, trade] of ordered.entries()) {
+  for (const index of sequence) {
+    const trade = ordered[index]
     const book = bookFor(trade)
 
     if (trade.side === 'buy') {
