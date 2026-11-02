@@ -11,6 +11,7 @@ export type ChainTrade = {
   amount: bigint
   blockNumber: number
   burn: boolean
+  counterparty: string
 }
 
 export type TradesRead = {
@@ -238,7 +239,12 @@ async function loadFlows(
 
 type MoneyFlow = { inflow: bigint; outflow: bigint }
 
-type WalletTransfer = { tokenId: string; blockNumber: number; burn: boolean }
+type WalletTransfer = {
+  tokenId: string
+  blockNumber: number
+  burn: boolean
+  counterparty: string
+}
 
 type TradeGroup = {
   hash: string
@@ -342,6 +348,7 @@ export async function fetchCollectionTrades(
         tokenId,
         blockNumber: blockNumberOf(transfer),
         burn: to === ZERO_ADDRESS,
+        counterparty: (side === 'buy' ? from : to).toLowerCase(),
       })
     }
 
@@ -375,6 +382,7 @@ export async function fetchCollectionTrades(
         amount: shares[index],
         blockNumber: transfer.blockNumber,
         burn: transfer.burn,
+        counterparty: transfer.counterparty,
       }))
     })
 
@@ -419,7 +427,7 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   for (const [index, trade] of ordered.entries()) {
     if (trade.amount !== 0n || trade.burn || trade.side !== 'sell') continue
-    const key = `${trade.blockNumber}:${trade.tokenId}`
+    const key = `${trade.blockNumber}:${trade.tokenId}:${trade.counterparty}`
     const queue = outgoing.get(key)
     if (queue === undefined) outgoing.set(key, [index])
     else queue.push(index)
@@ -427,7 +435,9 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   for (const [index, trade] of ordered.entries()) {
     if (trade.amount !== 0n || trade.burn || trade.side !== 'buy') continue
-    const source = outgoing.get(`${trade.blockNumber}:${trade.tokenId}`)?.shift()
+    const source = outgoing.get(
+      `${trade.blockNumber}:${trade.tokenId}:${trade.wallet.toLowerCase()}`,
+    )?.shift()
     if (source === undefined) continue
     handsOff.set(source, index)
     receives.add(index)
