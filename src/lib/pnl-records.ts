@@ -142,23 +142,31 @@ function isEarlier(candidate: PnlRecord, record: PnlRecord): boolean {
 }
 
 // The baseline of a set's first check. Widening a selection leaves wallets that
-// were already counted in an earlier set, so the newest earlier check whose
-// wallets this record fully covers supplies their position and only the rest of
-// the PnL counts as change. No covered check means nothing was measured before,
-// and the whole position lands on that day.
+// were already counted in earlier sets, so every earlier check whose wallets
+// this record fully covers supplies their position and only the rest of the PnL
+// counts as change. Newest first, and a check that overlaps an accepted one is
+// skipped, so each wallet's level is counted once. No covered check means
+// nothing was measured before, and the whole position lands on that day.
 function baselineWei(record: PnlRecord, snapshots: PnlRecord[]): bigint {
   const wallets = walletsOf(record)
-  let baseline: PnlRecord | undefined
+  const covered = snapshots.filter(
+    (snapshot) =>
+      snapshot.contract.toLowerCase() === record.contract.toLowerCase() &&
+      isEarlier(snapshot, record) &&
+      walletsOf(snapshot).every((wallet) => wallets.includes(wallet)),
+  )
+  covered.sort((a, b) => (isEarlier(a, b) ? 1 : isEarlier(b, a) ? -1 : 0))
 
-  for (const snapshot of snapshots) {
-    if (snapshot.contract.toLowerCase() !== record.contract.toLowerCase()) continue
-    if (!isEarlier(snapshot, record)) continue
-    const covered = walletsOf(snapshot).every((wallet) => wallets.includes(wallet))
-    if (!covered) continue
-    if (baseline === undefined || isEarlier(baseline, snapshot)) baseline = snapshot
+  const supplied = new Set<string>()
+  let baseline = 0n
+  for (const snapshot of covered) {
+    const set = walletsOf(snapshot)
+    if (set.some((wallet) => supplied.has(wallet))) continue
+    for (const wallet of set) supplied.add(wallet)
+    baseline += netWei(snapshot)
   }
 
-  return baseline === undefined ? 0n : netWei(baseline)
+  return baseline
 }
 
 // The newest complete check of a collection and wallet set wins its day, then
