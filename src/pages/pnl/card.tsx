@@ -55,9 +55,12 @@ export function PnlCardPage() {
     explorerApi === '' || contract === '' || addresses === ''
       ? ''
       : `${explorerApi}|${contract}|${addresses}`
-  const currentRead =
-    read !== null && read.key === requestKey && read.version === version ? read : null
-  const stats = currentRead?.stats ?? null
+  const shownRead = read !== null && read.key === requestKey ? read : null
+  const stats = shownRead?.stats ?? null
+  // A re-check of the same request bumps the version, and the card keeps showing
+  // the previous numbers until the new read lands. Only the write waits for it.
+  const freshRead =
+    shownRead !== null && shownRead.version === version ? shownRead : null
   const statsLoading =
     requestKey !== '' &&
     (read === null || read.key !== requestKey || read.version !== version)
@@ -174,9 +177,9 @@ export function PnlCardPage() {
   // it was reopened, and a new collection or wallet set cannot inherit the
   // previous check's numbers while its own read is still missing.
   useEffect(() => {
-    if (currentRead === null || currentRead.stats === null) return
+    if (freshRead === null || freshRead.stats === null) return
     if (collection === null || addresses === '') return
-    if (currentRead.stats.held + currentRead.stats.sold === 0) return
+    if (freshRead.stats.held + freshRead.stats.sold === 0) return
 
     upsertPnlRecord({
       slug: collection.slug,
@@ -185,15 +188,15 @@ export function PnlCardPage() {
       chain: collection.chain,
       contract: collection.contractAddress,
       wallets: addresses.split(','),
-      stats: currentRead.stats,
-      truncated: currentRead.truncated,
-      unpriced: currentRead.unpriced,
+      stats: freshRead.stats,
+      truncated: freshRead.truncated,
+      unpriced: freshRead.unpriced,
       ethPriceUsd: quote.price,
-      now: currentRead.at,
+      now: freshRead.at,
     }).catch((failure: unknown) => {
       toast.error(failure instanceof Error ? failure.message : String(failure))
     })
-  }, [currentRead, collection, addresses, quote.price])
+  }, [freshRead, collection, addresses, quote.price])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only

@@ -74,8 +74,9 @@ export function PnlMonthlyPage() {
   const dayLabel = selectedDay ? dayFormat.format(selectedDay) : null
   const search = query.trim().toLowerCase()
 
-  const rows = monthRecords
-    .filter((record) => day === null || record.day === day)
+  const dayRows =
+    day === null ? monthRecords : monthRecords.filter((record) => record.day === day)
+  const rows = dayRows
     .filter((record) => matchesQuery(record, search))
     .sort((a, b) =>
       sort === sortOptions[0]
@@ -273,7 +274,7 @@ export function PnlMonthlyPage() {
                   colSpan={4}
                   className="h-10 text-center text-[13px] text-muted-foreground"
                 >
-                  {emptyMessage(loading, day !== null, search !== '')}
+                  {emptyMessage(loading, day !== null && dayRows.length === 0, search !== '')}
                 </TableCell>
               </TableRow>
             ) : (

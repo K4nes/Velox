@@ -77,6 +77,7 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
   // measurement with an incomplete one.
   const existing = await get<PnlRecord>('pnl-records', record.id)
   if (existing !== undefined) {
+    if (record.createdAt < existing.createdAt) return existing
     if (!isComplete(record) && isComplete(existing)) return existing
     if (
       existing.createdAt === record.createdAt &&
@@ -127,16 +128,44 @@ export function isComplete(record: PnlRecord): boolean {
 
 type DayDelta = { day: string; wei: bigint; ethPriceUsd: number | null }
 
+function walletsOf(record: PnlRecord): string[] {
+  return [...new Set(record.wallets.map((wallet) => wallet.toLowerCase()))].sort()
+}
+
 function seriesKey(record: PnlRecord): string {
-  return `${record.contract.toLowerCase()}|${[...record.wallets].sort().join(',')}`
+  return `${record.contract.toLowerCase()}|${walletsOf(record).join(',')}`
+}
+
+function isEarlier(candidate: PnlRecord, record: PnlRecord): boolean {
+  if (candidate.day !== record.day) return candidate.day < record.day
+  return candidate.createdAt < record.createdAt
+}
+
+// The baseline of a set's first check. Widening a selection leaves wallets that
+// were already counted in an earlier set, so the newest earlier check whose
+// wallets this record fully covers supplies their position and only the rest of
+// the PnL counts as change. No covered check means nothing was measured before,
+// and the whole position lands on that day.
+function baselineWei(record: PnlRecord, snapshots: PnlRecord[]): bigint {
+  const wallets = walletsOf(record)
+  let baseline: PnlRecord | undefined
+
+  for (const snapshot of snapshots) {
+    if (snapshot.contract.toLowerCase() !== record.contract.toLowerCase()) continue
+    if (!isEarlier(snapshot, record)) continue
+    const covered = walletsOf(snapshot).every((wallet) => wallets.includes(wallet))
+    if (!covered) continue
+    if (baseline === undefined || isEarlier(baseline, snapshot)) baseline = snapshot
+  }
+
+  return baseline === undefined ? 0n : netWei(baseline)
 }
 
 // The newest complete check of a collection and wallet set wins its day, then
-// each snapshot is measured against the previous check of that same set. Sets
-// stay separate, like the ids do, so a check of wallet B is not folded into the
-// series of wallet A. A set's first check counts in full, since nothing before
-// it says how much of that PnL predates storage. Partial reads drop out first,
-// so a day they cover keeps the last complete measurement.
+// each snapshot is measured against the previous check of the same set. Sets
+// stay separate, like the ids do, so two sets can both be checked on one day
+// without one replacing the other. Partial reads drop out first, so a day they
+// cover keeps the last complete measurement.
 export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   const latest = new Map<string, PnlRecord>()
 
@@ -149,8 +178,9 @@ export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
     }
   }
 
+  const snapshots = [...latest.values()]
   const bySeries = new Map<string, PnlRecord[]>()
-  for (const record of latest.values()) {
+  for (const record of snapshots) {
     const key = seriesKey(record)
     const group = bySeries.get(key)
     if (group === undefined) {
@@ -163,10 +193,11 @@ export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   const deltas: DayDelta[] = []
   for (const group of bySeries.values()) {
     group.sort((a, b) => a.day.localeCompare(b.day))
-    let previous = 0n
+    let previous: bigint | null = null
     for (const record of group) {
       const wei = netWei(record)
-      deltas.push({ day: record.day, wei: wei - previous, ethPriceUsd: record.ethPriceUsd })
+      const baseline = previous ?? baselineWei(record, snapshots)
+      deltas.push({ day: record.day, wei: wei - baseline, ethPriceUsd: record.ethPriceUsd })
       previous = wei
     }
   }
