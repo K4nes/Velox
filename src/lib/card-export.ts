@@ -5,6 +5,7 @@ export type CardSaveOutcome = 'saved' | 'downloaded' | 'cancelled'
 type SaveStream = {
   write: (data: Blob) => Promise<void>
   close: () => Promise<void>
+  abort: () => Promise<void>
 }
 
 type SaveHandle = {
@@ -18,12 +19,21 @@ type SavePicker = (options: {
 
 type SaveWindow = Window & { showSaveFilePicker?: SavePicker }
 
+// A logo the browser cannot re-fetch should blank the image, not fail the export.
+const BLANK_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
 async function renderCard(node: HTMLElement): Promise<Blob> {
   const { width, height } = node.getBoundingClientRect()
+  // A hidden panel measures zero, and html-to-image would return a blank PNG.
+  if (width === 0 || height === 0) {
+    throw new Error('The card is not on screen')
+  }
   const blob = await toBlob(node, {
     width: Math.round(width),
     height: Math.round(height),
     pixelRatio: 2,
+    imagePlaceholder: BLANK_PIXEL,
   })
   if (blob === null) {
     throw new Error('The card could not be rendered as an image')
@@ -47,10 +57,13 @@ function saveDownload(blob: Blob, fileName: string) {
   anchor.download = fileName
   // Firefox ignores a click on an anchor that is not in the document.
   document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  // The browser reads the URL after the click returns.
-  window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  try {
+    anchor.click()
+  } finally {
+    anchor.remove()
+    // The browser reads the URL after the click returns.
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
 }
 
 export async function exportCard(node: HTMLElement, fileName: string): Promise<CardSaveOutcome> {
@@ -80,7 +93,12 @@ export async function exportCard(node: HTMLElement, fileName: string): Promise<C
 
   const blob = await rendered
   const stream = await handle.createWritable()
-  await stream.write(blob)
+  try {
+    await stream.write(blob)
+  } catch (failure) {
+    await stream.abort().catch(() => undefined)
+    throw failure
+  }
   await stream.close()
   return 'saved'
 }

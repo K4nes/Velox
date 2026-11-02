@@ -38,8 +38,7 @@ export function persistImages(
     localStorage.setItem(STORAGE_KEY, JSON.stringify(images))
     return 'saved'
   } catch (failure) {
-    // A blocked origin throws a SecurityError instead. The card still shows
-    // the image either way, so only quota is worth telling the user about.
+    // A blocked origin throws a SecurityError instead of a quota error.
     return failure instanceof Error && failure.name === 'QuotaExceededError'
       ? 'quota'
       : 'blocked'

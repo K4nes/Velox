@@ -1,4 +1,4 @@
-import { httpExchange } from '../src/lib/http.ts'
+import { httpExchange, type HttpOutcome } from '../src/lib/http.ts'
 
 export const PRICE_PATHS: readonly string[] = ['/api/price/eth-usdt']
 
@@ -11,6 +11,9 @@ type Quote = { price: number; updatedAt: string }
 // CoinMarketCap bills a credit per call and only refreshes the quote once a
 // minute, so a reload inside that window reuses the last answer.
 let cached: { quote: Quote; at: number } | null = null
+
+// Concurrent misses would each bill a call, so they share the one exchange.
+let pending: Promise<HttpOutcome> | null = null
 
 export async function handlePrice(req: Request, apiKey: string): Promise<Response> {
   if (req.method !== 'GET') {
@@ -25,9 +28,13 @@ export async function handlePrice(req: Request, apiKey: string): Promise<Respons
     return json(cached.quote, 200)
   }
 
-  const outcome = await httpExchange(CMC_URL, {
+  pending ??= httpExchange(CMC_URL, {
     headers: { 'X-CMC_PRO_API_KEY': apiKey, accept: 'application/json' },
+  }).finally(() => {
+    pending = null
   })
+
+  const outcome = await pending
 
   if (outcome.kind === 'timeout' || outcome.kind === 'network') {
     return json({ error: 'CoinMarketCap request failed' }, 502)
