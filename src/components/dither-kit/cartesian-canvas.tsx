@@ -267,8 +267,11 @@ function startCartesianLoop({
           c.fillStyle = rgb(red, 1, 0.55)
           for (let y = belowZero; y < rows; y++) c.fillRect(mx, y, 1, 1)
         }
-        c.fillStyle = rgb(split && (cur.top[mx] ?? 0) > zero ? red : seed.fill)
-        c.fillRect(mx - 1, my - 1, 3, 3)
+        const negative = split && (cur.top[mx] ?? 0) > zero
+        const start = negative ? Math.max(my - 1, zeroRow) : my - 1
+        const end = split && !negative ? Math.min(my + 2, zeroRow + 1) : my + 2
+        c.fillStyle = rgb(negative ? red : seed.fill)
+        c.fillRect(mx - 1, start, 3, end - start)
       }
     }
 
@@ -289,19 +292,25 @@ function startCartesianLoop({
       // Sparkles glint in the series colour via opacity (the `lift` wink)
       // rather than a lighter shade — so they never read as stray white
       // pixels on a light background.
-      const starColor =
-        s.seriesSpecs[star.key]?.splitBySign && top > zeroRowPx
-          ? seedOfColor("red").fill
-          : s.seedOf(star.key).fill
+      const starNegative =
+        s.seriesSpecs[star.key]?.splitBySign === true && top > zeroRowPx
+      const starColor = starNegative
+        ? seedOfColor("red").fill
+        : s.seedOf(star.key).fill
       c.fillStyle = rgb(starColor, 1, lift)
       c.fillRect(sx, sy, 1, 1)
       // At the peak of a wink the star flares into a 4-point glint.
       if (tw > 0.9) {
+        const zeroRowPxRounded = Math.round(zeroRowPx)
         c.fillStyle = rgb(starColor, 1, lift * 0.6 * (tw - 0.9) * 10)
         c.fillRect(sx - 1, sy, 1, 1)
         c.fillRect(sx + 1, sy, 1, 1)
-        c.fillRect(sx, sy - 1, 1, 1)
-        c.fillRect(sx, sy + 1, 1, 1)
+        if (!(starNegative && sy - 1 < zeroRowPxRounded)) {
+          c.fillRect(sx, sy - 1, 1, 1)
+        }
+        if (!(!starNegative && sy + 1 > zeroRowPxRounded)) {
+          c.fillRect(sx, sy + 1, 1, 1)
+        }
       }
     }
   }
