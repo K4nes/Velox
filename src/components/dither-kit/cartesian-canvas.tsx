@@ -271,7 +271,7 @@ function startCartesianLoop({
           c.fillStyle = rgb(red, 1, 0.55)
           for (let y = belowZero; y < rows; y++) c.fillRect(mx, y, 1, 1)
         }
-        const negative = split && point > 0
+        const negative = split && point < 0
         const start = negative ? Math.max(my - 1, zeroRow) : my - 1
         const end = split && !negative ? Math.min(my + 2, zeroRow + 1) : my + 2
         c.fillStyle = rgb(negative ? red : seed.fill)
