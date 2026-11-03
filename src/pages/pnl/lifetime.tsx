@@ -61,10 +61,14 @@ function ethText(value: bigint | null): string {
   return value === null ? '—' : `${formatEth(value)} ETH`
 }
 
-// Levels on this page are usually fractions of an ETH, so two decimals would
-// print every tick as 0.00.
-function ethTick(value: number): string {
-  return value.toFixed(Math.abs(value) < 0.01 ? 4 : 2)
+// One precision for the whole axis, or two ticks can print the same label. The
+// step is roughly a fifth of the span, so the digits that step needs are enough
+// to tell every tick apart.
+function axisDigits(levels: number[]): number {
+  if (levels.length === 0) return 2
+  const span = Math.max(...levels) - Math.min(...levels)
+  if (span <= 0) return 2
+  return Math.min(6, Math.max(2, Math.ceil(-Math.log10(span / 5)) + 1))
 }
 
 function matchesQuery(row: LifetimeCollection, query: string): boolean {
@@ -125,6 +129,10 @@ export function PnlLifetimePage() {
       .filter((row) => matchesQuery(row, search))
       .sort((a, b) => compareRows(a, b, sort))
   }, [view.collections, query, sort])
+  const tickDigits = useMemo(
+    () => axisDigits(series.map((point) => point.level)),
+    [series],
+  )
 
   const totals = view.totals
   const ranges = view.ranges
@@ -255,11 +263,13 @@ export function PnlLifetimePage() {
                   },
                 }}
                 bloom="aura"
-                margins={{ right: 44 }}
+                margins={{ left: 56, right: 44 }}
                 className="h-full w-full"
               >
                 <XAxis dataKey="label" />
-                <YAxis tickFormatter={ethTick} />
+                <YAxis
+                  tickFormatter={(value: number) => value.toFixed(tickDigits)}
+                />
                 <Tooltip
                   labelKey="label"
                   valueFormatter={(value: number) =>
