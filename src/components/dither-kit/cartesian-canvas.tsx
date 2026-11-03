@@ -71,6 +71,9 @@ function startCartesianLoop({
     const s = state.current
     const stacked = s.stackType === "stacked" || s.stackType === "percent"
     const revealCols = Math.ceil(reveal * cols)
+    // Sign comes from the value's row against zero, so it also holds for a
+    // line series whose band is a glow rather than a fill down to the floor.
+    const zero = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
     s.configKeys.forEach((key, si) => {
       const cur = current[key]
       if (!cur) return
@@ -94,7 +97,7 @@ function startCartesianLoop({
         // so order the pair (a no-op for the common positive case).
         const a = cur.top[x] ?? 0
         const b = cur.floor[x] ?? 0
-        const seedAt = negativeSeed !== null && a > b ? negativeSeed : seed
+        const seedAt = negativeSeed !== null && a > zero ? negativeSeed : seed
         paintColumn(octx, x, Math.min(a, b), Math.max(a, b), seedAt, {
           variant,
           intensity,
@@ -252,9 +255,8 @@ function startCartesianLoop({
         const split = s.seriesSpecs[key]?.splitBySign === true
         const red = seedOfColor("red").fill
         const my = Math.round(cur.top[mx] ?? 0)
-        const zeroRow = Math.round(
-          (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
-        )
+        const zero = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
+        const zeroRow = Math.round(zero)
         const belowZero =
           split && zeroRow < rows - 1 ? Math.min(rows, Math.max(my, zeroRow)) : rows
         // Full-height column + a chunky marker block at the point — the
@@ -265,11 +267,12 @@ function startCartesianLoop({
           c.fillStyle = rgb(red, 1, 0.55)
           for (let y = belowZero; y < rows; y++) c.fillRect(mx, y, 1, 1)
         }
-        c.fillStyle = rgb(split && my > zeroRow ? red : seed.fill)
+        c.fillStyle = rgb(split && (cur.top[mx] ?? 0) > zero ? red : seed.fill)
         c.fillRect(mx - 1, my - 1, 3, 3)
       }
     }
 
+    const zeroRowPx = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
     for (const star of stars.current) {
       const cur = current[star.key]
       if (!cur) continue
@@ -287,7 +290,7 @@ function startCartesianLoop({
       // rather than a lighter shade — so they never read as stray white
       // pixels on a light background.
       const starColor =
-        s.seriesSpecs[star.key]?.splitBySign && top > floor
+        s.seriesSpecs[star.key]?.splitBySign && top > zeroRowPx
           ? seedOfColor("red").fill
           : s.seedOf(star.key).fill
       c.fillStyle = rgb(starColor, 1, lift)
