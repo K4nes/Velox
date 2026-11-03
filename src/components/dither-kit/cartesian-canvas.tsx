@@ -296,8 +296,8 @@ function startCartesianLoop({
       // Sparkles glint in the series colour via opacity (the `lift` wink)
       // rather than a lighter shade — so they never read as stray white
       // pixels on a light background.
-      const starNegative =
-        s.seriesSpecs[star.key]?.splitBySign === true && top > zeroRowPx
+      const splitStar = s.seriesSpecs[star.key]?.splitBySign === true
+      const starNegative = splitStar && top > zeroRowPx
       const starColor = starNegative
         ? seedOfColor("red").fill
         : s.seedOf(star.key).fill
@@ -312,7 +312,7 @@ function startCartesianLoop({
         if (!(starNegative && sy - 1 < zeroRowPxRounded)) {
           c.fillRect(sx, sy - 1, 1, 1)
         }
-        if (!(!starNegative && sy + 1 > zeroRowPxRounded)) {
+        if (!(splitStar && !starNegative && sy + 1 > zeroRowPxRounded)) {
           c.fillRect(sx, sy + 1, 1, 1)
         }
       }
