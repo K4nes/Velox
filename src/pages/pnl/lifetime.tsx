@@ -68,7 +68,7 @@ function axisDigits(levels: number[]): number {
   if (levels.length === 0) return 2
   const width = Math.max(0, ...levels) - Math.min(0, ...levels)
   if (width <= 0) return 2
-  return Math.min(6, Math.max(2, Math.ceil(-Math.log10(width / 5)) + 1))
+  return Math.max(2, Math.ceil(-Math.log10(width / 5)) + 1)
 }
 
 function matchesQuery(row: LifetimeCollection, query: string): boolean {
@@ -265,7 +265,11 @@ export function PnlLifetimePage() {
               >
                 <XAxis dataKey="label" />
                 <YAxis
-                  tickFormatter={(value: number) => value.toFixed(tickDigits)}
+                  tickFormatter={(value: number) =>
+                    tickDigits <= 6
+                      ? value.toFixed(tickDigits)
+                      : value.toExponential(1)
+                  }
                 />
                 <Tooltip
                   labelKey="label"
