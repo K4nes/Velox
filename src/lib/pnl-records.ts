@@ -95,6 +95,19 @@ export async function deletePnlRecord(id: string): Promise<void> {
   await remove('pnl-records', id)
 }
 
+// A check can finish before its price quote does. The quote arrives later, and
+// it may only fill in the row that check already saved, never revive a row the
+// monthly page deleted meanwhile.
+export async function backfillQuote(
+  contract: string,
+  at: number,
+  ethPriceUsd: number,
+): Promise<void> {
+  const existing = await get<PnlRecord>('pnl-records', recordId(contract, dayKey(new Date(at))))
+  if (existing === undefined || existing.ethPriceUsd !== null) return
+  await put<PnlRecord>('pnl-records', { ...existing, ethPriceUsd })
+}
+
 export async function listPnlRecords(): Promise<PnlRecord[]> {
   const records = await getAll<PnlRecord>('pnl-records')
   return [...records].sort((a, b) => b.createdAt - a.createdAt)

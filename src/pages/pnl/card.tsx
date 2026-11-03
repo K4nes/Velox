@@ -13,7 +13,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
-import { upsertPnlRecord } from '@/lib/pnl-records'
+import { backfillQuote, upsertPnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
@@ -34,7 +34,7 @@ export function PnlCardPage() {
     positions,
     version,
     read,
-    writtenAt,
+    written,
     quote,
   } = usePnlCard()
   const [running, setRunning] = useState(false)
@@ -180,10 +180,23 @@ export function PnlCardPage() {
     if (freshRead === null || freshRead.stats === null) return
     if (collection === null || addresses === '') return
     if (freshRead.stats.held + freshRead.stats.sold === 0) return
-    // A remount replays the stored read, so the write has to remember it ran.
-    // Writing again would put back a monthly row the user deleted.
-    if (writtenAt === freshRead.at) return
 
+    // A remount replays the stored read, so the write has to remember it ran.
+    // Writing again would put back a monthly row the user deleted. The only
+    // allowed second pass fills in a quote that arrived after the save.
+    if (written !== null && written.at === freshRead.at) {
+      if (written.price !== null || quote.price === null) return
+      backfillQuote(collection.contractAddress, freshRead.at, quote.price)
+        .then(() => {
+          pnlCard.markWritten(freshRead.at, quote.price)
+        })
+        .catch((failure: unknown) => {
+          toast.error(failure instanceof Error ? failure.message : String(failure))
+        })
+      return
+    }
+
+    const price = quote.price
     upsertPnlRecord({
       slug: collection.slug,
       name: collection.name,
@@ -194,16 +207,19 @@ export function PnlCardPage() {
       stats: freshRead.stats,
       truncated: freshRead.truncated,
       unpriced: freshRead.unpriced,
-      ethPriceUsd: quote.price,
+      ethPriceUsd: price,
       now: freshRead.at,
     })
       .then(() => {
-        pnlCard.markWritten(freshRead.at)
+        pnlCard.markWritten(freshRead.at, price)
       })
       .catch((failure: unknown) => {
+        // The read has been handled, so a remount must not try it again and
+        // recreate a row the monthly page deleted. A re-check retries the save.
+        pnlCard.markWritten(freshRead.at, null)
         toast.error(failure instanceof Error ? failure.message : String(failure))
       })
-  }, [freshRead, collection, addresses, quote.price, writtenAt])
+  }, [freshRead, collection, addresses, quote.price, written])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only
