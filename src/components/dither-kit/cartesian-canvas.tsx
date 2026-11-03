@@ -249,12 +249,16 @@ function startCartesianLoop({
         : -1
     if (mx >= 0 && mx <= revealCols) {
       for (const key of s.configKeys) {
-        const cur = current[key]
-        if (!cur) continue
+        if (!current[key]) continue
+        // The hovered point, not the resampled column near it: a rounded
+        // column can sit in the next month's segment and flip the sign.
+        const point = s.bands[key]?.[marker ?? 0]?.[1] ?? 0
         const seed = s.seedOf(key)
         const split = s.seriesSpecs[key]?.splitBySign === true
         const red = seedOfColor("red").fill
-        const my = Math.round(cur.top[mx] ?? 0)
+        const my = Math.round(
+          (s.y(point) / Math.max(s.plot.height, 1)) * (rows - 1)
+        )
         const zero = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
         const zeroRow = Math.round(zero)
         const belowZero =
@@ -267,7 +271,7 @@ function startCartesianLoop({
           c.fillStyle = rgb(red, 1, 0.55)
           for (let y = belowZero; y < rows; y++) c.fillRect(mx, y, 1, 1)
         }
-        const negative = split && (cur.top[mx] ?? 0) > zero
+        const negative = split && point > 0
         const start = negative ? Math.max(my - 1, zeroRow) : my - 1
         const end = split && !negative ? Math.min(my + 2, zeroRow + 1) : my + 2
         c.fillStyle = rgb(negative ? red : seed.fill)
