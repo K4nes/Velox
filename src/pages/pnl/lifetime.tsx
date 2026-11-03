@@ -62,13 +62,13 @@ function ethText(value: bigint | null): string {
 }
 
 // One precision for the whole axis, or two ticks can print the same label. The
-// step is roughly a fifth of the span, so the digits that step needs are enough
-// to tell every tick apart.
+// axis always spans zero, so a flat series still needs digits for its height.
+// A fifth of the width is roughly one d3 tick.
 function axisDigits(levels: number[]): number {
   if (levels.length === 0) return 2
-  const span = Math.max(...levels) - Math.min(...levels)
-  if (span <= 0) return 2
-  return Math.min(6, Math.max(2, Math.ceil(-Math.log10(span / 5)) + 1))
+  const width = Math.max(0, ...levels) - Math.min(0, ...levels)
+  if (width <= 0) return 2
+  return Math.min(6, Math.max(2, Math.ceil(-Math.log10(width / 5)) + 1))
 }
 
 function matchesQuery(row: LifetimeCollection, query: string): boolean {
