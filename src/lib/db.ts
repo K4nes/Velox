@@ -6,9 +6,55 @@ export type StoreName =
   | 'pnl-records'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 let dbPromise: Promise<IDBDatabase> | undefined
+
+type LegacyPnlRecord = {
+  id: string
+  contract: string
+  day: string
+  createdAt: number
+  truncated: boolean
+  unpriced: boolean
+}
+
+function winsOver(candidate: LegacyPnlRecord, current: LegacyPnlRecord): boolean {
+  const candidateComplete = !candidate.truncated && !candidate.unpriced
+  const currentComplete = !current.truncated && !current.unpriced
+  // A partial read measured part of the position, so it must never replace a
+  // complete snapshot of the same day, however much newer it is.
+  if (candidateComplete !== currentComplete) return candidateComplete
+  return candidate.createdAt > current.createdAt
+}
+
+// Version 3 keyed a row by collection, wallet set and day. Version 4 keys it by
+// collection and day, so a re-check replaces the day's snapshot. The cursor
+// runs inside the versionchange transaction; a transaction opened from its
+// callback would wait on the upgrade that is waiting on the cursor.
+function migratePnlRecordIds(store: IDBObjectStore): void {
+  const winners = new Map<string, LegacyPnlRecord>()
+  const request = store.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      for (const [id, record] of winners) {
+        store.put({ ...record, id })
+      }
+      return
+    }
+
+    const record = cursor.value as LegacyPnlRecord
+    const id = `${record.contract.toLowerCase()}|${record.day}`
+    const current = winners.get(id)
+    if (current === undefined || winsOver(record, current)) {
+      winners.set(id, record)
+    }
+    cursor.delete()
+    cursor.continue()
+  }
+}
 
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) {
@@ -18,8 +64,10 @@ export function openDb(): Promise<IDBDatabase> {
   const promise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result
+      const transaction = request.transaction
+      const hasPnlRecords = db.objectStoreNames.contains('pnl-records')
       if (!db.objectStoreNames.contains('folders')) {
         db.createObjectStore('folders', { keyPath: 'id' })
       }
@@ -33,8 +81,11 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains('snapshots')) {
         db.createObjectStore('snapshots', { keyPath: 'id' })
       }
-      if (!db.objectStoreNames.contains('pnl-records')) {
+      if (!hasPnlRecords) {
         db.createObjectStore('pnl-records', { keyPath: 'id' })
+      }
+      if (event.oldVersion < 4 && hasPnlRecords && transaction !== null) {
+        migratePnlRecordIds(transaction.objectStore('pnl-records'))
       }
     }
 

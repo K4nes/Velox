@@ -1,10 +1,10 @@
-import { getAll, get, put } from '@/lib/db'
+import { getAll, get, put, remove } from '@/lib/db'
 import { formatEth, type PnlStats } from '@/lib/pnl-trades'
 
-// Re-checking the same collection, wallet set and day rewrites that row instead
-// of stacking a second sample. Every row holds the collection's cumulative PnL
-// at that check, so the page derives a day's change by subtracting the previous
-// check rather than summing the rows.
+// A row is one collection's cumulative PnL at one check, keyed by collection
+// and day, so re-checking the same collection that day replaces its numbers
+// instead of stacking a second sample. The page derives a day's change by
+// subtracting the previous check rather than summing the rows.
 export type PnlRecord = {
   id: string
   createdAt: number
@@ -47,9 +47,8 @@ export function dayKey(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
-export function recordId(contract: string, wallets: string[], day: string): string {
-  const addresses = [...new Set(wallets.map((wallet) => wallet.toLowerCase()))].sort()
-  return `${contract.toLowerCase()}|${addresses.join(',')}|${day}`
+export function recordId(contract: string, day: string): string {
+  return `${contract.toLowerCase()}|${day}`
 }
 
 export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord> {
@@ -57,7 +56,7 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
   const day = dayKey(new Date(createdAt))
   const wallets = [...new Set(input.wallets.map((wallet) => wallet.toLowerCase()))].sort()
   const record: PnlRecord = {
-    id: recordId(input.contract, wallets, day),
+    id: recordId(input.contract, day),
     createdAt,
     day,
     slug: input.slug,
@@ -90,6 +89,10 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
 
   await put<PnlRecord>('pnl-records', record)
   return record
+}
+
+export async function deletePnlRecord(id: string): Promise<void> {
+  await remove('pnl-records', id)
 }
 
 export async function listPnlRecords(): Promise<PnlRecord[]> {
@@ -170,10 +173,10 @@ function baselineWei(record: PnlRecord, snapshots: PnlRecord[]): bigint {
 }
 
 // The newest complete check of a collection and wallet set wins its day, then
-// each snapshot is measured against the previous check of the same set. Sets
-// stay separate, like the ids do, so two sets can both be checked on one day
-// without one replacing the other. Partial reads drop out first, so a day they
-// cover keeps the last complete measurement.
+// each snapshot is measured against the previous check of the same set. A row
+// is keyed by collection and day, so a re-check with another set replaces the
+// day and starts that set's series there. Partial reads drop out first, so a
+// day they cover keeps the last complete measurement.
 export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   const latest = new Map<string, PnlRecord>()
 
