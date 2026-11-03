@@ -10,7 +10,7 @@ import {
   prefersReducedMotion,
   resample,
 } from "./dither-paint"
-import { rgb } from "./palette"
+import { rgb, seedOfColor } from "./palette"
 
 type Star = { key: string; xi: number; depth: number; phase: number }
 type Surface = { top: number[]; floor: number[] }
@@ -71,10 +71,16 @@ function startCartesianLoop({
     const s = state.current
     const stacked = s.stackType === "stacked" || s.stackType === "percent"
     const revealCols = Math.ceil(reveal * cols)
+    // Sign comes from the value's row against zero, so it also holds for a
+    // line series whose band is a glow rather than a fill down to the floor.
+    const zero = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
     s.configKeys.forEach((key, si) => {
       const cur = current[key]
       if (!cur) return
       const seed = s.seedOf(key)
+      const negativeSeed = s.seriesSpecs[key]?.splitBySign
+        ? seedOfColor("red")
+        : null
       const variant = s.seriesSpecs[key]?.variant ?? "gradient"
       const isLine =
         (s.seriesSpecs[key]?.kind ??
@@ -91,7 +97,8 @@ function startCartesianLoop({
         // so order the pair (a no-op for the common positive case).
         const a = cur.top[x] ?? 0
         const b = cur.floor[x] ?? 0
-        paintColumn(octx, x, Math.min(a, b), Math.max(a, b), seed, {
+        const seedAt = negativeSeed !== null && a > zero ? negativeSeed : seed
+        paintColumn(octx, x, Math.min(a, b), Math.max(a, b), seedAt, {
           variant,
           intensity,
           dim,
@@ -194,7 +201,10 @@ function startCartesianLoop({
     // Repaint when a tweak-driven paint input changes (variant, stacking) so
     // the panel updates the fill live — without resetting the entrance reveal.
     const paintSig = `${s.stackType}|${s.configKeys
-      .map((k) => s.seriesSpecs[k]?.variant ?? "")
+      .map(
+        (k) =>
+          `${s.seriesSpecs[k]?.variant ?? ""}${s.seriesSpecs[k]?.splitBySign ? "+sign" : ""}`
+      )
       .join(",")}`
     const sigChanged = paintSig !== lastPaintSig
     if (sigChanged) {
@@ -239,19 +249,37 @@ function startCartesianLoop({
         : -1
     if (mx >= 0 && mx <= revealCols) {
       for (const key of s.configKeys) {
-        const cur = current[key]
-        if (!cur) continue
+        if (!current[key]) continue
+        // The hovered point, not the resampled column near it: a rounded
+        // column can sit in the next month's segment and flip the sign.
+        const point = s.bands[key]?.[marker ?? 0]?.[1] ?? 0
         const seed = s.seedOf(key)
-        const my = Math.round(cur.top[mx] ?? 0)
+        const split = s.seriesSpecs[key]?.splitBySign === true
+        const red = seedOfColor("red").fill
+        const my = Math.round(
+          (s.y(point) / Math.max(s.plot.height, 1)) * (rows - 1)
+        )
+        const zero = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
+        const zeroRow = Math.round(zero)
+        const belowZero =
+          split && zeroRow < rows - 1 ? Math.min(rows, Math.max(my, zeroRow)) : rows
         // Full-height column + a chunky marker block at the point — the
         // series colour at higher opacity, so it reads on either theme.
         c.fillStyle = rgb(seed.fill, 1, 0.55)
-        for (let y = my; y < rows; y++) c.fillRect(mx, y, 1, 1)
-        c.fillStyle = rgb(seed.fill)
-        c.fillRect(mx - 1, my - 1, 3, 3)
+        for (let y = my; y < belowZero; y++) c.fillRect(mx, y, 1, 1)
+        if (belowZero < rows) {
+          c.fillStyle = rgb(red, 1, 0.55)
+          for (let y = belowZero; y < rows; y++) c.fillRect(mx, y, 1, 1)
+        }
+        const negative = split && point < 0
+        const start = negative ? Math.max(my - 1, zeroRow) : my - 1
+        const end = split && !negative ? Math.min(my + 2, zeroRow + 1) : my + 2
+        c.fillStyle = rgb(negative ? red : seed.fill)
+        c.fillRect(mx - 1, start, 3, end - start)
       }
     }
 
+    const zeroRowPx = (s.y(0) / Math.max(s.plot.height, 1)) * (rows - 1)
     for (const star of stars.current) {
       const cur = current[star.key]
       if (!cur) continue
@@ -268,16 +296,25 @@ function startCartesianLoop({
       // Sparkles glint in the series colour via opacity (the `lift` wink)
       // rather than a lighter shade — so they never read as stray white
       // pixels on a light background.
-      const starColor = s.seedOf(star.key).fill
+      const splitStar = s.seriesSpecs[star.key]?.splitBySign === true
+      const starNegative = splitStar && top > zeroRowPx
+      const starColor = starNegative
+        ? seedOfColor("red").fill
+        : s.seedOf(star.key).fill
       c.fillStyle = rgb(starColor, 1, lift)
       c.fillRect(sx, sy, 1, 1)
       // At the peak of a wink the star flares into a 4-point glint.
       if (tw > 0.9) {
+        const zeroRowPxRounded = Math.round(zeroRowPx)
         c.fillStyle = rgb(starColor, 1, lift * 0.6 * (tw - 0.9) * 10)
         c.fillRect(sx - 1, sy, 1, 1)
         c.fillRect(sx + 1, sy, 1, 1)
-        c.fillRect(sx, sy - 1, 1, 1)
-        c.fillRect(sx, sy + 1, 1, 1)
+        if (!(starNegative && sy - 1 < zeroRowPxRounded)) {
+          c.fillRect(sx, sy - 1, 1, 1)
+        }
+        if (!(splitStar && !starNegative && sy + 1 > zeroRowPxRounded)) {
+          c.fillRect(sx, sy + 1, 1, 1)
+        }
       }
     }
   }

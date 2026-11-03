@@ -11,6 +11,7 @@ export type SeriesProps = {
   dataKey: string
   variant?: AreaVariant
   strokeVariant?: StrokeVariant
+  splitBySign?: boolean
   isClickable?: boolean
   children?: ReactNode
 }
@@ -27,6 +28,7 @@ function CartesianSeries({
   dataKey,
   variant = "gradient",
   strokeVariant = "solid",
+  splitBySign = false,
   isClickable = false,
   children,
 }: SeriesProps & { part: string; kind: SeriesKind }) {
@@ -40,9 +42,9 @@ function CartesianSeries({
   }
 
   useEffect(() => {
-    registerSeries({ dataKey, kind, variant, strokeVariant })
+    registerSeries({ dataKey, kind, variant, strokeVariant, splitBySign })
     return () => unregisterSeries(dataKey)
-  }, [dataKey, kind, variant, strokeVariant, registerSeries, unregisterSeries])
+  }, [dataKey, kind, variant, strokeVariant, splitBySign, registerSeries, unregisterSeries])
 
   const band = ctx.bands[dataKey]
   if (!ctx.ready || !band) return null

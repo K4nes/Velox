@@ -22,7 +22,8 @@ export type TradesRead = {
 
 export type PnlStats = {
   realized: bigint
-  invested: bigint
+  spent: bigint // every buy's outlay, including lots since sold
+  basis: bigint // cost of the lots still open
   currentValue: bigint
   unrealized: bigint
   held: number
@@ -512,6 +513,7 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
   let collectionMark: bigint | null = null
   let realized = 0n
+  let spent = 0n
 
   for (const index of sequence) {
     const trade = ordered[index]
@@ -519,7 +521,12 @@ export function summarize(trades: ChainTrade[]): PnlStats {
 
     if (trade.side === 'buy') {
       // The receiving wallet of a transfer already holds the sender's basis.
-      if (!receives.has(index)) book.lots.push(trade.amount)
+      // A handoff buy carries amount 0n because pairing requires it, so this
+      // guard states that a moved basis is not new spend.
+      if (!receives.has(index)) {
+        book.lots.push(trade.amount)
+        spent += trade.amount
+      }
       // The wallet's own sale is older than this lot, so it cannot mark it.
       book.lastSell = null
       continue
@@ -547,7 +554,7 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     }
   }
 
-  let invested = 0n
+  let basis = 0n
   let currentValue = 0n
   let held = 0
   let sold = 0
@@ -556,17 +563,18 @@ export function summarize(trades: ChainTrade[]): PnlStats {
     if (book.sellCount > 0) sold += 1
     if (book.lots.length === 0) continue
 
-    const basis = book.lots.reduce((sum, lot) => sum + lot, 0n)
-    invested += basis
-    currentValue += book.lastSell ?? collectionMark ?? basis
+    const open = book.lots.reduce((sum, lot) => sum + lot, 0n)
+    basis += open
+    currentValue += book.lastSell ?? collectionMark ?? open
     held += 1
   }
 
   return {
     realized,
-    invested,
+    spent,
+    basis,
     currentValue,
-    unrealized: currentValue - invested,
+    unrealized: currentValue - basis,
     held,
     sold,
   }

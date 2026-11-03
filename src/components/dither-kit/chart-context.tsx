@@ -40,6 +40,8 @@ export type SeriesSpec = {
   kind: SeriesKind
   variant: AreaVariant
   strokeVariant: StrokeVariant
+  // Paint below the zero baseline in red instead of the series colour.
+  splitBySign?: boolean
 }
 
 export type ChartContextValue = {
@@ -239,7 +241,8 @@ export function useChartController({
       return cur &&
         cur.kind === spec.kind &&
         cur.variant === spec.variant &&
-        cur.strokeVariant === spec.strokeVariant
+        cur.strokeVariant === spec.strokeVariant &&
+        cur.splitBySign === spec.splitBySign
         ? prev
         : { ...prev, [spec.dataKey]: spec }
     })

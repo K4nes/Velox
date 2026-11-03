@@ -1,6 +1,24 @@
 import { getAll, get, put, remove } from '@/lib/db'
 import { formatEth, type PnlStats } from '@/lib/pnl-trades'
 
+// Bump `v` when a stored field changes meaning; readers branch on it.
+export type PnlBreakdown = {
+  v: 2
+  realized: string
+  spent: string
+  basis: string
+  held: number
+  sold: number
+}
+
+// Rows written before the split was versioned held the open basis under `invested`.
+export type LegacyPnlBreakdown = {
+  realized: string
+  invested: string
+  held: number
+  sold: number
+}
+
 // A row is one collection's cumulative PnL at one check, keyed by collection
 // and day, so re-checking the same collection that day replaces its numbers
 // instead of stacking a second sample. The page derives a day's change by
@@ -19,6 +37,9 @@ export type PnlRecord = {
   ethPriceUsd: number | null
   truncated: boolean
   unpriced: boolean
+  // Rows saved before the split was written at all have none; their net still
+  // counts, but no realized or spent figure can be recovered from them.
+  breakdown?: PnlBreakdown | LegacyPnlBreakdown
 }
 
 export type PnlRecordInput = {
@@ -40,6 +61,11 @@ const usd = new Intl.NumberFormat('en-US', {
   currency: 'USD',
   maximumFractionDigits: 2,
 })
+
+export function formatUsd(value: number | null): string {
+  if (value === null) return '—'
+  return usd.format(value)
+}
 
 export function dayKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -69,11 +95,20 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
     ethPriceUsd: input.ethPriceUsd,
     truncated: input.truncated,
     unpriced: input.unpriced,
+    breakdown: {
+      v: 2,
+      realized: input.stats.realized.toString(),
+      spent: input.stats.spent.toString(),
+      basis: input.stats.basis.toString(),
+      held: input.stats.held,
+      sold: input.stats.sold,
+    },
   }
 
   // The same check replayed through a remount must not swap a stored quote for
   // a newer one, and a partial re-read must not replace the day's complete
-  // measurement with an incomplete one.
+  // measurement with an incomplete one. A row saved before the split existed
+  // skips the replay branch so its breakdown can be filled in.
   const existing = await get<PnlRecord>('pnl-records', record.id)
   if (existing !== undefined) {
     if (record.createdAt < existing.createdAt) return existing
@@ -81,14 +116,24 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
     if (
       existing.createdAt === record.createdAt &&
       existing.ethPriceUsd !== null &&
-      record.ethPriceUsd !== null
+      record.ethPriceUsd !== null &&
+      existing.breakdown !== undefined
     ) {
       return existing
     }
   }
 
-  await put<PnlRecord>('pnl-records', record)
-  return record
+  // Upgrading a legacy row keeps the quote its original check stored.
+  const stored: PnlRecord =
+    existing !== undefined &&
+    existing.createdAt === record.createdAt &&
+    existing.breakdown === undefined &&
+    existing.ethPriceUsd !== null
+      ? { ...record, ethPriceUsd: existing.ethPriceUsd }
+      : record
+
+  await put<PnlRecord>('pnl-records', stored)
+  return stored
 }
 
 export async function deletePnlRecord(id: string): Promise<void> {
@@ -122,8 +167,9 @@ export function netEth(record: PnlRecord): number {
 }
 
 export function recordUsd(record: PnlRecord): string {
-  if (record.ethPriceUsd === null) return '—'
-  return usd.format(netEth(record) * record.ethPriceUsd)
+  return formatUsd(
+    record.ethPriceUsd === null ? null : netEth(record) * record.ethPriceUsd,
+  )
 }
 
 export function monthPrefix(month: Date): string {
@@ -267,4 +313,343 @@ export function monthNet(records: PnlRecord[], month: Date): { wei: bigint; usd:
 
 export function formatNetPnl(record: PnlRecord): string {
   return `${formatEth(netWei(record))} ETH`
+}
+
+export type PnlBreakdownValues = {
+  realized: bigint
+  spent: bigint | null
+  basis: bigint
+  unrealized: bigint
+  holdings: bigint
+  held: number
+  sold: number
+}
+
+export type LifetimeCollection = {
+  id: string
+  name: string
+  slug: string
+  imageUrl: string
+  chain: string
+  checkedAt: number
+  net: bigint
+  usd: number | null
+  breakdown: PnlBreakdownValues | null
+  lastReadPartial: boolean
+}
+
+export type LifetimeMonth = {
+  month: string
+  change: bigint
+  level: bigint
+  tracked: boolean
+}
+
+export type LifetimeTotals = {
+  measured: number
+  excluded: number
+  unquoted: number
+  net: bigint | null
+  realized: bigint | null
+  unrealized: bigint | null
+  spent: bigint | null
+  holdings: bigint | null
+  roi: number | null
+  usd: {
+    net: number | null
+    realized: number | null
+    unrealized: number | null
+    spent: number | null
+    holdings: number | null
+  }
+  from: string | null
+}
+
+export type LifetimeRanges = {
+  tracked: number
+  profitable: number
+  streak: number
+  average: bigint | null
+  best: { month: string; change: bigint } | null
+  worst: { month: string; change: bigint } | null
+}
+
+export type LifetimeView = {
+  totals: LifetimeTotals
+  ranges: LifetimeRanges
+  collections: LifetimeCollection[]
+  months: LifetimeMonth[]
+}
+
+type Measured = {
+  collection: LifetimeCollection
+  split: PnlBreakdownValues | null
+  ethPriceUsd: number | null
+}
+
+// `lifetimeView` runs on every render, so an unreadable stored number degrades
+// the split to null instead of throwing.
+function weiOrNull(raw: string | undefined): bigint | null {
+  if (raw === undefined) return null
+  try {
+    return BigInt(raw)
+  } catch {
+    return null
+  }
+}
+
+// Both identities hold at write time, so unrealized and the holdings value are
+// reconstructed here instead of stored a second time.
+function breakdownOf(record: PnlRecord): PnlBreakdownValues | null {
+  const stored = record.breakdown
+  if (stored === undefined) return null
+
+  const realized = weiOrNull(stored.realized)
+  let spent: bigint | null = null
+  let basis: bigint | null
+
+  if ('v' in stored) {
+    basis = weiOrNull(stored.basis)
+    spent = weiOrNull(stored.spent)
+  } else {
+    basis = weiOrNull(stored.invested)
+  }
+
+  if (realized === null || basis === null) return null
+
+  const unrealized = netWei(record) - realized
+  return {
+    realized,
+    spent,
+    basis,
+    unrealized,
+    holdings: basis + unrealized,
+    held: stored.held,
+    sold: stored.sold,
+  }
+}
+
+function monthIndex(month: string): number {
+  return Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1
+}
+
+function monthKey(index: number): string {
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`
+}
+
+export function lifetimeView(records: PnlRecord[]): LifetimeView {
+  const groups = new Map<string, PnlRecord[]>()
+  for (const record of records) {
+    const key = record.contract.toLowerCase()
+    const group = groups.get(key)
+    if (group === undefined) {
+      groups.set(key, [record])
+    } else {
+      group.push(record)
+    }
+  }
+
+  const measured: Measured[] = []
+  let excluded = 0
+
+  for (const group of groups.values()) {
+    group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+    const latest = group.filter(isComplete).at(-1)
+    if (latest === undefined) {
+      excluded += 1
+      continue
+    }
+
+    const split = breakdownOf(latest)
+    measured.push({
+      collection: {
+        id: latest.id,
+        name: latest.name,
+        slug: latest.slug,
+        imageUrl: latest.imageUrl,
+        chain: latest.chain,
+        checkedAt: latest.createdAt,
+        net: netWei(latest),
+        usd: latest.ethPriceUsd === null ? null : netEth(latest) * latest.ethPriceUsd,
+        breakdown: split,
+        lastReadPartial: group.some(
+          (row) => !isComplete(row) && isEarlier(latest, row),
+        ),
+      },
+      split,
+      ethPriceUsd: latest.ethPriceUsd,
+    })
+  }
+
+  const collections = measured
+    .map((entry) => entry.collection)
+    .sort((a, b) => b.checkedAt - a.checkedAt)
+
+  const complete = records
+    .filter(isComplete)
+    .sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+
+  const changes = new Map<string, bigint>()
+  const levels = new Map<string, bigint>()
+  for (const record of complete) {
+    const contract = record.contract.toLowerCase()
+    const next = netWei(record)
+    const month = record.day.slice(0, 7)
+    const delta = next - (levels.get(contract) ?? 0n)
+    changes.set(month, (changes.get(month) ?? 0n) + delta)
+    levels.set(contract, next)
+  }
+
+  // Every calendar month between the first and last check is emitted, so the
+  // chart holds a flat line across a month nobody checked instead of joining
+  // the two neighbours.
+  const months: LifetimeMonth[] = []
+  if (complete.length > 0) {
+    let level = 0n
+    const first = monthIndex(complete[0].day)
+    const last = monthIndex(complete[complete.length - 1].day)
+    for (let index = first; index <= last; index += 1) {
+      const month = monthKey(index)
+      const change = changes.get(month) ?? 0n
+      level += change
+      months.push({ month, change, level, tracked: changes.has(month) })
+    }
+  }
+
+  const measuredCount = measured.length
+  const splits = measured.filter(
+    (entry): entry is Measured & { split: PnlBreakdownValues } => entry.split !== null,
+  )
+  const legacy = measuredCount - splits.length
+  const unquoted = measured.filter((entry) => entry.collection.usd === null).length
+
+  const net =
+    measuredCount === 0
+      ? null
+      : measured.reduce((sum, entry) => sum + entry.collection.net, 0n)
+  const realized =
+    measuredCount > 0 && legacy === 0
+      ? splits.reduce((sum, entry) => sum + entry.split.realized, 0n)
+      : null
+  const spentSplits = measured.filter(
+    (entry): entry is Measured & { split: PnlBreakdownValues & { spent: bigint } } =>
+      entry.split !== null && entry.split.spent !== null,
+  )
+  const spent =
+    measuredCount > 0 && spentSplits.length === measuredCount
+      ? spentSplits.reduce((sum, entry) => sum + entry.split.spent, 0n)
+      : null
+  const unrealized = net !== null && realized !== null ? net - realized : null
+  const holdings =
+    measuredCount > 0 && legacy === 0
+      ? splits.reduce((sum, entry) => sum + entry.split.holdings, 0n)
+      : null
+
+  const quoted = measured.filter(
+    (entry): entry is Measured & { split: PnlBreakdownValues; ethPriceUsd: number } =>
+      entry.split !== null && entry.ethPriceUsd !== null,
+  )
+  const quotedSpent = measured.filter(
+    (
+      entry,
+    ): entry is Measured & {
+      split: PnlBreakdownValues & { spent: bigint }
+      ethPriceUsd: number
+    } => entry.split !== null && entry.split.spent !== null && entry.ethPriceUsd !== null,
+  )
+  const usdNet =
+    measuredCount > 0 && unquoted === 0
+      ? measured.reduce((sum, entry) => sum + (entry.collection.usd ?? 0), 0)
+      : null
+  const usdRealized =
+    measuredCount > 0 && quoted.length === measuredCount
+      ? quoted.reduce(
+          (sum, entry) =>
+            sum + (Number(entry.split.realized) / 10 ** 18) * entry.ethPriceUsd,
+          0,
+        )
+      : null
+  const usdSpent =
+    measuredCount > 0 && quotedSpent.length === measuredCount
+      ? quotedSpent.reduce(
+          (sum, entry) =>
+            sum + (Number(entry.split.spent) / 10 ** 18) * entry.ethPriceUsd,
+          0,
+        )
+      : null
+  const usdUnrealized =
+    usdNet !== null && usdRealized !== null ? usdNet - usdRealized : null
+  const usdHoldings =
+    measuredCount > 0 && quoted.length === measuredCount
+      ? quoted.reduce(
+          (sum, entry) =>
+            sum + (Number(entry.split.holdings) / 10 ** 18) * entry.ethPriceUsd,
+          0,
+        )
+      : null
+
+  const tracked = months.filter((month) => month.tracked)
+  let profitable = 0
+  let streak = 0
+  let run = 0
+  let best: LifetimeRanges['best'] = null
+  let worst: LifetimeRanges['worst'] = null
+
+  for (const month of months) {
+    if (!month.tracked) {
+      run = 0
+      continue
+    }
+    if (month.change > 0n) {
+      profitable += 1
+      run += 1
+      streak = Math.max(streak, run)
+    } else {
+      run = 0
+    }
+    if (best === null || month.change > best.change) {
+      best = { month: month.month, change: month.change }
+    }
+    if (worst === null || month.change < worst.change) {
+      worst = { month: month.month, change: month.change }
+    }
+  }
+
+  return {
+    totals: {
+      measured: measuredCount,
+      excluded,
+      unquoted,
+      net,
+      realized,
+      unrealized,
+      spent,
+      holdings,
+      roi:
+        net !== null && spent !== null && spent > 0n
+          ? Number(net) / Number(spent)
+          : null,
+      usd: {
+        net: usdNet,
+        realized: usdRealized,
+        unrealized: usdUnrealized,
+        spent: usdSpent,
+        holdings: usdHoldings,
+      },
+      from: complete[0]?.day ?? null,
+    },
+    ranges: {
+      tracked: tracked.length,
+      profitable,
+      streak,
+      average:
+        net !== null && tracked.length > 0
+          ? net / BigInt(tracked.length)
+          : null,
+      best,
+      worst,
+    },
+    collections,
+    months,
+  }
 }
