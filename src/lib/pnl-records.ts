@@ -334,7 +334,6 @@ export type LifetimeMonth = {
 export type LifetimeTotals = {
   measured: number
   excluded: number
-  legacy: number
   unquoted: number
   net: bigint | null
   realized: bigint | null
@@ -563,7 +562,6 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     totals: {
       measured: measuredCount,
       excluded,
-      legacy,
       unquoted,
       net,
       realized,

@@ -319,23 +319,12 @@ export function PnlLifetimePage() {
           <p className="px-4 pb-2 text-xs text-muted-foreground">{error}</p>
         ) : null}
 
-        {totals.excluded === 0 && totals.legacy === 0 ? null : (
-          <div className="flex flex-col gap-0.5 px-4 pb-2 text-xs text-muted-foreground">
-            {totals.excluded === 0 ? null : (
-              <p>
-                {totals.excluded === 1
-                  ? '1 collection left out: no complete check.'
-                  : `${totals.excluded} collections left out: no complete check.`}
-              </p>
-            )}
-            {totals.legacy === 0 ? null : (
-              <p>
-                {totals.legacy === 1
-                  ? '1 collection was checked before the breakdown was stored. Re-check to fill it in.'
-                  : `${totals.legacy} collections were checked before the breakdown was stored. Re-check to fill them in.`}
-              </p>
-            )}
-          </div>
+        {totals.excluded === 0 ? null : (
+          <p className="px-4 pb-2 text-xs text-muted-foreground">
+            {totals.excluded === 1
+              ? '1 collection left out: no complete check.'
+              : `${totals.excluded} collections left out: no complete check.`}
+          </p>
         )}
 
         <Table>
