@@ -13,7 +13,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
-import { upsertPnlRecord } from '@/lib/pnl-records'
+import { backfillQuote, upsertPnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
@@ -34,6 +34,7 @@ export function PnlCardPage() {
     positions,
     version,
     read,
+    save,
     quote,
   } = usePnlCard()
   const [running, setRunning] = useState(false)
@@ -173,14 +174,28 @@ export function PnlCardPage() {
 
   // The write belongs to the check, so it is keyed on the read's own timestamp
   // and only fires for the request that produced it. A remount replays the
-  // stored read and rewrites the same row instead of inventing one for the day
-  // it was reopened, and a new collection or wallet set cannot inherit the
-  // previous check's numbers while its own read is still missing.
+  // stored read but writes nothing, and a new collection or wallet set cannot
+  // inherit the previous check's numbers while its own read is still missing.
   useEffect(() => {
     if (freshRead === null || freshRead.stats === null) return
     if (collection === null || addresses === '') return
     if (freshRead.stats.held + freshRead.stats.sold === 0) return
 
+    // A remount replays the stored read without saving it again; the only write
+    // it may make is the missing quote for the row that read already saved.
+    if (save !== null && save.at === freshRead.at) {
+      if (save.failed || save.price !== null || quote.price === null) return
+      backfillQuote(collection.contractAddress, freshRead.at, quote.price)
+        .then(() => {
+          pnlCard.markSaved(freshRead.at, quote.price)
+        })
+        .catch((failure: unknown) => {
+          toast.error(failure instanceof Error ? failure.message : String(failure))
+        })
+      return
+    }
+
+    const price = quote.price
     upsertPnlRecord({
       slug: collection.slug,
       name: collection.name,
@@ -191,12 +206,21 @@ export function PnlCardPage() {
       stats: freshRead.stats,
       truncated: freshRead.truncated,
       unpriced: freshRead.unpriced,
-      ethPriceUsd: quote.price,
+      ethPriceUsd: price,
       now: freshRead.at,
-    }).catch((failure: unknown) => {
-      toast.error(failure instanceof Error ? failure.message : String(failure))
     })
-  }, [freshRead, collection, addresses, quote.price])
+      .then((saved) => {
+        // The store can keep an older complete row over this read, so the
+        // marker has to carry the price that row holds, not the one sent.
+        pnlCard.markSaved(freshRead.at, saved.ethPriceUsd)
+      })
+      .catch((failure: unknown) => {
+        // The read has been handled, so a remount must not try it again and
+        // recreate a row the monthly page deleted. A re-check retries the save.
+        pnlCard.markFailed(freshRead.at)
+        toast.error(failure instanceof Error ? failure.message : String(failure))
+      })
+  }, [freshRead, collection, addresses, quote.price, save])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only

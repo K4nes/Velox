@@ -48,6 +48,8 @@
     --color-pnl-on-image-muted: var(--pnl-on-image-muted);
     --color-pnl-positive: var(--pnl-positive);
     --color-pnl-negative: var(--pnl-negative);
+    --color-pnl-positive-surface: var(--pnl-positive-surface);
+    --color-pnl-negative-surface: var(--pnl-negative-surface);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -99,6 +101,8 @@
     --pnl-on-image-muted: oklch(0.87 0 0);
     --pnl-positive: oklch(0.8 0.17 150);
     --pnl-negative: oklch(0.7 0.19 25);
+    --pnl-positive-surface: oklch(0.52 0.13 150);
+    --pnl-negative-surface: oklch(0.55 0.2 27);
 }
 
 .dark {
@@ -137,6 +141,8 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --pnl-positive-surface: oklch(0.8 0.17 150);
+    --pnl-negative-surface: oklch(0.7 0.19 25);
 }
 
 @layer base {

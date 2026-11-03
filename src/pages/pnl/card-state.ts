@@ -27,6 +27,7 @@ type State = {
   positions: Record<string, ImagePosition>
   version: number
   read: PnlRead | null
+  save: { at: number; price: number | null; failed: boolean } | null
   quote: { price: number | null; loading: boolean; at: number }
 }
 
@@ -40,6 +41,7 @@ let state: State = {
   positions: {},
   version: 0,
   read: null,
+  save: null,
   quote: { price: null, loading: false, at: 0 },
 }
 
@@ -86,6 +88,12 @@ export const pnlCard = {
   },
   setRead(read: PnlRead) {
     set({ read })
+  },
+  markSaved(at: number, price: number | null) {
+    set({ save: { at, price, failed: false } })
+  },
+  markFailed(at: number) {
+    set({ save: { at, price: null, failed: true } })
   },
   async loadQuote(force = false) {
     const { quote } = state
