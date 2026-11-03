@@ -1,7 +1,18 @@
 import { getAll, get, put, remove } from '@/lib/db'
 import { formatEth, type PnlStats } from '@/lib/pnl-trades'
 
+// Bump `v` when a stored field changes meaning; readers branch on it.
 export type PnlBreakdown = {
+  v: 2
+  realized: string
+  spent: string
+  basis: string
+  held: number
+  sold: number
+}
+
+// Rows written before the split was versioned held the open basis under `invested`.
+export type LegacyPnlBreakdown = {
   realized: string
   invested: string
   held: number
@@ -26,9 +37,9 @@ export type PnlRecord = {
   ethPriceUsd: number | null
   truncated: boolean
   unpriced: boolean
-  // Rows saved before the split existed have no breakdown; their net still
-  // counts, but no realized or invested figure can be recovered from it.
-  breakdown?: PnlBreakdown
+  // Rows saved before the split was written at all have none; their net still
+  // counts, but no realized or spent figure can be recovered from them.
+  breakdown?: PnlBreakdown | LegacyPnlBreakdown
 }
 
 export type PnlRecordInput = {
@@ -85,8 +96,10 @@ export async function upsertPnlRecord(input: PnlRecordInput): Promise<PnlRecord>
     truncated: input.truncated,
     unpriced: input.unpriced,
     breakdown: {
+      v: 2,
       realized: input.stats.realized.toString(),
-      invested: input.stats.invested.toString(),
+      spent: input.stats.spent.toString(),
+      basis: input.stats.basis.toString(),
       held: input.stats.held,
       sold: input.stats.sold,
     },
@@ -304,8 +317,9 @@ export function formatNetPnl(record: PnlRecord): string {
 
 export type PnlBreakdownValues = {
   realized: bigint
+  spent: bigint | null
+  basis: bigint
   unrealized: bigint
-  invested: bigint
   holdings: bigint
   held: number
   sold: number
@@ -338,14 +352,14 @@ export type LifetimeTotals = {
   net: bigint | null
   realized: bigint | null
   unrealized: bigint | null
-  invested: bigint | null
+  spent: bigint | null
   holdings: bigint | null
   roi: number | null
   usd: {
     net: number | null
     realized: number | null
     unrealized: number | null
-    invested: number | null
+    spent: number | null
     holdings: number | null
   }
   from: string | null
@@ -373,20 +387,45 @@ type Measured = {
   ethPriceUsd: number | null
 }
 
+// `lifetimeView` runs on every render, so an unreadable stored number degrades
+// the split to null instead of throwing.
+function weiOrNull(raw: string | undefined): bigint | null {
+  if (raw === undefined) return null
+  try {
+    return BigInt(raw)
+  } catch {
+    return null
+  }
+}
+
 // Both identities hold at write time, so unrealized and the holdings value are
 // reconstructed here instead of stored a second time.
 function breakdownOf(record: PnlRecord): PnlBreakdownValues | null {
-  if (record.breakdown === undefined) return null
-  const realized = BigInt(record.breakdown.realized)
-  const invested = BigInt(record.breakdown.invested)
+  const stored = record.breakdown
+  if (stored === undefined) return null
+
+  const realized = weiOrNull(stored.realized)
+  let spent: bigint | null = null
+  let basis: bigint | null
+
+  if ('v' in stored) {
+    basis = weiOrNull(stored.basis)
+    spent = weiOrNull(stored.spent)
+  } else {
+    basis = weiOrNull(stored.invested)
+  }
+
+  if (realized === null || basis === null) return null
+
   const unrealized = netWei(record) - realized
   return {
     realized,
+    spent,
+    basis,
     unrealized,
-    invested,
-    holdings: invested + unrealized,
-    held: record.breakdown.held,
-    sold: record.breakdown.sold,
+    holdings: basis + unrealized,
+    held: stored.held,
+    sold: stored.sold,
   }
 }
 
@@ -492,17 +531,31 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     measuredCount > 0 && legacy === 0
       ? splits.reduce((sum, entry) => sum + entry.split.realized, 0n)
       : null
-  const invested =
-    measuredCount > 0 && legacy === 0
-      ? splits.reduce((sum, entry) => sum + entry.split.invested, 0n)
+  const spentSplits = measured.filter(
+    (entry): entry is Measured & { split: PnlBreakdownValues & { spent: bigint } } =>
+      entry.split !== null && entry.split.spent !== null,
+  )
+  const spent =
+    measuredCount > 0 && spentSplits.length === measuredCount
+      ? spentSplits.reduce((sum, entry) => sum + entry.split.spent, 0n)
       : null
   const unrealized = net !== null && realized !== null ? net - realized : null
   const holdings =
-    invested !== null && unrealized !== null ? invested + unrealized : null
+    measuredCount > 0 && legacy === 0
+      ? splits.reduce((sum, entry) => sum + entry.split.holdings, 0n)
+      : null
 
   const quoted = measured.filter(
     (entry): entry is Measured & { split: PnlBreakdownValues; ethPriceUsd: number } =>
       entry.split !== null && entry.ethPriceUsd !== null,
+  )
+  const quotedSpent = measured.filter(
+    (
+      entry,
+    ): entry is Measured & {
+      split: PnlBreakdownValues & { spent: bigint }
+      ethPriceUsd: number
+    } => entry.split !== null && entry.split.spent !== null && entry.ethPriceUsd !== null,
   )
   const usdNet =
     measuredCount > 0 && unquoted === 0
@@ -516,19 +569,23 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
           0,
         )
       : null
-  const usdInvested =
-    measuredCount > 0 && quoted.length === measuredCount
-      ? quoted.reduce(
+  const usdSpent =
+    measuredCount > 0 && quotedSpent.length === measuredCount
+      ? quotedSpent.reduce(
           (sum, entry) =>
-            sum + (Number(entry.split.invested) / 10 ** 18) * entry.ethPriceUsd,
+            sum + (Number(entry.split.spent) / 10 ** 18) * entry.ethPriceUsd,
           0,
         )
       : null
   const usdUnrealized =
     usdNet !== null && usdRealized !== null ? usdNet - usdRealized : null
   const usdHoldings =
-    usdInvested !== null && usdUnrealized !== null
-      ? usdInvested + usdUnrealized
+    measuredCount > 0 && quoted.length === measuredCount
+      ? quoted.reduce(
+          (sum, entry) =>
+            sum + (Number(entry.split.holdings) / 10 ** 18) * entry.ethPriceUsd,
+          0,
+        )
       : null
 
   const tracked = months.filter((month) => month.tracked)
@@ -566,17 +623,17 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       net,
       realized,
       unrealized,
-      invested,
+      spent,
       holdings,
       roi:
-        net !== null && invested !== null && invested > 0n
-          ? Number(net) / Number(invested)
+        net !== null && spent !== null && spent > 0n
+          ? Number(net) / Number(spent)
           : null,
       usd: {
         net: usdNet,
         realized: usdRealized,
         unrealized: usdUnrealized,
-        invested: usdInvested,
+        spent: usdSpent,
         holdings: usdHoldings,
       },
       from: complete[0]?.day ?? null,

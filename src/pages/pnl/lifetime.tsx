@@ -142,8 +142,8 @@ export function PnlLifetimePage() {
     },
     {
       label: 'Invested',
-      value: ethText(totals.invested),
-      secondary: formatUsd(totals.usd.invested),
+      value: ethText(totals.spent),
+      secondary: formatUsd(totals.usd.spent),
     },
     {
       label: 'Holdings Value',

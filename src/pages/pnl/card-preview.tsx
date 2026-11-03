@@ -28,7 +28,7 @@ function toneOf(value: bigint): Tone {
 const statRows = [
   { label: 'Realized', read: (stats: PnlStats) => stats.realized, signed: true },
   { label: 'Unrealized', read: (stats: PnlStats) => stats.unrealized, signed: true },
-  { label: 'Invested', read: (stats: PnlStats) => stats.invested, signed: false },
+  { label: 'Invested', read: (stats: PnlStats) => stats.spent, signed: false },
   { label: 'Current value', read: (stats: PnlStats) => stats.currentValue, signed: false },
 ] as const
 
