@@ -185,10 +185,10 @@ export function PnlCardPage() {
     // Writing again would put back a monthly row the user deleted. The only
     // allowed second pass fills in a quote that arrived after the save.
     if (written !== null && written.at === freshRead.at) {
-      if (written.price !== null || quote.price === null) return
+      if (!written.saved || written.price !== null || quote.price === null) return
       backfillQuote(collection.contractAddress, freshRead.at, quote.price)
         .then(() => {
-          pnlCard.markWritten(freshRead.at, quote.price)
+          pnlCard.markSaved(freshRead.at, quote.price)
         })
         .catch((failure: unknown) => {
           toast.error(failure instanceof Error ? failure.message : String(failure))
@@ -211,12 +211,12 @@ export function PnlCardPage() {
       now: freshRead.at,
     })
       .then(() => {
-        pnlCard.markWritten(freshRead.at, price)
+        pnlCard.markSaved(freshRead.at, price)
       })
       .catch((failure: unknown) => {
         // The read has been handled, so a remount must not try it again and
         // recreate a row the monthly page deleted. A re-check retries the save.
-        pnlCard.markWritten(freshRead.at, null)
+        pnlCard.markFailed(freshRead.at)
         toast.error(failure instanceof Error ? failure.message : String(failure))
       })
   }, [freshRead, collection, addresses, quote.price, written])

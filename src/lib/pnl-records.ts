@@ -187,8 +187,8 @@ function baselineWei(record: PnlRecord, snapshots: PnlRecord[]): bigint {
 
 // Each snapshot is measured against the previous check of the same collection
 // and wallet set. A re-check with another set replaces the day and starts that
-// set's series there. Partial reads drop out first, so a day they cover keeps
-// the last complete measurement.
+// set's series there. Partial reads are dropped, so the day they cover adds no
+// delta and the next complete check absorbs its move.
 export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   const snapshots = records.filter(isComplete)
   const bySeries = new Map<string, PnlRecord[]>()
