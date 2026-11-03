@@ -253,7 +253,8 @@ function startCartesianLoop({
         const red = seedOfColor("red").fill
         const my = Math.round(cur.top[mx] ?? 0)
         const zeroRow = Math.round(cur.floor[mx] ?? rows - 1)
-        const belowZero = split ? Math.min(rows, Math.max(my, zeroRow)) : rows
+        const belowZero =
+          split && zeroRow < rows - 1 ? Math.min(rows, Math.max(my, zeroRow)) : rows
         // Full-height column + a chunky marker block at the point — the
         // series colour at higher opacity, so it reads on either theme.
         c.fillStyle = rgb(seed.fill, 1, 0.55)
