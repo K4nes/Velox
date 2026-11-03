@@ -210,8 +210,10 @@ export function PnlCardPage() {
       ethPriceUsd: price,
       now: freshRead.at,
     })
-      .then(() => {
-        pnlCard.markSaved(freshRead.at, price)
+      .then((saved) => {
+        // The store can keep an older complete row over this read, so the
+        // marker has to carry the price that row holds, not the one sent.
+        pnlCard.markSaved(freshRead.at, saved.ethPriceUsd)
       })
       .catch((failure: unknown) => {
         // The read has been handled, so a remount must not try it again and
