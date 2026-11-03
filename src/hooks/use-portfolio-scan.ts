@@ -78,6 +78,7 @@ export function usePortfolioScan() {
   const [url, setUrl] = useState('')
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [state, setState] = useState<PortfolioScanState>({ status: 'idle' })
+  const [starting, setStarting] = useState(false)
   const runRef = useRef(0)
   const runningRef = useRef(false)
 
@@ -100,6 +101,7 @@ export function usePortfolioScan() {
     if (runningRef.current) return
 
     runningRef.current = true
+    setStarting(true)
     const run = runRef.current + 1
     runRef.current = run
     const current = () => runRef.current === run
@@ -168,6 +170,7 @@ export function usePortfolioScan() {
       toastResult(result)
     } finally {
       runningRef.current = false
+      setStarting(false)
     }
   }
 
@@ -183,7 +186,7 @@ export function usePortfolioScan() {
     selectedWallets,
     state,
     tableState: describeTable(state, collectionName),
-    running: state.status === 'scanning',
+    running: starting || state.status === 'scanning',
     changeUrl,
     changeWallets,
     scan,

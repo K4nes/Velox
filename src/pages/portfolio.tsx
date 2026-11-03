@@ -32,9 +32,11 @@ import {
   sortHoldings,
 } from '@/lib/portfolio'
 import type {
+  CollapsedWallet,
   HoldingSort,
   RarityBandKey,
   ScanningHolding,
+  WalletScan,
 } from '@/lib/portfolio'
 import { cn } from '@/lib/utils'
 
@@ -51,6 +53,10 @@ const SORTS: readonly { value: HoldingSort; label: string }[] = [
   { value: 'rarest', label: 'Rarity rank · rarest first' },
   { value: 'commonest', label: 'Rarity rank · commonest first' },
 ]
+
+const NO_HOLDINGS: ScanningHolding[] = []
+const NO_WALLETS: WalletScan[] = []
+const NO_COLLAPSED: CollapsedWallet[] = []
 
 function shortenAddress(address: string): string {
   return address.length > 10
@@ -145,9 +151,9 @@ export function PortfolioPage() {
   const collection = result?.collection ?? snapshot?.collection ?? null
   const stats = result?.stats ?? snapshot?.stats ?? null
   const ethUsd = result?.ethUsd ?? snapshot?.ethUsd ?? null
-  const wallets = result?.wallets ?? snapshot?.wallets ?? []
-  const collapsed = result?.collapsed ?? snapshot?.collapsed ?? []
-  const holdings = result?.holdings ?? snapshot?.holdings ?? []
+  const wallets = result?.wallets ?? snapshot?.wallets ?? NO_WALLETS
+  const collapsed = result?.collapsed ?? snapshot?.collapsed ?? NO_COLLAPSED
+  const holdings = result?.holdings ?? snapshot?.holdings ?? NO_HOLDINGS
   const maxRank = collection?.rarity?.maxRank ?? null
 
   const searched = useMemo(
@@ -169,23 +175,8 @@ export function PortfolioPage() {
     [searched, band, maxRank, sort]
   )
   const summary = useMemo(
-    () =>
-      portfolioStats({
-        holdings,
-        wallets,
-        supply: collection?.totalSupply ?? null,
-        floor: stats?.floorPrice ?? null,
-        floorSymbol: stats?.floorSymbol ?? '',
-        ethUsd,
-      }),
-    [
-      holdings,
-      wallets,
-      collection?.totalSupply,
-      stats?.floorPrice,
-      stats?.floorSymbol,
-      ethUsd,
-    ]
+    () => portfolioStats({ holdings, wallets }),
+    [holdings, wallets]
   )
 
   const rarityLabel = collection
@@ -265,7 +256,9 @@ export function PortfolioPage() {
       value: summary.walletsHolding.toLocaleString('en-US'),
       secondary: walletParts.join(' · '),
     },
-  ]
+  ].map((tile) =>
+    collection === null ? { ...tile, value: '—', secondary: '—' } : tile
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">

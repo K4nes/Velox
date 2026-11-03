@@ -188,10 +188,6 @@ export function sortHoldings(
 export function portfolioStats(input: {
   holdings: readonly ScanningHolding[]
   wallets: readonly WalletScan[]
-  supply: number | null
-  floor: number | null
-  floorSymbol: string
-  ethUsd: number | null
 }): {
   rows: number
   units: number
@@ -219,9 +215,7 @@ export function portfolioStats(input: {
         ranked += 1
         if (bestRank === null || row.rarity.rank < bestRank) {
           bestRank = row.rarity.rank
-          bestTopPercent =
-            row.rarity.topPercent ??
-            percentileOf(row.rarity.rank, input.supply)
+          bestTopPercent = row.rarity.topPercent
         }
         break
       case 'pending':
@@ -496,6 +490,7 @@ export async function scanPortfolio(input: {
     ethUsd,
     wallets: walletResults(),
     collapsed,
+    // Every holding contributes to exactly one batch job, so none is pending here.
     holdings: [...holdings.values()] as PortfolioHolding[],
   }
 }
