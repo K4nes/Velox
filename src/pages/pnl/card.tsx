@@ -34,7 +34,7 @@ export function PnlCardPage() {
     positions,
     version,
     read,
-    written,
+    save,
     quote,
   } = usePnlCard()
   const [running, setRunning] = useState(false)
@@ -181,11 +181,10 @@ export function PnlCardPage() {
     if (collection === null || addresses === '') return
     if (freshRead.stats.held + freshRead.stats.sold === 0) return
 
-    // A remount replays the stored read, so the write has to remember it ran.
-    // Writing again would put back a monthly row the user deleted. The only
-    // allowed second pass fills in a quote that arrived after the save.
-    if (written !== null && written.at === freshRead.at) {
-      if (!written.saved || written.price !== null || quote.price === null) return
+    // A remount replays the stored read without saving it again; the only write
+    // it may make is the missing quote for the row that read already saved.
+    if (save !== null && save.at === freshRead.at) {
+      if (save.failed || save.price !== null || quote.price === null) return
       backfillQuote(collection.contractAddress, freshRead.at, quote.price)
         .then(() => {
           pnlCard.markSaved(freshRead.at, quote.price)
@@ -221,7 +220,7 @@ export function PnlCardPage() {
         pnlCard.markFailed(freshRead.at)
         toast.error(failure instanceof Error ? failure.message : String(failure))
       })
-  }, [freshRead, collection, addresses, quote.price, written])
+  }, [freshRead, collection, addresses, quote.price, save])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only
