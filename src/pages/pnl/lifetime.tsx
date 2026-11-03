@@ -61,6 +61,12 @@ function ethText(value: bigint | null): string {
   return value === null ? '—' : `${formatEth(value)} ETH`
 }
 
+// Levels on this page are usually fractions of an ETH, so two decimals would
+// print every tick as 0.00.
+function ethTick(value: number): string {
+  return value.toFixed(Math.abs(value) < 0.01 ? 4 : 2)
+}
+
 function matchesQuery(row: LifetimeCollection, query: string): boolean {
   if (query.length === 0) return true
   return [row.name, row.slug, row.chain].some((field) =>
@@ -253,7 +259,7 @@ export function PnlLifetimePage() {
                 className="h-full w-full"
               >
                 <XAxis dataKey="label" />
-                <YAxis tickFormatter={(value: number) => value.toFixed(2)} />
+                <YAxis tickFormatter={ethTick} />
                 <Tooltip
                   labelKey="label"
                   valueFormatter={(value: number) =>
