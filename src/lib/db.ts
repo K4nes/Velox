@@ -19,7 +19,7 @@ type LegacyPnlRecord = {
   unpriced: boolean
 }
 
-function winsOver(candidate: LegacyPnlRecord, current: LegacyPnlRecord): boolean {
+function isPreferred(candidate: LegacyPnlRecord, current: LegacyPnlRecord): boolean {
   const candidateComplete = !candidate.truncated && !candidate.unpriced
   const currentComplete = !current.truncated && !current.unpriced
   // A partial read measured part of the position, so it must never replace a
@@ -48,7 +48,7 @@ function migratePnlRecordIds(store: IDBObjectStore): void {
     const record = cursor.value as LegacyPnlRecord
     const id = `${record.contract.toLowerCase()}|${record.day}`
     const current = winners.get(id)
-    if (current === undefined || winsOver(record, current)) {
+    if (current === undefined || isPreferred(record, current)) {
       winners.set(id, record)
     }
     cursor.delete()

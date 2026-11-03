@@ -310,8 +310,8 @@ export function PnlMonthlyPage() {
                   <TableCell
                     className={cn(
                       'px-3 text-[13px] font-medium',
-                      netWei(record) > 0n && 'text-pnl-positive',
-                      netWei(record) < 0n && 'text-pnl-negative',
+                      netWei(record) > 0n && 'text-pnl-positive-surface',
+                      netWei(record) < 0n && 'text-pnl-negative-surface',
                     )}
                   >
                     {formatNetPnl(record)}

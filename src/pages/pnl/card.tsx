@@ -34,6 +34,7 @@ export function PnlCardPage() {
     positions,
     version,
     read,
+    writtenAt,
     quote,
   } = usePnlCard()
   const [running, setRunning] = useState(false)
@@ -173,13 +174,15 @@ export function PnlCardPage() {
 
   // The write belongs to the check, so it is keyed on the read's own timestamp
   // and only fires for the request that produced it. A remount replays the
-  // stored read and rewrites the same row instead of inventing one for the day
-  // it was reopened, and a new collection or wallet set cannot inherit the
-  // previous check's numbers while its own read is still missing.
+  // stored read but writes nothing, and a new collection or wallet set cannot
+  // inherit the previous check's numbers while its own read is still missing.
   useEffect(() => {
     if (freshRead === null || freshRead.stats === null) return
     if (collection === null || addresses === '') return
     if (freshRead.stats.held + freshRead.stats.sold === 0) return
+    // A remount replays the stored read, so the write has to remember it ran.
+    // Writing again would put back a monthly row the user deleted.
+    if (writtenAt === freshRead.at) return
 
     upsertPnlRecord({
       slug: collection.slug,
@@ -193,10 +196,14 @@ export function PnlCardPage() {
       unpriced: freshRead.unpriced,
       ethPriceUsd: quote.price,
       now: freshRead.at,
-    }).catch((failure: unknown) => {
-      toast.error(failure instanceof Error ? failure.message : String(failure))
     })
-  }, [freshRead, collection, addresses, quote.price])
+      .then(() => {
+        pnlCard.markWritten(freshRead.at)
+      })
+      .catch((failure: unknown) => {
+        toast.error(failure instanceof Error ? failure.message : String(failure))
+      })
+  }, [freshRead, collection, addresses, quote.price, writtenAt])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only
