@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Image as ImageIcon,
   Search,
+  Trash2,
   X,
 } from 'lucide-react'
 import { Area } from '@/components/dither-kit/area'
@@ -37,11 +38,13 @@ import {
   formatNetPnl,
   isComplete,
   monthNet,
+  netWei,
   recordUsd,
   recordsInMonth,
   type PnlRecord,
 } from '@/lib/pnl-records'
 import { formatEth } from '@/lib/pnl-trades'
+import { cn } from '@/lib/utils'
 
 const sortOptions = ['Newest First', 'Oldest First']
 
@@ -58,7 +61,7 @@ const recordDateFormat = new Intl.DateTimeFormat('en-US', {
 })
 
 export function PnlMonthlyPage() {
-  const { records, loading, error } = usePnlRecords()
+  const { records, loading, error, remove } = usePnlRecords()
   const [month, setMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -265,13 +268,14 @@ export function PnlMonthlyPage() {
               <TableHead className="text-muted-foreground w-[109px] px-3 text-xs font-medium">
                 Date
               </TableHead>
+              <TableHead className="text-muted-foreground w-10 px-3 text-xs font-medium" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={4}
+                  colSpan={5}
                   className="h-10 text-center text-[13px] text-muted-foreground"
                 >
                   {emptyMessage(loading, day !== null && dayRows.length === 0, search !== '')}
@@ -303,7 +307,13 @@ export function PnlMonthlyPage() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="px-3 text-[13px] font-medium">
+                  <TableCell
+                    className={cn(
+                      'px-3 text-[13px] font-medium',
+                      netWei(record) > 0n && 'text-pnl-positive',
+                      netWei(record) < 0n && 'text-pnl-negative',
+                    )}
+                  >
                     {formatNetPnl(record)}
                   </TableCell>
                   <TableCell className="px-3 text-[13px]">
@@ -311,6 +321,21 @@ export function PnlMonthlyPage() {
                   </TableCell>
                   <TableCell className="px-3 text-[13px] text-muted-foreground">
                     {recordDateFormat.format(record.createdAt)}
+                  </TableCell>
+                  <TableCell className="w-10 px-3">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Delete ${record.name} record`}
+                      onClick={(event) => {
+                        if (event.detail > 1) {
+                          return
+                        }
+                        remove(record.id)
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))

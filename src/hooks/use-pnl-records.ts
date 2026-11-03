@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { listPnlRecords } from '@/lib/pnl-records'
+import { deletePnlRecord, listPnlRecords } from '@/lib/pnl-records'
 import type { PnlRecord } from '@/lib/pnl-records'
 
 type Loaded = {
   version: number
   records: PnlRecord[]
-  error: string | null
 }
 
 export function usePnlRecords(): {
@@ -13,9 +12,11 @@ export function usePnlRecords(): {
   loading: boolean
   error: string | null
   reload: () => void
+  remove: (id: string) => void
 } {
   const [version, setVersion] = useState(0)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -23,16 +24,14 @@ export function usePnlRecords(): {
     listPnlRecords()
       .then((records) => {
         if (!cancelled) {
-          setLoaded({ version, records, error: null })
+          setLoaded({ version, records })
+          setError(null)
         }
       })
       .catch((failure: unknown) => {
         if (!cancelled) {
-          setLoaded({
-            version,
-            records: [],
-            error: failure instanceof Error ? failure.message : String(failure),
-          })
+          setLoaded({ version, records: [] })
+          setError(failure instanceof Error ? failure.message : String(failure))
         }
       })
 
@@ -45,10 +44,21 @@ export function usePnlRecords(): {
     setVersion((current) => current + 1)
   }, [])
 
+  const remove = useCallback((id: string) => {
+    deletePnlRecord(id)
+      .then(() => {
+        setVersion((current) => current + 1)
+      })
+      .catch((failure: unknown) => {
+        setError(failure instanceof Error ? failure.message : String(failure))
+      })
+  }, [])
+
   return {
     records: loaded?.records ?? [],
     loading: loaded === null || loaded.version !== version,
-    error: loaded?.error ?? null,
+    error,
     reload,
+    remove,
   }
 }
