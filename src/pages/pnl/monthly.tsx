@@ -109,14 +109,16 @@ export function PnlMonthlyPage() {
               <span className="text-[11px] font-medium text-muted-foreground tracking-[0.6px] uppercase">
                 Month net
               </span>
-              <span className="text-xs font-medium">
-                {formatEth(totals.wei)} ETH
-              </span>
-              {totals.usd === '—' ? null : (
-                <span className="text-[11px] text-muted-foreground">
-                  {totals.usd}
+              <span className="flex items-baseline gap-1.5">
+                <span className="text-xs font-medium">
+                  {formatEth(totals.wei)} ETH
                 </span>
-              )}
+                {totals.usd === '—' ? null : (
+                  <span className="text-[11px] text-muted-foreground">
+                    {totals.usd}
+                  </span>
+                )}
+              </span>
             </div>
           </div>
           {monthRecords.length === 0 ? (
