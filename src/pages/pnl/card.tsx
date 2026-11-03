@@ -13,6 +13,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
+import { upsertPnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
 import { cn } from '@/lib/utils'
 import { listWallets, uid, type StoredWallet } from '@/lib/wallets'
@@ -54,7 +55,12 @@ export function PnlCardPage() {
     explorerApi === '' || contract === '' || addresses === ''
       ? ''
       : `${explorerApi}|${contract}|${addresses}`
-  const stats = read !== null && read.key === requestKey ? read.stats : null
+  const shownRead = read !== null && read.key === requestKey ? read : null
+  const stats = shownRead?.stats ?? null
+  // A re-check of the same request bumps the version, and the card keeps showing
+  // the previous numbers until the new read lands. Only the write waits for it.
+  const freshRead =
+    shownRead !== null && shownRead.version === version ? shownRead : null
   const statsLoading =
     requestKey !== '' &&
     (read === null || read.key !== requestKey || read.version !== version)
@@ -123,6 +129,7 @@ export function PnlCardPage() {
           truncated,
           unpriced,
           error: null,
+          at: Date.now(),
         })
         if (truncated) {
           toast.info('These numbers only cover the newest transfers', {
@@ -145,6 +152,7 @@ export function PnlCardPage() {
           truncated: false,
           unpriced: false,
           error: message,
+          at: Date.now(),
         })
         toast.error(message, { id: 'pnl-read-error' })
       })
@@ -162,6 +170,33 @@ export function PnlCardPage() {
     version,
     read,
   ])
+
+  // The write belongs to the check, so it is keyed on the read's own timestamp
+  // and only fires for the request that produced it. A remount replays the
+  // stored read and rewrites the same row instead of inventing one for the day
+  // it was reopened, and a new collection or wallet set cannot inherit the
+  // previous check's numbers while its own read is still missing.
+  useEffect(() => {
+    if (freshRead === null || freshRead.stats === null) return
+    if (collection === null || addresses === '') return
+    if (freshRead.stats.held + freshRead.stats.sold === 0) return
+
+    upsertPnlRecord({
+      slug: collection.slug,
+      name: collection.name,
+      imageUrl: collection.imageUrl,
+      chain: collection.chain,
+      contract: collection.contractAddress,
+      wallets: addresses.split(','),
+      stats: freshRead.stats,
+      truncated: freshRead.truncated,
+      unpriced: freshRead.unpriced,
+      ethPriceUsd: quote.price,
+      now: freshRead.at,
+    }).catch((failure: unknown) => {
+      toast.error(failure instanceof Error ? failure.message : String(failure))
+    })
+  }, [freshRead, collection, addresses, quote.price])
 
   useEffect(() => {
     // Mounting would write the list the browser already holds, which can only

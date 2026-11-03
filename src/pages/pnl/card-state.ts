@@ -14,6 +14,7 @@ export type PnlRead = {
   truncated: boolean
   unpriced: boolean
   error: string | null
+  at: number
 }
 
 type State = {
