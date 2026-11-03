@@ -257,10 +257,7 @@ export function PnlLifetimePage() {
               <AreaChart
                 data={series}
                 config={{
-                  level: {
-                    label: 'Net PnL',
-                    color: (totals.net ?? 0n) < 0n ? 'red' : 'green',
-                  },
+                  level: { label: 'Net PnL', color: 'green' },
                 }}
                 bloom="aura"
                 margins={{ left: 56, right: 44 }}
@@ -276,7 +273,7 @@ export function PnlLifetimePage() {
                     `${value.toFixed(4)} ETH`
                   }
                 />
-                <Area dataKey="level" variant="gradient" />
+                <Area dataKey="level" variant="gradient" splitBySign />
               </AreaChart>
             </div>
           )}

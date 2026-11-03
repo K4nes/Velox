@@ -10,7 +10,7 @@ import {
   prefersReducedMotion,
   resample,
 } from "./dither-paint"
-import { rgb } from "./palette"
+import { rgb, seedOfColor } from "./palette"
 
 type Star = { key: string; xi: number; depth: number; phase: number }
 type Surface = { top: number[]; floor: number[] }
@@ -75,6 +75,9 @@ function startCartesianLoop({
       const cur = current[key]
       if (!cur) return
       const seed = s.seedOf(key)
+      const negativeSeed = s.seriesSpecs[key]?.splitBySign
+        ? seedOfColor("red")
+        : null
       const variant = s.seriesSpecs[key]?.variant ?? "gradient"
       const isLine =
         (s.seriesSpecs[key]?.kind ??
@@ -91,7 +94,8 @@ function startCartesianLoop({
         // so order the pair (a no-op for the common positive case).
         const a = cur.top[x] ?? 0
         const b = cur.floor[x] ?? 0
-        paintColumn(octx, x, Math.min(a, b), Math.max(a, b), seed, {
+        const seedAt = negativeSeed !== null && a > b ? negativeSeed : seed
+        paintColumn(octx, x, Math.min(a, b), Math.max(a, b), seedAt, {
           variant,
           intensity,
           dim,
@@ -194,7 +198,10 @@ function startCartesianLoop({
     // Repaint when a tweak-driven paint input changes (variant, stacking) so
     // the panel updates the fill live — without resetting the entrance reveal.
     const paintSig = `${s.stackType}|${s.configKeys
-      .map((k) => s.seriesSpecs[k]?.variant ?? "")
+      .map(
+        (k) =>
+          `${s.seriesSpecs[k]?.variant ?? ""}${s.seriesSpecs[k]?.splitBySign ? "+sign" : ""}`
+      )
       .join(",")}`
     const sigChanged = paintSig !== lastPaintSig
     if (sigChanged) {
@@ -268,7 +275,10 @@ function startCartesianLoop({
       // Sparkles glint in the series colour via opacity (the `lift` wink)
       // rather than a lighter shade — so they never read as stray white
       // pixels on a light background.
-      const starColor = s.seedOf(star.key).fill
+      const starColor =
+        s.seriesSpecs[star.key]?.splitBySign && top > floor
+          ? seedOfColor("red").fill
+          : s.seedOf(star.key).fill
       c.fillStyle = rgb(starColor, 1, lift)
       c.fillRect(sx, sy, 1, 1)
       // At the peak of a wink the star flares into a 4-point glint.
