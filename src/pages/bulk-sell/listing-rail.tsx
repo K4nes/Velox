@@ -110,7 +110,7 @@ export function ListingRail({
           value={`${formatEth(estimatedTotals.grossWei)} ${symbol}`}
         />
         <SummaryRow
-          label="Fees"
+          label="Est. fees"
           value={
             estimatedTotals.feeWei > 0n
               ? `-${formatEth(estimatedTotals.feeWei)} ${symbol}`
@@ -128,7 +128,7 @@ export function ListingRail({
             </span>
           </div>
           <p className="text-muted-foreground text-xs">
-            after marketplace & royalty fees
+            after estimated marketplace & royalty fees
           </p>
         </div>
 
