@@ -147,8 +147,11 @@ export function assembleOfferBook(input: {
   offers: readonly CollectionOffer[]
 }): OfferBook {
   const byCurrency = new Map<string, CollectionOffer[]>()
+  const seen = new Set<string>()
 
   for (const offer of input.offers) {
+    if (seen.has(offer.id)) continue
+    seen.add(offer.id)
     if (offer.expiresAtSec <= input.fetchedAtSec || offer.remaining < 1) continue
     const address = offer.currency.address
     const group = byCurrency.get(address) ?? []
