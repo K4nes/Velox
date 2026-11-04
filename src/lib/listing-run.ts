@@ -158,7 +158,19 @@ export async function runListingPlan(input: {
   ): Promise<void> {
     const approvals = planned.steps.filter(isApproval)
     const orders = planned.steps.filter(isOrder)
-    const account = privateKeyToAccount(toPrivateKeyHex(record.privateKey))
+
+    let account: ReturnType<typeof privateKeyToAccount>
+    try {
+      account = privateKeyToAccount(toPrivateKeyHex(record.privateKey))
+    } catch (error) {
+      // A stored key that no longer parses fails this wallet, not the whole run.
+      const message = failureMessage(error)
+      for (const step of planned.steps) {
+        const current = stateOf(step.id)
+        if (current) commit({ ...current, status: 'failed', error: message })
+      }
+      return
+    }
 
     for (const approval of approvals) {
       const current = stateOf(approval.id)
