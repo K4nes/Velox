@@ -571,12 +571,12 @@ export function PortfolioPage() {
                           {holding.name || `#${holding.tokenId}`}
                         </span>
                       )}
-                      {holding.quantity > 1 ? (
+                      {holding.quantity !== 1 ? (
                         <Badge
                           variant="secondary"
                           className="h-5 px-1.5 text-xs"
                         >
-                          ×{holding.quantity}
+                          ×{formatAmount(holding.quantity)}
                         </Badge>
                       ) : null}
                     </div>
