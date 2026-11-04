@@ -140,6 +140,15 @@ function readString(value: unknown, field: string): string {
   return value
 }
 
+// Every uint arrives as a decimal string and later becomes a bigint; checking
+// the shape here keeps the conversion from throwing outside this module's error.
+function readUint(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw malformed(`${field} is not an integer string`)
+  }
+  return value
+}
+
 function readInteger(value: unknown, field: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw malformed(`${field} is not an integer`)
@@ -154,34 +163,34 @@ function readArray(value: unknown, field: string): unknown[] {
   return value
 }
 
+function parseOfferItem(value: unknown, field: string): OfferItem {
+  const item = readRecord(value, field)
+  return {
+    itemType: readInteger(item.itemType, `${field}.itemType`),
+    token: readString(item.token, `${field}.token`),
+    identifierOrCriteria: readUint(
+      item.identifierOrCriteria,
+      `${field}.identifierOrCriteria`
+    ),
+    startAmount: readUint(item.startAmount, `${field}.startAmount`),
+    endAmount: readUint(item.endAmount, `${field}.endAmount`),
+  }
+}
+
 function parseOfferItems(value: unknown, field: string): OfferItem[] {
-  return readArray(value, field).map((entry, index) => {
-    const item = readRecord(entry, `${field}[${index}]`)
-    return {
-      itemType: readInteger(item.itemType, `${field}[${index}].itemType`),
-      token: readString(item.token, `${field}[${index}].token`),
-      identifierOrCriteria: readString(
-        item.identifierOrCriteria,
-        `${field}[${index}].identifierOrCriteria`
-      ),
-      startAmount: readString(item.startAmount, `${field}[${index}].startAmount`),
-      endAmount: readString(item.endAmount, `${field}[${index}].endAmount`),
-    }
-  })
+  return readArray(value, field).map((entry, index) =>
+    parseOfferItem(entry, `${field}[${index}]`)
+  )
 }
 
 export function parseOrderComponents(value: unknown): OrderComponentsLeaf {
   const leaf = readRecord(value, 'message')
   const consideration = readArray(leaf.consideration, 'consideration').map(
     (entry, index) => {
-      const [item] = parseOfferItems([entry], `consideration[${index}]`)
-      const record = readRecord(entry, `consideration[${index}]`)
+      const field = `consideration[${index}]`
       return {
-        ...item,
-        recipient: readString(
-          record.recipient,
-          `consideration[${index}].recipient`
-        ),
+        ...parseOfferItem(entry, field),
+        recipient: readString(readRecord(entry, field).recipient, `${field}.recipient`),
       }
     }
   )
@@ -192,12 +201,12 @@ export function parseOrderComponents(value: unknown): OrderComponentsLeaf {
     offer: parseOfferItems(leaf.offer, 'offer'),
     consideration,
     orderType: readInteger(leaf.orderType, 'orderType'),
-    startTime: readString(leaf.startTime, 'startTime'),
-    endTime: readString(leaf.endTime, 'endTime'),
+    startTime: readUint(leaf.startTime, 'startTime'),
+    endTime: readUint(leaf.endTime, 'endTime'),
     zoneHash: readString(leaf.zoneHash, 'zoneHash'),
-    salt: readString(leaf.salt, 'salt'),
+    salt: readUint(leaf.salt, 'salt'),
     conduitKey: readString(leaf.conduitKey, 'conduitKey'),
-    counter: readString(leaf.counter, 'counter'),
+    counter: readUint(leaf.counter, 'counter'),
   }
 }
 
