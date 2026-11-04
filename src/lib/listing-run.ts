@@ -200,6 +200,8 @@ export async function runListingPlan(input: {
         return
       }
 
+      // An approval has no success state of its own in the status union, so it
+      // shares the terminal `listed` state and never carries a hash.
       const approved = stateOf(approval.id)
       if (approved) commit({ ...approved, status: 'listed', orderHash: null })
     }
