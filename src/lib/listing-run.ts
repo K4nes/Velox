@@ -181,8 +181,8 @@ export async function runListingPlan(input: {
         const sent = await sendTransaction({
           wallet: record,
           chainSlug: input.plan.collection.chain,
-          to: approval.to as `0x${string}`,
-          data: approval.data as `0x${string}`,
+          to: approval.to,
+          data: approval.data,
           value: BigInt(approval.value),
         })
         const receipt = await waitForReceipt(

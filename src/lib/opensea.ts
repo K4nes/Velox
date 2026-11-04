@@ -569,8 +569,8 @@ export type ListingActionEnvelope =
       kind: 'approval'
       chainId: number
       from: string
-      to: string
-      data: string
+      to: `0x${string}`
+      data: `0x${string}`
       value: string
       token: { contract: string; tokenId: string }
     }
@@ -599,6 +599,30 @@ function requiredString(value: unknown, field: string): string {
   return unwrapped
 }
 
+function requiredAddress(value: unknown, field: string): `0x${string}` {
+  const unwrapped = unwrapValue(value)
+  if (typeof unwrapped !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(unwrapped)) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      `listing actions are missing ${field}`
+    )
+  }
+  return unwrapped as `0x${string}`
+}
+
+function requiredData(value: unknown, field: string): `0x${string}` {
+  const unwrapped = unwrapValue(value)
+  if (typeof unwrapped !== 'string' || !/^0x([0-9a-fA-F]{2})+$/.test(unwrapped)) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      `listing actions are missing ${field}`
+    )
+  }
+  return unwrapped as `0x${string}`
+}
+
 function requiredChainId(value: unknown): number {
   const chainId = asRecord(value)?.chainId
   if (typeof chainId !== 'number' || !Number.isInteger(chainId)) {
@@ -623,8 +647,8 @@ function toListingEnvelope(step: unknown): ListingActionEnvelope {
       kind: 'approval',
       chainId: requiredChainId(transaction?.chainIdentifier),
       from: requiredString(transaction?.from, 'the approval sender'),
-      to: requiredString(transaction?.to, 'the approval target'),
-      data: requiredString(transaction?.data, 'the approval data'),
+      to: requiredAddress(transaction?.to, 'the approval target'),
+      data: requiredData(transaction?.data, 'the approval data'),
       value: requiredString(transaction?.value, 'the approval value'),
       token: {
         contract: requiredString(asset?.contractAddress, 'the approval contract'),

@@ -38,8 +38,8 @@ export type PlannedApproval = {
   label: string
   chainId: number
   from: string
-  to: string
-  data: string
+  to: `0x${string}`
+  data: `0x${string}`
   value: string
 }
 
