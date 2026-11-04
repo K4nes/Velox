@@ -20,8 +20,6 @@ export class OpenSeaError extends Error {
 export const NFT_BATCH_MAX = 30
 
 export type RarityIndex = {
-  strategyId: string
-  strategyVersion: string
   maxRank: number
 }
 
@@ -242,8 +240,6 @@ export async function getCollection(slug: string): Promise<CollectionInfo> {
     rarity:
       typeof maxRank === 'number' && Number.isInteger(maxRank) && maxRank > 0
         ? {
-            strategyId: body.rarity?.strategy_id ?? 'openrarity',
-            strategyVersion: body.rarity?.strategy_version ?? '',
             maxRank,
           }
         : null,

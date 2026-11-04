@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { slugFromUrl } from '@/lib/opensea'
 import {
@@ -81,6 +81,12 @@ export function usePortfolioScan() {
   const [starting, setStarting] = useState(false)
   const runRef = useRef(0)
   const runningRef = useRef(false)
+
+  useEffect(() => {
+    return () => {
+      runRef.current += 1
+    }
+  }, [])
 
   function reset() {
     runRef.current += 1

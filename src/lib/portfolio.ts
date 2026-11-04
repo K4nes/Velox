@@ -62,7 +62,7 @@ export type PortfolioTableState =
   | { status: 'empty'; message: string }
   | { status: 'ready'; rows: ScanningHolding[] }
 export type RarityTier = 'legendary' | 'epic' | 'rare' | 'common'
-export type RarityTierFilter = 'all' | RarityTier | 'no-rank'
+export type RarityTierFilter = 'all' | RarityTier
 export type HoldingSort = 'rarest' | 'commonest'
 
 export function resolveScanWallets(
@@ -113,9 +113,9 @@ export function rarityTierOf(
 export function rarityFilterOf(
   row: ScanningHolding,
   maxRank: number | null
-): RarityTierFilter {
-  if (row.rarity.status !== 'ranked') return 'no-rank'
-  return rarityTierOf(row.rarity.rank, maxRank) ?? 'no-rank'
+): RarityTier | null {
+  if (row.rarity.status !== 'ranked') return null
+  return rarityTierOf(row.rarity.rank, maxRank)
 }
 
 export function countRarityTiers(
@@ -128,11 +128,11 @@ export function countRarityTiers(
     epic: 0,
     rare: 0,
     common: 0,
-    'no-rank': 0,
   }
 
   for (const row of rows) {
-    counts[rarityFilterOf(row, maxRank)] += 1
+    const tier = rarityFilterOf(row, maxRank)
+    if (tier !== null) counts[tier] += 1
   }
 
   return counts

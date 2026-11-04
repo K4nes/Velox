@@ -80,7 +80,7 @@ function shortenAddress(address: string): string {
 }
 
 function formatAmount(value: number): string {
-  return value.toLocaleString('en-US', { maximumFractionDigits: 3 })
+  return value.toLocaleString('en-US', { maximumFractionDigits: 4 })
 }
 
 function TokenImage({ src, alt }: { src: string; alt: string }) {
@@ -203,6 +203,18 @@ export function PortfolioPage() {
     [holdings, wallets, maxRank]
   )
 
+  const emptyTableMessage =
+    scan.tableState.status === 'ready'
+      ? scan.running
+        ? 'Scanning… no matching tokens yet.'
+        : 'No held tokens match the filters.'
+      : scan.tableState.message
+  const statusAnnouncement = scan.running
+    ? `Scanning ${scan.selectedWallets.length} wallets`
+    : scan.tableState.status === 'ready'
+      ? `${visible.length} ${visible.length === 1 ? 'token' : 'tokens'} shown`
+      : scan.tableState.message
+
   const contractLabel = collection
     ? shortenAddress(collection.contractAddress)
     : '—'
@@ -218,9 +230,17 @@ export function PortfolioPage() {
   const failedWallets = wallets.filter(
     (wallet) => wallet.error !== null
   ).length
+  const duplicateCount = collapsed.reduce(
+    (sum, entry) => sum + entry.labels.length,
+    0
+  )
   const walletParts = [`${wallets.length} scanned`]
   if (failedWallets > 0) walletParts.push(`${failedWallets} failed`)
-  if (collapsed.length > 0) walletParts.push(`${collapsed.length} duplicate`)
+  if (duplicateCount > 0) {
+    walletParts.push(
+      `${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}`
+    )
+  }
 
   const rankParts = [
     summary.pending > 0 ? `${summary.pending} pending` : null,
@@ -234,9 +254,13 @@ export function PortfolioPage() {
     totalFloor !== null
       ? `${formatAmount(totalFloor)} ${stats?.floorSymbol ?? ''}`.trim()
       : '—'
+  const floorUsd =
+    totalFloor !== null && ethUsd !== null
+      ? Math.round(totalFloor * ethUsd)
+      : null
   const floorSecondary =
-    totalFloor !== null && stats?.floorSymbol === 'ETH' && ethUsd !== null
-      ? `≈ $${Math.round(totalFloor * ethUsd).toLocaleString('en-US')}`
+    floorUsd !== null && floorUsd > 0 && stats?.floorSymbol === 'ETH'
+      ? `≈ $${floorUsd.toLocaleString('en-US')}`
       : ''
 
   const tiles = [
@@ -251,7 +275,9 @@ export function PortfolioPage() {
       secondary:
         summary.bestTier !== null
           ? TIER_LABELS[summary.bestTier]
-          : 'No ranked tokens',
+          : summary.bestRank !== null
+            ? 'Tier unavailable'
+            : 'No ranked tokens',
     },
     {
       label: 'Floor value',
@@ -384,15 +410,15 @@ export function PortfolioPage() {
           <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             {tiles.map((tile) => (
               <Card key={tile.label} className="gap-1 px-4">
-                <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                   {tile.label}
                 </dt>
                 <dd className="flex flex-col gap-0.5">
-                  <span className="text-card-foreground text-base font-semibold tabular-nums">
+                  <span className="text-card-foreground text-lg font-semibold tabular-nums">
                     {tile.value}
                   </span>
                   {tile.secondary ? (
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground text-[11px]">
                       {tile.secondary}
                     </span>
                   ) : null}
@@ -457,6 +483,9 @@ export function PortfolioPage() {
             <Badge variant="secondary">
               {visible.length} {visible.length === 1 ? 'item' : 'items'}
             </Badge>
+            <span aria-live="polite" className="sr-only">
+              {statusAnnouncement}
+            </span>
           </div>
           <div className="relative w-60 shrink-0">
             <Search
@@ -502,7 +531,7 @@ export function PortfolioPage() {
                   )}
                 >
                   {scan.tableState.status === 'ready'
-                    ? 'No held tokens match the filters.'
+                    ? emptyTableMessage
                     : scan.tableState.message}
                 </TableCell>
               </TableRow>
@@ -514,10 +543,7 @@ export function PortfolioPage() {
                 >
                   <TableCell className="px-3">
                     <div className="flex items-center gap-2.5">
-                      <TokenImage
-                        src={holding.imageUrl}
-                        alt={holding.name || `#${holding.tokenId}`}
-                      />
+                      <TokenImage src={holding.imageUrl} alt="" />
                       {holding.openseaUrl ? (
                         <a
                           href={holding.openseaUrl}
