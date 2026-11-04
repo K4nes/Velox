@@ -203,13 +203,6 @@ export function PortfolioPage() {
     [holdings, wallets, maxRank]
   )
 
-  const rarityLabel = collection
-    ? collection.rarity
-      ? ['OpenRarity', collection.rarity.strategyVersion]
-          .filter(Boolean)
-          .join(' ')
-      : 'No rarity index'
-    : '—'
   const contractLabel = collection
     ? shortenAddress(collection.contractAddress)
     : '—'
@@ -273,7 +266,7 @@ export function PortfolioPage() {
     {
       label: 'Collection supply',
       value: supplyLabel,
-      secondary: rarityLabel,
+      secondary: '',
     },
     {
       label: 'Wallets holding',
@@ -379,7 +372,6 @@ export function PortfolioPage() {
                   >
                     {collection.chain}
                   </Badge>
-                  <Badge variant="secondary">{rarityLabel}</Badge>
                 </div>
                 <p className="text-muted-foreground text-[11px]">
                   Contract {contractLabel} • Supply {supplyLabel} • Floor{' '}
@@ -400,9 +392,11 @@ export function PortfolioPage() {
                   <span className="text-card-foreground text-lg font-semibold">
                     {tile.value}
                   </span>
-                  <span className="text-muted-foreground text-[11px]">
-                    {tile.secondary}
-                  </span>
+                  {tile.secondary ? (
+                    <span className="text-muted-foreground text-[11px]">
+                      {tile.secondary}
+                    </span>
+                  ) : null}
                 </dd>
               </Card>
             ))}
