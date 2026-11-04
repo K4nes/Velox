@@ -48,7 +48,6 @@ const TIER_FILTERS: readonly { key: RarityTierFilter; label: string }[] = [
   { key: 'epic', label: 'Epic' },
   { key: 'rare', label: 'Rare' },
   { key: 'common', label: 'Common' },
-  { key: 'no-rank', label: 'No rank' },
 ]
 
 const TIER_LABELS: Record<RarityTier, string> = {
