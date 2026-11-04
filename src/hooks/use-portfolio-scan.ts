@@ -71,7 +71,9 @@ function toastResult(result: PortfolioScanResult) {
   const firstFailure = unavailable.find((row) => row.rarity.status === 'failed')
   const message =
     firstFailure?.rarity.status === 'failed' ? firstFailure.rarity.message : 'Not found'
-  toast.error(`${unavailable.length} tokens could not be ranked — ${message}`)
+  toast.error(
+    `${unavailable.length} ${unavailable.length === 1 ? 'token' : 'tokens'} could not be ranked — ${message}`
+  )
 }
 
 export function usePortfolioScan() {

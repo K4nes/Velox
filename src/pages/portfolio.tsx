@@ -210,9 +210,11 @@ export function PortfolioPage() {
       ? scan.running
         ? 'Scanning… no matching tokens yet.'
         : 'No held tokens match the filters.'
-      : scan.tableState.message
+      : scan.running && scan.tableState.status === 'idle'
+        ? 'Scanning…'
+        : scan.tableState.message
   const statusAnnouncement = scan.running
-    ? `Scanning ${scan.selectedWallets.length} wallets`
+    ? `Scanning ${scan.selectedWallets.length} ${scan.selectedWallets.length === 1 ? 'wallet' : 'wallets'}`
     : scan.tableState.status === 'ready'
       ? 'Scan complete'
       : scan.tableState.message
@@ -302,6 +304,14 @@ export function PortfolioPage() {
       secondary: walletParts.join(', '),
     },
   ]
+  const shownTiles =
+    scan.tableState.status === 'error'
+      ? tiles.map((tile) =>
+          tile.label === 'Collection supply'
+            ? tile
+            : { ...tile, value: '—', secondary: '' }
+        )
+      : tiles
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -410,7 +420,7 @@ export function PortfolioPage() {
           </div>
 
           <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-            {tiles.map((tile) => (
+            {shownTiles.map((tile) => (
               <Card key={tile.label} className="gap-1 px-4">
                 <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                   {tile.label}
@@ -532,9 +542,7 @@ export function PortfolioPage() {
                       : 'text-muted-foreground'
                   )}
                 >
-                  {scan.tableState.status === 'ready'
-                    ? emptyTableMessage
-                    : scan.tableState.message}
+                  {emptyTableMessage}
                 </TableCell>
               </TableRow>
             ) : (
