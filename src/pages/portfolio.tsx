@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Image as ImageIcon, Scan, Search, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -22,76 +22,299 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { WalletSelect } from '@/components/wallet-select'
+import { usePortfolioScan } from '@/hooks/use-portfolio-scan'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import {
+  countRarityTiers,
+  portfolioStats,
+  rarityFilterOf,
+  rarityTierOf,
+  searchHoldings,
+  sortHoldings,
+} from '@/lib/portfolio'
+import type {
+  CollapsedWallet,
+  HoldingSort,
+  RarityTier,
+  RarityTierFilter,
+  ScanningHolding,
+  WalletScan,
+} from '@/lib/portfolio'
 import { cn } from '@/lib/utils'
 
-type Holding = {
-  id: string
-  name: string
-  owner: string
-  rank: number
-  rankDetail: string
-  tier: 'Legendary' | 'Rare' | 'Uncommon' | 'Common'
-  floorPrice: string
-  floorUsd: string
+const TIER_FILTERS: readonly { key: RarityTierFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'legendary', label: 'Legendary' },
+  { key: 'epic', label: 'Epic' },
+  { key: 'rare', label: 'Rare' },
+  { key: 'common', label: 'Common' },
+]
+
+const TIER_LABELS: Record<RarityTier, string> = {
+  legendary: 'Legendary',
+  epic: 'Epic',
+  rare: 'Rare',
+  common: 'Common',
 }
 
-const holdings: Holding[] = []
+const TIER_TEXT: Record<RarityTier, string> = {
+  legendary: 'text-orange-700 dark:text-orange-400',
+  epic: 'text-purple-700 dark:text-purple-400',
+  rare: 'text-blue-700 dark:text-blue-400',
+  common: 'text-muted-foreground',
+}
 
-const tiers = ['All', 'Legendary', 'Rare', 'Uncommon', 'Common'] as const
+const SORTS: readonly { value: HoldingSort; label: string }[] = [
+  { value: 'rarest', label: 'Rarest first' },
+  { value: 'commonest', label: 'Commonest first' },
+]
 
-type Tier = (typeof tiers)[number]
+const NO_HOLDINGS: ScanningHolding[] = []
+const NO_WALLETS: WalletScan[] = []
+const NO_COLLAPSED: CollapsedWallet[] = []
 
-const sortOptions = ['Rarity rank · rarest first', 'Rarity rank · commonest first']
+function shortenAddress(address: string): string {
+  return address.length > 10
+    ? `${address.slice(0, 6)}…${address.slice(-4)}`
+    : address
+}
+
+function formatAmount(value: number): string {
+  return value.toLocaleString('en-US', {
+    maximumFractionDigits: Math.abs(value) < 1 ? 6 : 4,
+  })
+}
+
+function TokenImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+
+  if (!src || failed) {
+    return (
+      <div className="bg-muted flex size-7 shrink-0 items-center justify-center rounded-md">
+        <ImageIcon aria-hidden className="text-muted-foreground size-3.5" />
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="bg-muted size-7 shrink-0 rounded-md object-cover"
+    />
+  )
+}
+
+function RarityRank({
+  row,
+  maxRank,
+}: {
+  row: ScanningHolding
+  maxRank: number | null
+}) {
+  switch (row.rarity.status) {
+    case 'ranked': {
+      const tier = rarityTierOf(row.rarity.rank, maxRank)
+
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span
+            className={cn(
+              'text-[13px] font-medium tabular-nums',
+              tier === null ? null : TIER_TEXT[tier]
+            )}
+          >
+            #{row.rarity.rank}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            {tier === null ? '—' : TIER_LABELS[tier]}
+          </span>
+        </div>
+      )
+    }
+    case 'pending':
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-medium">—</span>
+          <span className="text-muted-foreground text-xs">Loading…</span>
+        </div>
+      )
+    case 'unranked':
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-medium">—</span>
+          <span className="text-muted-foreground text-xs">No rank</span>
+        </div>
+      )
+    case 'missing':
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-medium">—</span>
+          <span className="text-muted-foreground text-xs">Not found</span>
+        </div>
+      )
+    case 'failed':
+      return (
+        <div className="flex flex-col gap-0.5" title={row.rarity.message}>
+          <span className="text-[13px] font-medium">—</span>
+          <span className="text-muted-foreground text-xs">Unavailable</span>
+        </div>
+      )
+  }
+}
 
 export function PortfolioPage() {
-  const [collectionUrl, setCollectionUrl] = useState('')
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [tier, setTier] = useState<Tier>('All')
+  const scan = usePortfolioScan()
+  const { groups, error: walletsError } = useWalletGroups()
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState(sortOptions[0])
-  const [picked, setPicked] = useState<string[]>([])
-  const { groups } = useWalletGroups()
+  const [tier, setTier] = useState<RarityTierFilter>('all')
+  const [sort, setSort] = useState<HoldingSort>('rarest')
 
-  const term = query.trim().toLowerCase()
-  const searchedHoldings = holdings.filter((holding) =>
-    term ? `${holding.name} ${holding.owner}`.toLowerCase().includes(term) : true
+  const snapshot = scan.state.status === 'scanning' ? scan.state.snapshot : null
+  const result = scan.state.status === 'ready' ? scan.state.result : null
+  const collection = result?.collection ?? snapshot?.collection ?? null
+  const stats = result?.stats ?? snapshot?.stats ?? null
+  const ethUsd = result?.ethUsd ?? snapshot?.ethUsd ?? null
+  const wallets = result?.wallets ?? snapshot?.wallets ?? NO_WALLETS
+  const collapsed = result?.collapsed ?? snapshot?.collapsed ?? NO_COLLAPSED
+  const holdings = result?.holdings ?? snapshot?.holdings ?? NO_HOLDINGS
+  const maxRank = collection?.rarity?.maxRank ?? null
+
+  const searched = useMemo(
+    () => searchHoldings(holdings, query),
+    [holdings, query]
   )
-  const visibleHoldings = searchedHoldings
-    .filter((holding) => tier === 'All' || holding.tier === tier)
-    .sort((a, b) =>
-      sort === sortOptions[0] ? a.rank - b.rank : b.rank - a.rank
-    )
+  const tiers = useMemo(
+    () => countRarityTiers(searched, maxRank),
+    [searched, maxRank]
+  )
+  const visible = useMemo(
+    () =>
+      sortHoldings(
+        tier === 'all'
+          ? searched
+          : searched.filter((row) => rarityFilterOf(row, maxRank) === tier),
+        sort
+      ),
+    [searched, tier, maxRank, sort]
+  )
+  const summary = useMemo(
+    () => portfolioStats({ holdings, wallets, maxRank }),
+    [holdings, wallets, maxRank]
+  )
 
-  const allPicked =
-    visibleHoldings.length > 0 &&
-    visibleHoldings.every((holding) => picked.includes(holding.id))
+  const emptyTableMessage =
+    scan.tableState.status === 'ready'
+      ? scan.running
+        ? 'Scanning… no matching tokens yet.'
+        : 'No held tokens match the filters.'
+      : scan.running &&
+          (scan.tableState.status === 'idle' ||
+            scan.tableState.status === 'empty' ||
+            scan.tableState.status === 'error')
+        ? 'Scanning…'
+        : scan.tableState.message
+  const statusAnnouncement = scan.running
+    ? `Scanning ${scan.selectedWallets.length} ${scan.selectedWallets.length === 1 ? 'wallet' : 'wallets'}`
+    : scan.tableState.status === 'ready'
+      ? 'Scan complete'
+      : scan.tableState.message
 
-  const toggleHolding = (id: string) => {
-    setPicked((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id]
+  const contractLabel = collection
+    ? shortenAddress(collection.contractAddress)
+    : '—'
+  const supplyLabel =
+    collection?.totalSupply != null
+      ? collection.totalSupply.toLocaleString('en-US')
+      : '—'
+  const floorLabel =
+    stats?.floorPrice != null
+      ? `${formatAmount(stats.floorPrice)} ${stats.floorSymbol}`.trim()
+      : '—'
+
+  const failedWallets = wallets.filter(
+    (wallet) => wallet.error !== null
+  ).length
+  const duplicateCount = collapsed.reduce(
+    (sum, entry) => sum + entry.labels.length,
+    0
+  )
+  const walletParts = [`${wallets.length} scanned`]
+  if (failedWallets > 0) walletParts.push(`${failedWallets} failed`)
+  if (duplicateCount > 0) {
+    walletParts.push(
+      `${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'}`
     )
   }
 
-  const toggleAll = () => {
-    const visibleIds = visibleHoldings.map((holding) => holding.id)
-    setPicked((current) =>
-      allPicked
-        ? current.filter((id) => !visibleIds.includes(id))
-        : [...new Set([...current, ...visibleIds])]
-    )
-  }
+  const rankParts = [
+    summary.pending > 0 ? `${summary.pending} pending` : null,
+    summary.unranked > 0 ? `${summary.unranked} unranked` : null,
+    summary.unavailable > 0 ? `${summary.unavailable} unavailable` : null,
+  ].filter((part): part is string => part !== null)
 
-  const stats = [
-    { label: 'Total owned', value: '—', secondary: '—' },
-    { label: 'Best rarity', value: '—', secondary: '—' },
-    { label: 'Floor value', value: '—', secondary: '—' },
-    { label: 'Collection supply', value: '—', secondary: '—' },
-    { label: 'Revealed', value: '—', secondary: '—' },
-    { label: 'Wallets holding', value: '—', secondary: '—' },
+  const totalFloor =
+    stats?.floorPrice != null ? summary.units * stats.floorPrice : null
+  const floorValue =
+    totalFloor !== null
+      ? `${formatAmount(totalFloor)} ${stats?.floorSymbol ?? ''}`.trim()
+      : '—'
+  const floorUsd =
+    totalFloor !== null && ethUsd !== null
+      ? Math.round(totalFloor * ethUsd)
+      : null
+  const floorSecondary =
+    floorUsd !== null && floorUsd > 0 && stats?.floorSymbol === 'ETH'
+      ? `≈ $${floorUsd.toLocaleString('en-US')}`
+      : ''
+
+  const tiles = [
+    {
+      label: 'Total owned',
+      value: formatAmount(summary.units),
+      secondary: `${summary.rows.toLocaleString('en-US')} ${summary.rows === 1 ? 'token' : 'tokens'}`,
+    },
+    {
+      label: 'Best rarity',
+      value: summary.bestRank !== null ? `#${summary.bestRank}` : '—',
+      secondary:
+        summary.bestTier !== null
+          ? TIER_LABELS[summary.bestTier]
+          : summary.bestRank !== null
+            ? 'Tier unavailable'
+            : 'No ranked tokens',
+    },
+    {
+      label: 'Floor value',
+      value: floorValue,
+      secondary: floorSecondary,
+    },
+    {
+      label: 'Ranked',
+      value: `${summary.ranked}/${summary.rows}`,
+      secondary: rankParts.length > 0 ? rankParts.join(', ') : '',
+    },
+    {
+      label: 'Collection supply',
+      value: supplyLabel,
+      secondary: '',
+    },
+    {
+      label: 'Wallets holding',
+      value: summary.walletsHolding.toLocaleString('en-US'),
+      secondary: walletParts.join(', '),
+    },
   ]
+  const shownTiles =
+    scan.tableState.status === 'error'
+      ? tiles.map((tile) =>
+          tile.label === 'Collection supply'
+            ? tile
+            : { ...tile, value: '—', secondary: '' }
+        )
+      : tiles
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -103,18 +326,20 @@ export function PortfolioPage() {
           <div className="relative">
             <Input
               id="collection-url"
-              value={collectionUrl}
-              onChange={(event) => setCollectionUrl(event.target.value)}
+              value={scan.url}
+              onChange={(event) => scan.changeUrl(event.target.value)}
               placeholder="https://opensea.io/collection/… or https://scatter.art/…"
               className="pr-8"
+              disabled={scan.running}
             />
-            {collectionUrl ? (
+            {scan.url ? (
               <Button
                 variant="ghost"
                 size="icon-xs"
                 aria-label="Clear collection URL"
                 className="absolute top-1/2 right-1 -translate-y-1/2"
-                onClick={() => setCollectionUrl('')}
+                onClick={() => scan.changeUrl('')}
+                disabled={scan.running}
               >
                 <X />
               </Button>
@@ -132,98 +357,131 @@ export function PortfolioPage() {
           </span>
           <WalletSelect
             groups={groups}
-            selected={selectedWallets}
-            onSelectedChange={setSelectedWallets}
+            selected={scan.selectedWallets}
+            onSelectedChange={scan.changeWallets}
+            disabled={scan.running}
+            aria-labelledby="wallets-label"
             className="w-full"
           />
+          {walletsError ? (
+            <p role="alert" className="text-destructive text-xs">
+              Wallet list unavailable. {walletsError}
+            </p>
+          ) : null}
         </div>
 
-        <Button className="shrink-0" disabled>
-          <Scan />
+        <Button
+          className="shrink-0"
+          onClick={() => void scan.scan()}
+          disabled={
+            scan.running ||
+            !scan.url.trim() ||
+            scan.selectedWallets.length === 0
+          }
+        >
+          {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
           Scan portfolio
         </Button>
       </Card>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
-            <ImageIcon aria-hidden className="text-muted-foreground size-4" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">—</h2>
-              <Badge
-                variant="outline"
-                className="px-1.5 text-[11px] tracking-[0.6px] uppercase"
-              >
-                —
-              </Badge>
-              <Badge variant="secondary">—</Badge>
+      {collection === null ? null : (
+        <>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+                {collection.imageUrl ? (
+                  <img
+                    src={collection.imageUrl}
+                    alt=""
+                    className="size-9 rounded-lg object-cover"
+                  />
+                ) : (
+                  <ImageIcon
+                    aria-hidden
+                    className="text-muted-foreground size-4"
+                  />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold">
+                    {collection.name || collection.slug}
+                  </h2>
+                  <Badge
+                    variant="outline"
+                    className="px-1.5 text-xs tracking-[0.6px] uppercase"
+                  >
+                    {collection.chain}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Contract {contractLabel}, Floor {floorLabel}
+                </p>
+              </div>
             </div>
-            <p className="text-muted-foreground text-[11px]">
-              Contract — • Supply — • Revealed —
-            </p>
+            <Separator />
           </div>
-        </div>
-        <Separator />
-      </div>
 
-      <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="gap-1 px-4">
-            <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-              {stat.label}
-            </dt>
-            <dd className="flex flex-col gap-0.5">
-              <span className="text-card-foreground text-lg font-semibold">
-                {stat.value}
-              </span>
-              <span className="text-muted-foreground text-[11px]">
-                {stat.secondary}
-              </span>
-            </dd>
-          </Card>
-        ))}
-      </dl>
+          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            {shownTiles.map((tile) => (
+              <Card key={tile.label} className="gap-1 px-4">
+                <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                  {tile.label}
+                </dt>
+                <dd className="flex flex-col gap-0.5">
+                  <span className="text-card-foreground text-lg font-semibold tabular-nums">
+                    {tile.value}
+                  </span>
+                  {tile.secondary ? (
+                    <span className="text-muted-foreground text-[11px]">
+                      {tile.secondary}
+                    </span>
+                  ) : null}
+                </dd>
+              </Card>
+            ))}
+          </dl>
+        </>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by tier">
-          {tiers.map((option) => {
-            const count =
-              option === 'All'
-                ? searchedHoldings.length
-                : searchedHoldings.filter((holding) => holding.tier === option).length
-            const active = option === tier
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Filter by rarity tier"
+        >
+          {TIER_FILTERS.map((option) => {
+            const active = option.key === tier
 
             return (
               <Button
-                key={option}
+                key={option.key}
                 variant="ghost"
                 aria-pressed={active}
-                onClick={() => setTier(option)}
+                onClick={() => setTier(option.key)}
                 className={cn(
                   'px-2.5 font-medium',
                   active ? 'bg-muted text-foreground' : 'text-muted-foreground'
                 )}
               >
-                {option} ({count})
+                {option.label} ({tiers[option.key]})
               </Button>
             )
           })}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger
-              aria-label="Sort held tokens"
-              className="w-60 px-3"
-            >
+          <Select
+            value={sort}
+            onValueChange={(value) => setSort(value as HoldingSort)}
+          >
+            <SelectTrigger aria-label="Sort held tokens" className="w-60 px-3">
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper" sideOffset={4}>
-              {sortOptions.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
+              {SORTS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -234,8 +492,15 @@ export function PortfolioPage() {
       <Card className="flex-1 gap-0 overflow-hidden py-0">
         <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
           <div className="flex min-w-0 items-center gap-2">
-            <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
-            <Badge variant="secondary">{visibleHoldings.length} items</Badge>
+            <h2 className="truncate text-[13px] font-semibold">
+              Held NFT Inventory
+            </h2>
+            <Badge variant="secondary">
+              {visible.length} {visible.length === 1 ? 'item' : 'items'}
+            </Badge>
+            <span aria-live="polite" className="sr-only">
+              {statusAnnouncement}
+            </span>
           </div>
           <div className="relative w-60 shrink-0">
             <Search
@@ -249,7 +514,7 @@ export function PortfolioPage() {
               id="token-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Token #ID"
+              placeholder="Search tokens"
               className="pl-8"
             />
           </div>
@@ -257,14 +522,6 @@ export function PortfolioPage() {
         <Table aria-label="Held NFT inventory">
           <TableHeader>
             <TableRow className="h-11 bg-muted hover:bg-muted">
-              <TableHead className="w-12 px-3">
-                <Checkbox
-                  checked={allPicked}
-                  disabled={visibleHoldings.length === 0}
-                  aria-label="Select all held tokens"
-                  onCheckedChange={toggleAll}
-                />
-              </TableHead>
               <TableHead className="text-muted-foreground px-3 text-xs font-medium">
                 Token
               </TableHead>
@@ -274,67 +531,71 @@ export function PortfolioPage() {
               <TableHead className="text-muted-foreground w-[180px] px-3 text-xs font-medium">
                 Rarity rank
               </TableHead>
-              <TableHead className="text-muted-foreground w-[130px] px-3 text-xs font-medium">
-                Tier
-              </TableHead>
-              <TableHead className="text-muted-foreground w-[150px] px-3 text-xs font-medium">
-                Est. floor
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleHoldings.length === 0 ? (
+            {visible.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={6}
-                  className="text-muted-foreground h-24 text-center"
+                  colSpan={3}
+                  className={cn(
+                    'h-24 text-center',
+                    scan.tableState.status === 'error' && !scan.running
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
+                  )}
                 >
-                  No held tokens yet.
+                  {emptyTableMessage}
                 </TableCell>
               </TableRow>
             ) : (
-              visibleHoldings.map((holding) => (
-                <TableRow key={holding.id} className="h-[60px] hover:bg-transparent">
-                  <TableCell className="px-3">
-                    <Checkbox
-                      checked={picked.includes(holding.id)}
-                      aria-label={`Select ${holding.name}`}
-                      onCheckedChange={() => toggleHolding(holding.id)}
-                    />
-                  </TableCell>
+              visible.map((holding) => (
+                <TableRow
+                  key={holding.id}
+                  className="h-[60px] hover:bg-transparent"
+                >
                   <TableCell className="px-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="bg-muted flex size-7 items-center justify-center rounded-md">
-                        <ImageIcon className="text-muted-foreground size-3.5" />
-                      </div>
-                      <span className="text-sm font-medium">{holding.name}</span>
+                      <TokenImage src={holding.imageUrl} alt="" />
+                      {holding.openseaUrl ? (
+                        <a
+                          href={holding.openseaUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-medium hover:underline"
+                        >
+                          {holding.name || `#${holding.tokenId}`}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium">
+                          {holding.name || `#${holding.tokenId}`}
+                        </span>
+                      )}
+                      {holding.quantity !== 1 ? (
+                        <Badge
+                          variant="secondary"
+                          className="h-5 px-1.5 text-xs"
+                        >
+                          ×{formatAmount(holding.quantity)}
+                        </Badge>
+                      ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="px-3 text-[13px]">{holding.owner}</TableCell>
                   <TableCell className="px-3">
-                    <div className="flex flex-col gap-0.5">
+                    <div
+                      className="flex flex-col gap-0.5"
+                      title={holding.owner.address}
+                    >
                       <span className="text-[13px] font-medium">
-                        #{holding.rank}
+                        {holding.owner.label}
                       </span>
-                      <span className="text-muted-foreground text-[11px]">
-                        {holding.rankDetail}
+                      <span className="text-muted-foreground text-xs">
+                        {shortenAddress(holding.owner.address)}
                       </span>
                     </div>
                   </TableCell>
                   <TableCell className="px-3">
-                    <Badge variant="secondary" className="h-5 px-2">
-                      {holding.tier}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="px-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[13px] font-medium">
-                        {holding.floorPrice}
-                      </span>
-                      <span className="text-muted-foreground text-[11px]">
-                        {holding.floorUsd}
-                      </span>
-                    </div>
+                    <RarityRank row={holding} maxRank={maxRank} />
                   </TableCell>
                 </TableRow>
               ))

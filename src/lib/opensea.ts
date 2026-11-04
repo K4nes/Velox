@@ -16,13 +16,41 @@ export class OpenSeaError extends Error {
   }
 }
 
+// measured 2026-11-03: 91 identifiers -> 400 "identifiers must not exceed 30 items"
+export const NFT_BATCH_MAX = 30
+
+export type RarityIndex = {
+  maxRank: number
+}
+
 export type CollectionInfo = {
   slug: string
   name: string
   chain: string
   contractAddress: string
   imageUrl: string
+  totalSupply: number | null
+  rarity: RarityIndex | null
 }
+
+export type CollectionStats = {
+  floorPrice: number | null
+  floorSymbol: string
+}
+
+export type AccountNft = {
+  chain: string
+  contractAddress: string
+  tokenId: string
+  name: string
+  imageUrl: string
+  openseaUrl: string
+  quantity: number
+}
+
+export type AccountNftPage = { nfts: AccountNft[]; next: string | null }
+
+export type NftRank = { tokenId: string; rank: number | null }
 
 export type DropStage = {
   uuid: string
@@ -181,6 +209,10 @@ type RawCollection = {
   collection?: string
   name?: string
   image_url?: string
+  total_supply?: number
+  rarity?: {
+    max_rank?: number
+  } | null
   contracts?: { address?: string; chain?: string }[]
 }
 
@@ -192,13 +224,163 @@ export async function getCollection(slug: string): Promise<CollectionInfo> {
     throw unexpected('/collections')
   }
 
+  const maxRank = body.rarity?.max_rank
   return {
     slug: body.collection ?? slug,
     name: body.name ?? '',
     chain: contract.chain,
     contractAddress: contract.address,
     imageUrl: body.image_url ?? '',
+    totalSupply:
+      typeof body.total_supply === 'number' && Number.isFinite(body.total_supply)
+        ? body.total_supply
+        : null,
+    rarity:
+      typeof maxRank === 'number' && Number.isInteger(maxRank) && maxRank > 0
+        ? {
+            maxRank,
+          }
+        : null,
   }
+}
+
+type RawCollectionStats = {
+  total?: {
+    floor_price?: number
+    floor_price_symbol?: string
+  } | null
+}
+
+export async function getCollectionStats(slug: string): Promise<CollectionStats> {
+  const body = (await request(
+    `/collections/${encodeURIComponent(slug)}/stats`
+  )) as RawCollectionStats | null
+
+  if (!body?.total || typeof body.total !== 'object') {
+    throw unexpected('/collections/stats')
+  }
+
+  const floor = body.total.floor_price
+  const floorPrice =
+    typeof floor === 'number' && Number.isFinite(floor) && floor > 0 ? floor : null
+  const symbol = body.total.floor_price_symbol
+
+  return {
+    floorPrice,
+    floorSymbol:
+      floorPrice !== null && typeof symbol === 'string' ? symbol : '',
+  }
+}
+
+type RawAccountNft = {
+  contract?: string
+  identifier?: string
+  name?: string
+  display_image_url?: string
+  image_url?: string
+  opensea_url?: string
+  quantity?: number
+  quantity_string?: string
+  decimals?: number | null
+}
+
+export async function getAccountNfts(input: {
+  chain: string
+  address: string
+  slug: string
+  cursor?: string
+  limit?: number
+}): Promise<AccountNftPage> {
+  const requested = input.limit ?? 200
+  const limit = Number.isFinite(requested)
+    ? Math.min(200, Math.max(1, Math.trunc(requested)))
+    : 200
+  const params = new URLSearchParams({
+    collection: input.slug,
+    limit: String(limit),
+  })
+  if (input.cursor) params.set('next', input.cursor)
+
+  const body = (await request(
+    `/chain/${encodeURIComponent(input.chain)}/account/${encodeURIComponent(input.address)}/nfts?${params.toString()}`
+  )) as { nfts?: RawAccountNft[]; next?: string | null } | null
+
+  if (!Array.isArray(body?.nfts)) {
+    throw unexpected('/chain/account/nfts')
+  }
+
+  return {
+    nfts: body.nfts.flatMap((raw) => {
+      if (typeof raw.identifier !== 'string' || raw.identifier === '') return []
+      const rawQuantity = Number(raw.quantity_string ?? raw.quantity ?? 1)
+      const decimals =
+        typeof raw.decimals === 'number' &&
+        Number.isInteger(raw.decimals) &&
+        raw.decimals > 0
+          ? raw.decimals
+          : 0
+      const quantity =
+        Number.isFinite(rawQuantity) && rawQuantity > 0
+          ? rawQuantity / 10 ** decimals
+          : 1
+
+      return [
+        {
+          chain: input.chain,
+          contractAddress: raw.contract ?? '',
+          tokenId: raw.identifier,
+          name: raw.name ?? '',
+          imageUrl: raw.display_image_url ?? raw.image_url ?? '',
+          openseaUrl: raw.opensea_url ?? '',
+          quantity,
+        },
+      ]
+    }),
+    next: typeof body.next === 'string' && body.next !== '' ? body.next : null,
+  }
+}
+
+type RawBatchNft = {
+  identifier?: string
+  rarity?: { rank?: number | null } | null
+}
+
+export async function getNftRankBatch(input: {
+  chain: string
+  contractAddress: string
+  tokenIds: readonly string[]
+}): Promise<NftRank[]> {
+  if (input.tokenIds.length > NFT_BATCH_MAX) {
+    throw new RangeError(`NFT batch limit is ${NFT_BATCH_MAX} identifiers`)
+  }
+
+  const body = (await request('/nfts/batch', {
+    method: 'POST',
+    body: JSON.stringify({
+      identifiers: input.tokenIds.map((tokenId) => ({
+        chain: input.chain,
+        contract_address: input.contractAddress,
+        token_id: tokenId,
+      })),
+    }),
+  })) as { nfts?: RawBatchNft[] } | null
+
+  if (!Array.isArray(body?.nfts)) {
+    throw unexpected('/nfts/batch')
+  }
+
+  return body.nfts.flatMap((raw) => {
+    if (typeof raw.identifier !== 'string' || raw.identifier === '') return []
+    const candidate = raw.rarity?.rank
+    const rank =
+      typeof candidate === 'number' &&
+      Number.isInteger(candidate) &&
+      candidate > 0
+        ? candidate
+        : null
+
+    return [{ tokenId: raw.identifier, rank }]
+  })
 }
 
 type RawStage = {
