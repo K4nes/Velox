@@ -55,7 +55,7 @@ export type SeaportDomain = {
   name: string
   version: string
   chainId: number
-  verifyingContract: string
+  verifyingContract: `0x${string}`
 }
 
 export type OrderTypedData = {
@@ -235,12 +235,24 @@ export function parseDomain(value: unknown): SeaportDomain {
     throw new SeaportError('invalid-domain', 'Signature domain has no chain id')
   }
 
+  // The signed bytes are unrecoverable if this is wrong, so it is checked as a
+  // real address rather than defaulted.
+  const verifyingContract = domain.verifyingContract
+  if (
+    typeof verifyingContract !== 'string' ||
+    !/^0x[0-9a-fA-F]{40}$/.test(verifyingContract)
+  ) {
+    throw new SeaportError(
+      'invalid-domain',
+      'Signature domain has no Seaport contract address'
+    )
+  }
+
   return {
     name: typeof domain.name === 'string' ? domain.name : 'Seaport',
     version: typeof domain.version === 'string' ? domain.version : '1.6',
     chainId: domain.chainId,
-    verifyingContract:
-      typeof domain.verifyingContract === 'string' ? domain.verifyingContract : '',
+    verifyingContract: verifyingContract as `0x${string}`,
   }
 }
 
