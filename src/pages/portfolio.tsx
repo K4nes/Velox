@@ -32,13 +32,12 @@ import {
   searchHoldings,
   sortHoldings,
 } from '@/lib/portfolio'
+import type { CollapsedWallet, WalletScan } from '@/lib/holdings'
 import type {
-  CollapsedWallet,
   HoldingSort,
   RarityTier,
   RarityTierFilter,
   ScanningHolding,
-  WalletScan,
 } from '@/lib/portfolio'
 import { cn } from '@/lib/utils'
 

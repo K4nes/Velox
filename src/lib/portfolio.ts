@@ -1,16 +1,15 @@
 import {
   NFT_BATCH_MAX,
-  OpenSeaError,
-  getAccountNfts,
   getCollection,
   getCollectionStats,
   getNftRankBatch,
 } from '@/lib/opensea'
 import type { CollectionInfo, CollectionStats } from '@/lib/opensea'
+import { mapLimit } from '@/lib/async'
+import { scanFailureMessage, scanHeldTokens } from '@/lib/holdings'
+import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/holdings'
 import { fetchEthUsdtPrice } from '@/lib/price'
 
-export type ScanWallet = { id: string; label: string; address: string }
-export type CollapsedWallet = { address: string; labels: string[] }
 export type RarityState =
   | { status: 'pending' }
   | { status: 'ranked'; rank: number }
@@ -32,11 +31,6 @@ export type HoldingBase = {
 export type ScanningHolding = HoldingBase
 export type PortfolioHolding = HoldingBase & {
   rarity: Exclude<RarityState, { status: 'pending' }>
-}
-export type WalletScan = {
-  wallet: ScanWallet
-  tokens: number
-  error: string | null
 }
 export type ScanSnapshot = {
   collection: CollectionInfo
@@ -63,31 +57,6 @@ export type PortfolioTableState =
 export type RarityTier = 'legendary' | 'epic' | 'rare' | 'common'
 export type RarityTierFilter = 'all' | RarityTier
 export type HoldingSort = 'rarest' | 'commonest'
-
-export function resolveScanWallets(
-  records: readonly { id: string; label: string; address: string }[]
-): { wallets: ScanWallet[]; collapsed: CollapsedWallet[] } {
-  const wallets = new Map<string, ScanWallet>()
-  const dropped = new Map<string, string[]>()
-
-  for (const record of records) {
-    const address = record.address.toLowerCase()
-
-    if (!wallets.has(address)) {
-      wallets.set(address, { id: record.id, label: record.label, address })
-      continue
-    }
-
-    const labels = dropped.get(address) ?? []
-    labels.push(record.label)
-    dropped.set(address, labels)
-  }
-
-  return {
-    wallets: [...wallets.values()],
-    collapsed: [...dropped].map(([address, labels]) => ({ address, labels })),
-  }
-}
 
 export function percentileOf(
   rank: number,
@@ -251,44 +220,6 @@ export function portfolioStats(input: {
   }
 }
 
-export function scanFailureMessage(
-  error: unknown,
-  step: 'collection' | 'wallet' | 'rarity'
-): string {
-  if (error instanceof OpenSeaError) {
-    if (error.status === 0) return error.message
-    if (error.status === 401) return 'OpenSea API key rejected'
-    if (error.status === 404 && step === 'collection') {
-      return 'Collection not found'
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  return step === 'collection' ? `Collection failed — ${message}` : message
-}
-
-async function mapLimit<T, R>(
-  items: readonly T[],
-  limit: number,
-  run: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let cursor = 0
-
-  async function worker() {
-    while (cursor < items.length) {
-      const index = cursor
-      cursor += 1
-      results[index] = await run(items[index])
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker())
-  )
-  return results
-}
-
 type RankJob = {
   chain: string
   contractAddress: string
@@ -353,56 +284,17 @@ export async function scanPortfolio(input: {
 
   publish()
 
-  async function scanWallet(wallet: ScanWallet): Promise<WalletScan> {
-    let cursor: string | undefined
-    let tokens = 0
-
-    try {
-      do {
-        const page = await getAccountNfts({
-          chain: collection.chain,
-          address: wallet.address,
-          slug: collection.slug,
-          cursor,
-        })
-
-        for (const nft of page.nfts) {
-          const key = `${wallet.address.toLowerCase()}:${nft.chain}:${nft.contractAddress}:${nft.tokenId}`
-          if (holdings.has(key)) continue
-
-          tokens += 1
-          holdings.set(key, {
-            id: key,
-            chain: nft.chain,
-            contractAddress: nft.contractAddress,
-            tokenId: nft.tokenId,
-            name: nft.name,
-            imageUrl: nft.imageUrl,
-            openseaUrl: nft.openseaUrl,
-            quantity: nft.quantity,
-            owner: wallet,
-            rarity: { status: 'pending' },
-          })
-        }
-
-        cursor = page.next ?? undefined
-      } while (cursor)
-    } catch (failure) {
-      return {
-        wallet,
-        tokens,
-        error: scanFailureMessage(failure, 'wallet'),
-      }
-    }
-
-    return { wallet, tokens, error: null }
-  }
-
-  await mapLimit(input.wallets, 3, async (wallet) => {
-    const result = await scanWallet(wallet)
-    scans.set(wallet.address, result)
-    publish()
-    return result
+  await scanHeldTokens({
+    chain: collection.chain,
+    slug: collection.slug,
+    wallets: input.wallets,
+    onToken: ({ key, ...token }) => {
+      holdings.set(key, { ...token, id: key, rarity: { status: 'pending' } })
+    },
+    onWallet: (scan) => {
+      scans.set(scan.wallet.address, scan)
+      publish()
+    },
   })
 
   const groups = new Map<

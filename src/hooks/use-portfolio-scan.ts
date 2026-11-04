@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { slugFromUrl } from '@/lib/opensea'
-import {
-  resolveScanWallets,
-  scanFailureMessage,
-  scanPortfolio,
-} from '@/lib/portfolio'
+import { resolveScanWallets, scanFailureMessage } from '@/lib/holdings'
+import { scanPortfolio } from '@/lib/portfolio'
 import type {
   PortfolioScanResult,
   PortfolioScanState,

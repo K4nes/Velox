@@ -1,4 +1,4 @@
-import { clientFor } from '@/lib/mint'
+import { clientFor } from '@/lib/tx'
 
 const CONCURRENCY = 5
 
