@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { checkWalletEligibility } from '@/lib/eligibility'
-import { chainTime, mintForWallet, waitForMintReceipt } from '@/lib/mint'
+import { mintForWallet } from '@/lib/mint'
+import { chainTime, waitForReceipt } from '@/lib/tx'
 import {
   createTask,
   failureMessage,
@@ -448,7 +449,7 @@ export function useMintTasks() {
       for (const entry of broadcast) {
         if (stopped()) break
         try {
-          const status = await waitForMintReceipt(entry.chain, entry.txHash)
+          const status = await waitForReceipt(entry.chain, entry.txHash)
           updateRun(entry.walletId, () =>
             status === 'success'
               ? { status: 'confirmed' }

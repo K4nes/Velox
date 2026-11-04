@@ -1,5 +1,7 @@
+import { formatUnits } from 'viem'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
 import { readSecret } from '@/lib/secrets'
+import type { SeaportParameters } from '@/lib/seaport'
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000
@@ -23,6 +25,10 @@ export type RarityIndex = {
   maxRank: number
 }
 
+export type CollectionFee = { percent: number; required: boolean }
+
+export type ListingCurrency = { address: string; symbol: string; decimals: number }
+
 export type CollectionInfo = {
   slug: string
   name: string
@@ -31,6 +37,8 @@ export type CollectionInfo = {
   imageUrl: string
   totalSupply: number | null
   rarity: RarityIndex | null
+  fees: CollectionFee[]
+  listingCurrency: ListingCurrency
 }
 
 export type CollectionStats = {
@@ -213,7 +221,48 @@ type RawCollection = {
   rarity?: {
     max_rank?: number
   } | null
+  fees?: unknown
+  pricing_currencies?: unknown
   contracts?: { address?: string; chain?: string }[]
+}
+
+const NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
+
+const SET_APPROVAL_FOR_ALL = '0xa22cb465'
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function toCollectionFees(value: unknown): CollectionFee[] {
+  if (!Array.isArray(value)) return []
+
+  return value.flatMap((entry) => {
+    const record = asRecord(entry)
+    const percent = record?.fee
+    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
+      return []
+    }
+    return [{ percent, required: record?.required === true }]
+  })
+}
+
+function toListingCurrency(value: unknown): ListingCurrency {
+  const currency = asRecord(asRecord(value)?.listing_currency)
+  const address = currency?.address
+  const symbol = currency?.symbol
+  const decimals = currency?.decimals
+
+  return {
+    address: typeof address === 'string' && address !== '' ? address : NATIVE_CURRENCY,
+    symbol: typeof symbol === 'string' && symbol !== '' ? symbol : 'ETH',
+    decimals:
+      typeof decimals === 'number' && Number.isInteger(decimals) && decimals >= 0
+        ? decimals
+        : 18,
+  }
 }
 
 export async function getCollection(slug: string): Promise<CollectionInfo> {
@@ -241,6 +290,8 @@ export async function getCollection(slug: string): Promise<CollectionInfo> {
             maxRank,
           }
         : null,
+    fees: toCollectionFees(body.fees),
+    listingCurrency: toListingCurrency(body.pricing_currencies),
   }
 }
 
@@ -507,4 +558,226 @@ export async function buildMintTransaction(
   }
 
   return { chain: body.chain, to: body.to, data: body.data, value: body.value }
+}
+
+export type ListingActionItem = {
+  contract: string
+  tokenId: string
+  quantity: number
+}
+
+export type ListingActionEnvelope =
+  | {
+      kind: 'approval'
+      chainId: number
+      from: string
+      to: `0x${string}`
+      data: `0x${string}`
+      value: string
+      token: { contract: string; tokenId: string }
+    }
+  | {
+      kind: 'listings'
+      chainId: number
+      protocolAddress: string
+      typedData: { primaryType: unknown; domain: unknown; message: unknown }
+      tokens: { contract: string; tokenId: string }[]
+    }
+
+function unwrapValue(value: unknown): unknown {
+  const record = asRecord(value)
+  return record && 'value' in record ? record.value : value
+}
+
+function requiredString(value: unknown, field: string): string {
+  const unwrapped = unwrapValue(value)
+  if (typeof unwrapped !== 'string' || unwrapped === '') {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      `listing actions are missing ${field}`
+    )
+  }
+  return unwrapped
+}
+
+function requiredAddress(value: unknown, field: string): `0x${string}` {
+  const unwrapped = unwrapValue(value)
+  if (typeof unwrapped !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(unwrapped)) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      `listing actions are missing ${field}`
+    )
+  }
+  return unwrapped as `0x${string}`
+}
+
+function requiredData(value: unknown, field: string): `0x${string}` {
+  const unwrapped = unwrapValue(value)
+  if (typeof unwrapped !== 'string' || !/^0x([0-9a-fA-F]{2})+$/.test(unwrapped)) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      `listing actions are missing ${field}`
+    )
+  }
+  return unwrapped as `0x${string}`
+}
+
+function requiredChainId(value: unknown): number {
+  const chainId = asRecord(value)?.chainId
+  if (typeof chainId !== 'number' || !Number.isInteger(chainId)) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      'listing actions are missing the chain id'
+    )
+  }
+  return chainId
+}
+
+function toListingEnvelope(step: unknown): ListingActionEnvelope {
+  const record = asRecord(step)
+
+  const approval = asRecord(record?.itemApprovalAction)
+  if (approval) {
+    const transaction = asRecord(approval.transaction)
+    const asset = asRecord(approval.assetIdentifier)
+    const to = requiredAddress(transaction?.to, 'the approval target')
+    const data = requiredData(transaction?.data, 'the approval data')
+    const value = requiredString(transaction?.value, 'the approval value')
+    const contract = requiredString(asset?.contractAddress, 'the approval contract')
+
+    // The wallet signs this with its own key, so the shape is checked against
+    // the one approval a listing needs: setApprovalForAll on the collection the
+    // token belongs to, free of charge.
+    if (
+      to.toLowerCase() !== contract.toLowerCase() ||
+      !data.startsWith(SET_APPROVAL_FOR_ALL) ||
+      value !== '0'
+    ) {
+      throw unexpected('/listings/actions')
+    }
+
+    return {
+      kind: 'approval',
+      chainId: requiredChainId(transaction?.chainIdentifier),
+      from: requiredString(transaction?.from, 'the approval sender'),
+      to,
+      data,
+      value,
+      token: {
+        contract,
+        tokenId: requiredString(asset?.tokenId, 'the approval token id'),
+      },
+    }
+  }
+
+  const listings = asRecord(record?.createListingsAction)
+  if (listings) {
+    const signatureRequest = asRecord(listings.signatureRequest)
+    const encoded = signatureRequest?.message
+    if (typeof encoded !== 'string' || encoded === '') {
+      throw unexpected('/listings/actions')
+    }
+
+    let decoded: unknown
+    try {
+      decoded = JSON.parse(encoded)
+    } catch {
+      throw unexpected('/listings/actions')
+    }
+
+    const typedData = asRecord(decoded)
+    if (!typedData || typedData.message === undefined) {
+      throw unexpected('/listings/actions')
+    }
+
+    const orders = Array.isArray(listings.orders) ? listings.orders : []
+    const assets = Array.isArray(listings.assetIdentifiers)
+      ? listings.assetIdentifiers
+      : []
+
+    return {
+      kind: 'listings',
+      chainId: requiredChainId(signatureRequest?.chainIdentifier),
+      protocolAddress: requiredString(
+        asRecord(orders[0])?.protocolAddress,
+        'the protocol address'
+      ),
+      typedData: {
+        primaryType: typedData.primaryType,
+        domain: typedData.domain,
+        message: typedData.message,
+      },
+      tokens: assets.map((entry) => {
+        const asset = asRecord(entry)
+        return {
+          contract: requiredString(asset?.contractAddress, 'an asset contract'),
+          tokenId: requiredString(asset?.tokenId, 'an asset token id'),
+        }
+      }),
+    }
+  }
+
+  throw unexpected('/listings/actions')
+}
+
+export async function requestListingActions(input: {
+  address: string
+  chain: string
+  priceAmount: bigint
+  currency: string
+  decimals: number
+  endTimeSec: number
+  items: readonly ListingActionItem[]
+}): Promise<ListingActionEnvelope[]> {
+  const endTime = new Date(input.endTimeSec * 1000).toISOString()
+  const body = (await request('/listings/actions', {
+    method: 'POST',
+    body: JSON.stringify({
+      address: input.address,
+      items: input.items.map((item) => ({
+        chain: input.chain,
+        contract: item.contract,
+        token_id: item.tokenId,
+        quantity: item.quantity,
+        price: {
+          amount: formatUnits(input.priceAmount, input.decimals),
+          currency: input.currency,
+        },
+        end_time: endTime,
+      })),
+    }),
+  })) as { steps?: unknown } | null
+
+  if (!Array.isArray(body?.steps)) {
+    throw unexpected('/listings/actions')
+  }
+
+  return body.steps.map(toListingEnvelope)
+}
+
+export async function submitListingOrder(input: {
+  chain: string
+  protocolAddress: string
+  parameters: SeaportParameters
+  signature: string
+}): Promise<{ orderHash: string | null }> {
+  const body = (await request(
+    `/orders/${encodeURIComponent(input.chain)}/seaport/listings`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        parameters: input.parameters,
+        protocol_address: input.protocolAddress,
+        signature: input.signature,
+      }),
+    }
+  )) as { order_hash?: unknown } | null
+
+  return {
+    orderHash: typeof body?.order_hash === 'string' ? body.order_hash : null,
+  }
 }
