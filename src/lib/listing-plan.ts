@@ -1,4 +1,4 @@
-import { parseEther } from 'viem'
+import { formatEther, parseEther } from 'viem'
 import {
   leavesOf,
   orderToken,
@@ -18,8 +18,6 @@ import type { CollectionFee, ListingActionEnvelope } from '@/lib/opensea'
 // OpenSea rounds the end time it echoes back; a plan that demanded an exact
 // match would reject its own request.
 const END_TIME_TOLERANCE_SEC = 5 * 60
-
-const MILLI = 1000n
 
 export type ListingToken = {
   key: string
@@ -93,6 +91,8 @@ export type ListingPlanErrorCode =
   | 'offerer-mismatch'
   | 'chain-mismatch'
   | 'duration-not-honored'
+  | 'price-mismatch'
+  | 'quantity-mismatch'
   | 'approval-sender-mismatch'
 
 export class ListingPlanError extends Error {
@@ -154,11 +154,45 @@ function sameToken(
   )
 }
 
+// The signature is the only consent this flow records, so the amounts it covers
+// are checked against the request first. A wei of slack absorbs the fee split's
+// floor rounding; anything larger means OpenSea built a different deal.
+const PRICE_TOLERANCE_WEI = 1_000_000n
+
+function assertOrderEconomics(input: {
+  leaf: OrderComponentsLeaf
+  fees: OrderFees
+  match: ListingToken
+  priceWei: bigint
+}): void {
+  const units = BigInt(input.match.quantity)
+  const offered = BigInt(input.leaf.offer[0]?.startAmount ?? '0')
+
+  if (offered !== units) {
+    throw new ListingPlanError(
+      'quantity-mismatch',
+      `OpenSea built ${offered} units of token #${input.match.tokenId}, expected ${units}`
+    )
+  }
+
+  const expected = input.priceWei * units
+  const drift = input.fees.grossWei - expected
+  if (drift > PRICE_TOLERANCE_WEI || drift < -PRICE_TOLERANCE_WEI) {
+    throw new ListingPlanError(
+      'price-mismatch',
+      `OpenSea priced token #${input.match.tokenId} at ${formatEther(
+        input.fees.grossWei
+      )}, expected ${formatEther(expected)}`
+    )
+  }
+}
+
 function planWallet(input: {
   batch: ListingBatch
   envelopes: readonly ListingActionEnvelope[]
   chainId: number
   expectedEndSec: number
+  priceWei: bigint
   chain: string
 }): PlannedWallet {
   const address = input.batch.address
@@ -234,6 +268,14 @@ function planWallet(input: {
         )
       }
 
+      const fees = splitConsideration(leaf)
+      assertOrderEconomics({
+        leaf,
+        fees,
+        match,
+        priceWei: input.priceWei,
+      })
+
       orders.set(match.key, {
         id: `order:${match.key}`,
         kind: 'order',
@@ -246,7 +288,7 @@ function planWallet(input: {
         leaf,
         parameters: toSeaportParameters(leaf),
         typedData: typedDataForLeaf(leaf, leafDomain),
-        fees: splitConsideration(leaf),
+        fees,
       })
     }
   }
@@ -272,14 +314,13 @@ export function buildListingPlan(input: {
   tokens: readonly ListingToken[]
   priceWei: bigint
   durationDays: number
+  endTimeSec: number
   envelopes: readonly {
     address: string
     label: string
     envelopes: readonly ListingActionEnvelope[]
   }[]
 }): ListingPlan {
-  const expectedEndSec =
-    Math.floor(Date.now() / 1000) + input.durationDays * 24 * 60 * 60
   const byAddress = new Map(
     input.envelopes.map((entry) => [entry.address.toLowerCase(), entry])
   )
@@ -289,7 +330,8 @@ export function buildListingPlan(input: {
       batch,
       envelopes: byAddress.get(batch.address)?.envelopes ?? [],
       chainId: input.chainId,
-      expectedEndSec,
+      expectedEndSec: input.endTimeSec,
+      priceWei: input.priceWei,
       chain: input.collection.chain,
     })
   )
@@ -302,33 +344,13 @@ export function buildListingPlan(input: {
   }
 }
 
-export function planOrders(plan: ListingPlan): PlannedOrder[] {
-  return plan.wallets.flatMap((wallet) =>
-    wallet.steps.filter((step): step is PlannedOrder => step.kind === 'order')
-  )
-}
-
-export function planFeeTotals(plan: ListingPlan): PlanFeeTotals {
-  const totals: PlanFeeTotals = { grossWei: 0n, feeWei: 0n, netWei: 0n }
-
-  for (const order of planOrders(plan)) {
-    totals.grossWei += order.fees.grossWei
-    totals.feeWei += order.fees.feeWei
-    totals.netWei += order.fees.netWei
-  }
-
-  return totals
-}
-
 export function estimateFeeTotals(input: {
   fees: readonly CollectionFee[]
   priceWei: bigint
   units: number
 }): PlanFeeTotals {
-  // ERC-1155 holdings can be fractional, so the unit count is scaled to
-  // thousandths before it meets bigint arithmetic.
-  const unitsMilli = BigInt(Math.round(Math.max(0, input.units) * 1000))
-  const grossWei = (input.priceWei * unitsMilli) / MILLI
+  const units = BigInt(Math.max(0, Math.floor(input.units)))
+  const grossWei = input.priceWei * units
   let feeWei = 0n
 
   for (const fee of input.fees) {
