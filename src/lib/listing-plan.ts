@@ -1,4 +1,4 @@
-import { formatEther, parseEther } from 'viem'
+import { formatUnits, parseUnits } from 'viem'
 import {
   leavesOf,
   orderToken,
@@ -67,7 +67,7 @@ export type PlannedWallet = {
 export type ListingPlan = {
   collection: { slug: string; name: string; chain: string }
   wallets: PlannedWallet[]
-  priceWei: bigint
+  priceAmount: bigint
   durationDays: number
 }
 
@@ -113,13 +113,13 @@ export const listingDurationOptions: readonly ListingDuration[] = [
   { days: 90, label: '90 days (3 months)' },
 ]
 
-export function parsePriceEth(text: string): bigint | null {
+export function parsePrice(text: string, decimals: number): bigint | null {
   const value = text.trim()
   if (!/^\d*\.?\d*$/.test(value) || !/\d/.test(value)) return null
 
   try {
-    const wei = parseEther(value)
-    return wei > 0n ? wei : null
+    const amount = parseUnits(value, decimals)
+    return amount > 0n ? amount : null
   } catch {
     return null
   }
@@ -163,7 +163,8 @@ function assertOrderEconomics(input: {
   leaf: OrderComponentsLeaf
   fees: OrderFees
   match: ListingToken
-  priceWei: bigint
+  priceAmount: bigint
+  decimals: number
 }): void {
   const units = BigInt(input.match.quantity)
   const offered = BigInt(input.leaf.offer[0]?.startAmount ?? '0')
@@ -175,14 +176,15 @@ function assertOrderEconomics(input: {
     )
   }
 
-  const expected = input.priceWei * units
+  const expected = input.priceAmount * units
   const drift = input.fees.grossWei - expected
   if (drift > PRICE_TOLERANCE_WEI || drift < -PRICE_TOLERANCE_WEI) {
     throw new ListingPlanError(
       'price-mismatch',
-      `OpenSea priced token #${input.match.tokenId} at ${formatEther(
-        input.fees.grossWei
-      )}, expected ${formatEther(expected)}`
+      `OpenSea priced token #${input.match.tokenId} at ${formatUnits(
+        input.fees.grossWei,
+        input.decimals
+      )}, expected ${formatUnits(expected, input.decimals)}`
     )
   }
 }
@@ -192,7 +194,8 @@ function planWallet(input: {
   envelopes: readonly ListingActionEnvelope[]
   chainId: number
   expectedEndSec: number
-  priceWei: bigint
+  priceAmount: bigint
+  decimals: number
   chain: string
 }): PlannedWallet {
   const address = input.batch.address
@@ -273,7 +276,8 @@ function planWallet(input: {
         leaf,
         fees,
         match,
-        priceWei: input.priceWei,
+        priceAmount: input.priceAmount,
+        decimals: input.decimals,
       })
 
       orders.set(match.key, {
@@ -312,9 +316,10 @@ export function buildListingPlan(input: {
   collection: { slug: string; name: string; chain: string }
   chainId: number
   tokens: readonly ListingToken[]
-  priceWei: bigint
+  priceAmount: bigint
   durationDays: number
   endTimeSec: number
+  decimals: number
   envelopes: readonly {
     address: string
     label: string
@@ -331,7 +336,8 @@ export function buildListingPlan(input: {
       envelopes: byAddress.get(batch.address)?.envelopes ?? [],
       chainId: input.chainId,
       expectedEndSec: input.endTimeSec,
-      priceWei: input.priceWei,
+      priceAmount: input.priceAmount,
+      decimals: input.decimals,
       chain: input.collection.chain,
     })
   )
@@ -339,18 +345,18 @@ export function buildListingPlan(input: {
   return {
     collection: input.collection,
     wallets,
-    priceWei: input.priceWei,
+    priceAmount: input.priceAmount,
     durationDays: input.durationDays,
   }
 }
 
 export function estimateFeeTotals(input: {
   fees: readonly CollectionFee[]
-  priceWei: bigint
+  priceAmount: bigint
   units: number
 }): PlanFeeTotals {
   const units = BigInt(Math.max(0, Math.floor(input.units)))
-  const grossWei = input.priceWei * units
+  const grossWei = input.priceAmount * units
   let feeWei = 0n
 
   for (const fee of input.fees) {
@@ -363,11 +369,11 @@ export function estimateFeeTotals(input: {
 
 export function explainPlanBlockers(input: {
   selected: readonly ListingToken[]
-  priceWei: bigint | null
+  priceAmount: bigint | null
   chainSupported: boolean
 }): string | null {
   if (input.selected.length === 0) return 'Select at least one token'
   if (!input.chainSupported) return 'Chain not supported'
-  if (input.priceWei === null) return 'Enter a price per item'
+  if (input.priceAmount === null) return 'Enter a price per item'
   return null
 }

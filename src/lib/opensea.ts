@@ -1,4 +1,4 @@
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
 import { readSecret } from '@/lib/secrets'
 import type { SeaportParameters } from '@/lib/seaport'
@@ -727,8 +727,9 @@ function toListingEnvelope(step: unknown): ListingActionEnvelope {
 export async function requestListingActions(input: {
   address: string
   chain: string
-  priceWei: bigint
+  priceAmount: bigint
   currency: string
+  decimals: number
   endTimeSec: number
   items: readonly ListingActionItem[]
 }): Promise<ListingActionEnvelope[]> {
@@ -742,7 +743,10 @@ export async function requestListingActions(input: {
         contract: item.contract,
         token_id: item.tokenId,
         quantity: item.quantity,
-        price: { amount: formatEther(input.priceWei), currency: input.currency },
+        price: {
+          amount: formatUnits(input.priceAmount, input.decimals),
+          currency: input.currency,
+        },
         end_time: endTime,
       })),
     }),

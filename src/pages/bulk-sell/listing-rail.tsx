@@ -1,4 +1,4 @@
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -16,8 +16,8 @@ import { listingDurationOptions } from '@/lib/listing-plan'
 import type { PlanFeeTotals } from '@/lib/listing-plan'
 import type { RunSummary } from '@/lib/listing-run'
 
-function formatEth(wei: bigint): string {
-  const [whole, fraction] = formatEther(wei).split('.')
+function formatAmount(amount: bigint, decimals: number): string {
+  const [whole, fraction] = formatUnits(amount, decimals).split('.')
   const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
   return trimmed ? `${whole}.${trimmed}` : whole
 }
@@ -38,6 +38,7 @@ export function ListingRail({
   onDurationChange,
   itemCount,
   symbol,
+  decimals,
   estimatedTotals,
   summary,
   error,
@@ -51,6 +52,7 @@ export function ListingRail({
   onDurationChange: (days: number) => void
   itemCount: number
   symbol: string
+  decimals: number
   estimatedTotals: PlanFeeTotals
   summary: RunSummary | null
   error: string | null
@@ -107,13 +109,13 @@ export function ListingRail({
         <SummaryRow label="Items to list" value={String(itemCount)} />
         <SummaryRow
           label="Price"
-          value={`${formatEth(estimatedTotals.grossWei)} ${symbol}`}
+          value={`${formatAmount(estimatedTotals.grossWei, decimals)} ${symbol}`}
         />
         <SummaryRow
           label="Est. fees"
           value={
             estimatedTotals.feeWei > 0n
-              ? `-${formatEth(estimatedTotals.feeWei)} ${symbol}`
+              ? `-${formatAmount(estimatedTotals.feeWei, decimals)} ${symbol}`
               : `0 ${symbol}`
           }
         />
@@ -124,7 +126,7 @@ export function ListingRail({
               Net proceeds
             </span>
             <span className="text-lg font-semibold tabular-nums">
-              {formatEth(estimatedTotals.netWei)} {symbol}
+              {formatAmount(estimatedTotals.netWei, decimals)} {symbol}
             </span>
           </div>
           <p className="text-muted-foreground text-xs">

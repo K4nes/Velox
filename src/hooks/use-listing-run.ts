@@ -7,7 +7,7 @@ import {
   estimateFeeTotals,
   explainPlanBlockers,
   groupListingItems,
-  parsePriceEth,
+  parsePrice,
 } from '@/lib/listing-plan'
 import type { ListingToken, PlanFeeTotals } from '@/lib/listing-plan'
 import {
@@ -27,9 +27,11 @@ import type { CollectionInfo } from '@/lib/opensea'
 import { listWallets } from '@/lib/wallets'
 
 // A run keeps submitting after its page unmounts, so the guard lives outside the
-// hook. A second mount must not sign the same tokens again while the first run
-// is still in flight.
-let activeRuns = 0
+// hook. A second mount only waits for a run that can still submit; once the page
+// is gone the old run signs nothing more and the new one may start.
+type RunSlot = { aborted: boolean }
+
+let liveRun: RunSlot | null = null
 
 export function useListingRun(input: {
   selected: readonly ListingToken[]
@@ -43,21 +45,24 @@ export function useListingRun(input: {
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
   const epochRef = useRef(0)
+  const slotRef = useRef<RunSlot | null>(null)
 
   useEffect(() => {
     const epoch = epochRef.current
     return () => {
       if (epochRef.current === epoch) epochRef.current += 1
+      if (slotRef.current) slotRef.current.aborted = true
     }
   }, [])
 
-  const priceWei = parsePriceEth(price)
+  const decimals = input.collection?.listingCurrency.decimals ?? 18
+  const priceAmount = parsePrice(price, decimals)
   const chainSupported = input.collection
     ? chainBySlug(input.collection.chain) !== undefined
     : true
   const blockedReason = explainPlanBlockers({
     selected: input.selected,
-    priceWei,
+    priceAmount,
     chainSupported,
   })
 
@@ -67,7 +72,7 @@ export function useListingRun(input: {
   )
   const estimatedTotals: PlanFeeTotals = estimateFeeTotals({
     fees: input.collection?.fees ?? [],
-    priceWei: priceWei ?? 0n,
+    priceAmount: priceAmount ?? 0n,
     units: totalUnits,
   })
 
@@ -86,7 +91,7 @@ export function useListingRun(input: {
     if (runningRef.current) return
 
     const collection = input.collection
-    if (!collection || input.selected.length === 0 || priceWei === null) return
+    if (!collection || input.selected.length === 0 || priceAmount === null) return
 
     const entry = chainBySlug(collection.chain)
     if (!entry) {
@@ -95,7 +100,7 @@ export function useListingRun(input: {
       return
     }
 
-    if (activeRuns > 0) {
+    if (liveRun && !liveRun.aborted) {
       setError('A listing run is still in progress')
       toast.error('A listing run is still in progress')
       return
@@ -106,9 +111,11 @@ export function useListingRun(input: {
     const publish = (next: ListingRunProgress) => {
       if (live()) setProgress(next)
     }
+    const slot: RunSlot = { aborted: false }
+    liveRun = slot
+    slotRef.current = slot
 
     runningRef.current = true
-    activeRuns += 1
     setRunning(true)
     setError(null)
     setProgress(null)
@@ -133,8 +140,9 @@ export function useListingRun(input: {
           envelopes: await requestListingActions({
             address: batch.address,
             chain: collection.chain,
-            priceWei,
+            priceAmount,
             currency: collection.listingCurrency.address,
+            decimals,
             endTimeSec,
             items: batch.tokens.map((token) => ({
               contract: token.contract,
@@ -155,9 +163,10 @@ export function useListingRun(input: {
         },
         chainId: entry.chainId,
         tokens: input.selected,
-        priceWei,
+        priceAmount,
         durationDays,
         endTimeSec,
+        decimals,
         envelopes,
       })
 
@@ -170,7 +179,7 @@ export function useListingRun(input: {
         plan,
         wallets,
         onProgress: publish,
-        shouldAbort: () => !live(),
+        shouldAbort: () => slot.aborted,
       })
 
       if (!live()) return
@@ -189,7 +198,9 @@ export function useListingRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      activeRuns -= 1
+      slot.aborted = true
+      slotRef.current = null
+      if (liveRun === slot) liveRun = null
       if (live()) {
         runningRef.current = false
         setRunning(false)

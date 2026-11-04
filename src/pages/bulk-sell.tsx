@@ -90,6 +90,7 @@ export function BulkSellPage() {
           onDurationChange={run.setDuration}
           itemCount={scan.selection.length}
           symbol={scan.collection?.listingCurrency.symbol ?? 'ETH'}
+          decimals={scan.collection?.listingCurrency.decimals ?? 18}
           estimatedTotals={run.estimatedTotals}
           summary={run.summary}
           error={run.error}
