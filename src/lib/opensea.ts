@@ -228,6 +228,8 @@ type RawCollection = {
 
 const NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
 
+const SET_APPROVAL_FOR_ALL = '0xa22cb465'
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null
     ? (value as Record<string, unknown>)
@@ -642,16 +644,31 @@ function toListingEnvelope(step: unknown): ListingActionEnvelope {
   if (approval) {
     const transaction = asRecord(approval.transaction)
     const asset = asRecord(approval.assetIdentifier)
+    const to = requiredAddress(transaction?.to, 'the approval target')
+    const data = requiredData(transaction?.data, 'the approval data')
+    const value = requiredString(transaction?.value, 'the approval value')
+    const contract = requiredString(asset?.contractAddress, 'the approval contract')
+
+    // The wallet signs this with its own key, so the shape is checked against
+    // the one approval a listing needs: setApprovalForAll on the collection the
+    // token belongs to, free of charge.
+    if (
+      to.toLowerCase() !== contract.toLowerCase() ||
+      !data.startsWith(SET_APPROVAL_FOR_ALL) ||
+      value !== '0'
+    ) {
+      throw unexpected('/listings/actions')
+    }
 
     return {
       kind: 'approval',
       chainId: requiredChainId(transaction?.chainIdentifier),
       from: requiredString(transaction?.from, 'the approval sender'),
-      to: requiredAddress(transaction?.to, 'the approval target'),
-      data: requiredData(transaction?.data, 'the approval data'),
-      value: requiredString(transaction?.value, 'the approval value'),
+      to,
+      data,
+      value,
       token: {
-        contract: requiredString(asset?.contractAddress, 'the approval contract'),
+        contract,
         tokenId: requiredString(asset?.tokenId, 'the approval token id'),
       },
     }
