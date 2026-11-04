@@ -26,14 +26,14 @@ export function describeTable(
       }
     case 'scanning':
       return state.snapshot.holdings.length > 0
-        ? { status: 'ready', rows: state.snapshot.holdings }
+        ? { status: 'ready' }
         : {
             status: 'loading',
             message: `Scanning ${state.snapshot.collection.name || collectionName}…`,
           }
     case 'ready': {
       if (state.result.holdings.length > 0) {
-        return { status: 'ready', rows: state.result.holdings }
+        return { status: 'ready' }
       }
 
       const failed = state.result.wallets.filter((wallet) => wallet.error !== null)

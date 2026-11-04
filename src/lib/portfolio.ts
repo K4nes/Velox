@@ -36,7 +36,6 @@ export type PortfolioHolding = HoldingBase & {
 export type WalletScan = {
   wallet: ScanWallet
   tokens: number
-  units: number
   error: string | null
 }
 export type ScanSnapshot = {
@@ -60,7 +59,7 @@ export type PortfolioTableState =
   | { status: 'loading'; message: string }
   | { status: 'error'; message: string }
   | { status: 'empty'; message: string }
-  | { status: 'ready'; rows: ScanningHolding[] }
+  | { status: 'ready' }
 export type RarityTier = 'legendary' | 'epic' | 'rare' | 'common'
 export type RarityTierFilter = 'all' | RarityTier
 export type HoldingSort = 'rarest' | 'commonest'
@@ -265,8 +264,7 @@ export function scanFailureMessage(
   }
 
   const message = error instanceof Error ? error.message : String(error)
-  const label = step.charAt(0).toUpperCase() + step.slice(1)
-  return `${label} failed — ${message}`
+  return step === 'collection' ? `Collection failed — ${message}` : message
 }
 
 async function mapLimit<T, R>(
@@ -358,7 +356,6 @@ export async function scanPortfolio(input: {
   async function scanWallet(wallet: ScanWallet): Promise<WalletScan> {
     let cursor: string | undefined
     let tokens = 0
-    let units = 0
 
     try {
       do {
@@ -374,7 +371,6 @@ export async function scanPortfolio(input: {
           if (holdings.has(key)) continue
 
           tokens += 1
-          units += nft.quantity
           holdings.set(key, {
             id: key,
             chain: nft.chain,
@@ -395,12 +391,11 @@ export async function scanPortfolio(input: {
       return {
         wallet,
         tokens,
-        units,
         error: scanFailureMessage(failure, 'wallet'),
       }
     }
 
-    return { wallet, tokens, units, error: null }
+    return { wallet, tokens, error: null }
   }
 
   await mapLimit(input.wallets, 3, async (wallet) => {
