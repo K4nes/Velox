@@ -78,6 +78,7 @@ export function BulkSellPage() {
           onQueryChange={scan.setQuery}
           selectedKeys={scan.selectedKeys}
           tokenStates={run.tokenStates}
+          running={run.running}
           onToggleToken={scan.toggleToken}
           onToggleAll={scan.toggleAll}
         />

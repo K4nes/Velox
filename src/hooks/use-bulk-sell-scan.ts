@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   resolveScanWallets,
@@ -27,6 +27,16 @@ export function useBulkSellScan() {
   const [query, setQuery] = useState('')
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
+  const epochRef = useRef(0)
+
+  // A scan that resolves after the page unmounted has no state to write, and its
+  // toasts would land on whatever page the operator moved to.
+  useEffect(() => {
+    const epoch = epochRef.current
+    return () => {
+      if (epochRef.current === epoch) epochRef.current += 1
+    }
+  }, [])
 
   function clearRows() {
     setTokens([])
@@ -57,6 +67,8 @@ export function useBulkSellScan() {
     }
 
     runningRef.current = true
+    const epoch = epochRef.current
+    const live = () => epoch === epochRef.current
     setRunning(true)
     clearRows()
     setState({ status: 'scanning' })
@@ -66,11 +78,14 @@ export function useBulkSellScan() {
       try {
         records = await listWallets()
       } catch (failure) {
+        if (!live()) return
         const message =
           failure instanceof Error ? failure.message : String(failure)
         setState({ status: 'failed', message })
         return
       }
+
+      if (!live()) return
 
       const resolved = resolveScanWallets(
         records.filter((wallet) => selectedWallets.includes(wallet.id))
@@ -84,6 +99,7 @@ export function useBulkSellScan() {
       try {
         collection = await getCollection(slug)
       } catch (failure) {
+        if (!live()) return
         const message = scanFailureMessage(failure, 'collection')
         setState({ status: 'failed', message })
         toast.error(message)
@@ -96,6 +112,8 @@ export function useBulkSellScan() {
         wallets: resolved.wallets,
       })
 
+      if (!live()) return
+
       setTokens(result.tokens)
       setState({ status: 'ready', collection, scans: result.scans })
 
@@ -106,9 +124,9 @@ export function useBulkSellScan() {
         )
       }
     } catch (failure) {
+      if (!live()) return
       const message = failure instanceof Error ? failure.message : String(failure)
       setState({ status: 'failed', message })
-      toast.error(message)
     } finally {
       runningRef.current = false
       setRunning(false)
@@ -134,21 +152,21 @@ export function useBulkSellScan() {
 
   const selection = useMemo<ListingToken[]>(
     () =>
-      tokens.flatMap((row) =>
-        selectedKeys.includes(row.key)
-          ? [
-              {
-                key: row.key,
-                address: row.owner.address,
-                label: row.owner.label,
-                chain: row.chain,
-                contract: row.contractAddress,
-                tokenId: row.tokenId,
-                quantity: Math.max(1, Math.floor(row.quantity)),
-              },
-            ]
-          : []
-      ),
+      tokens.flatMap((row) => {
+        const units = Math.floor(row.quantity)
+        if (!selectedKeys.includes(row.key) || units < 1) return []
+        return [
+          {
+            key: row.key,
+            address: row.owner.address,
+            label: row.owner.label,
+            chain: row.chain,
+            contract: row.contractAddress,
+            tokenId: row.tokenId,
+            quantity: units,
+          },
+        ]
+      }),
     [tokens, selectedKeys]
   )
 
@@ -161,7 +179,11 @@ export function useBulkSellScan() {
   }
 
   function toggleAll() {
-    const visible = rows.map((row) => row.key)
+    // A row whose whole-unit balance is zero cannot be listed, so select-all
+    // leaves it out rather than poisoning the run.
+    const visible = rows
+      .filter((row) => Math.floor(row.quantity) >= 1)
+      .map((row) => row.key)
     setSelectedKeys((current) => {
       const allSelected = visible.every((key) => current.includes(key))
       return allSelected

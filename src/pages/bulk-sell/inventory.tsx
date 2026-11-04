@@ -97,6 +97,7 @@ export function Inventory({
   onQueryChange,
   selectedKeys,
   tokenStates,
+  running,
   onToggleToken,
   onToggleAll,
 }: {
@@ -107,6 +108,7 @@ export function Inventory({
   onQueryChange: (value: string) => void
   selectedKeys: readonly string[]
   tokenStates: Map<string, RunStepState>
+  running: boolean
   onToggleToken: (key: string) => void
   onToggleAll: () => void
 }) {
@@ -192,6 +194,7 @@ export function Inventory({
               <Checkbox
                 aria-label="Select every token in this view"
                 checked={headerChecked}
+                disabled={running}
                 onCheckedChange={onToggleAll}
               />
             </TableHead>
@@ -213,6 +216,12 @@ export function Inventory({
                 <Checkbox
                   aria-label={`Select token #${row.tokenId}`}
                   checked={selectedKeys.includes(row.key)}
+                  disabled={running || Math.floor(row.quantity) < 1}
+                  title={
+                    Math.floor(row.quantity) < 1
+                      ? 'Balance is below one whole unit, so this token cannot be listed'
+                      : undefined
+                  }
                   onCheckedChange={() => onToggleToken(row.key)}
                 />
               </TableCell>
