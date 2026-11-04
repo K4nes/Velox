@@ -37,7 +37,7 @@ export function BulkSellPage() {
             value={scan.url}
             onChange={(event) => scan.changeUrl(event.target.value)}
             placeholder="https://opensea.io/collection/… or https://scatter.art/…"
-            disabled={scan.running}
+            disabled={scan.running || run.running}
           />
         </div>
 
@@ -53,13 +53,17 @@ export function BulkSellPage() {
             groups={groups}
             selected={scan.selectedWallets}
             onSelectedChange={scan.changeWallets}
-            disabled={scan.running}
+            disabled={scan.running || run.running}
             aria-labelledby="bulk-wallet-label"
             className="w-full"
           />
         </div>
 
-        <Button className="shrink-0" onClick={check} disabled={!scan.canScan}>
+        <Button
+          className="shrink-0"
+          onClick={check}
+          disabled={!scan.canScan || run.running}
+        >
           {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
           Scan held NFTs
         </Button>
