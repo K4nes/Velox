@@ -80,7 +80,9 @@ function shortenAddress(address: string): string {
 }
 
 function formatAmount(value: number): string {
-  return value.toLocaleString('en-US', { maximumFractionDigits: 4 })
+  return value.toLocaleString('en-US', {
+    maximumFractionDigits: Math.abs(value) < 1 ? 6 : 4,
+  })
 }
 
 function TokenImage({ src, alt }: { src: string; alt: string }) {
@@ -212,7 +214,7 @@ export function PortfolioPage() {
   const statusAnnouncement = scan.running
     ? `Scanning ${scan.selectedWallets.length} wallets`
     : scan.tableState.status === 'ready'
-      ? `${visible.length} ${visible.length === 1 ? 'token' : 'tokens'} shown`
+      ? 'Scan complete'
       : scan.tableState.message
 
   const contractLabel = collection
