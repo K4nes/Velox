@@ -38,8 +38,6 @@ export type RunStepState = {
 
 export type ListingRunProgress = {
   steps: readonly RunStepState[]
-  startedAt: number
-  finishedAt: number | null
 }
 
 export type ListingRunOutcome = {
@@ -53,7 +51,7 @@ export type RunSummary = {
   failed: number
 }
 
-const WALLET_CONCURRENCY = 2
+export const WALLET_CONCURRENCY = 2
 
 export const RUN_STEP_LABEL: Record<RunStepStatus, string> = {
   queued: 'Queued',
@@ -91,6 +89,7 @@ export async function runListingPlan(input: {
   plan: ListingPlan
   wallets: readonly StoredWallet[]
   onProgress?: (progress: ListingRunProgress) => void
+  shouldAbort?: () => boolean
 }): Promise<ListingRunOutcome> {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
@@ -120,8 +119,6 @@ export async function runListingPlan(input: {
             }
       )
     ),
-    startedAt: Date.now(),
-    finishedAt: null,
   }
   input.onProgress?.(progress)
 
@@ -176,7 +173,21 @@ export async function runListingPlan(input: {
       return
     }
 
+    // The key signs as its own account. A stored address that drifted from the
+    // key would submit orders OpenSea rejects as an invalid signature after the
+    // approval has already been paid for.
+    if (account.address.toLowerCase() !== planned.address) {
+      const message = `Stored key signs as ${account.address}, not ${planned.address}`
+      for (const step of planned.steps) {
+        const current = stateOf(step.id)
+        if (current) commit({ ...current, status: 'failed', error: message })
+      }
+      return
+    }
+
     for (const approval of approvals) {
+      if (input.shouldAbort?.()) return
+
       const current = stateOf(approval.id)
       if (!current) continue
       commit({ ...current, status: 'approving' })
@@ -188,6 +199,7 @@ export async function runListingPlan(input: {
           to: approval.to,
           data: approval.data,
           value: BigInt(approval.value),
+          shouldAbort: input.shouldAbort,
         })
         const receipt = await waitForReceipt(
           input.plan.collection.chain,
@@ -222,12 +234,16 @@ export async function runListingPlan(input: {
     }
 
     for (const order of orders) {
+      if (input.shouldAbort?.()) return
+
       const signing = stateOf(order.id)
       if (!signing) continue
       commit({ ...signing, status: 'signing' })
 
       try {
         const signature = await account.signTypedData(order.typedData)
+
+        if (input.shouldAbort?.()) return
 
         const submitting = stateOf(order.id)
         if (submitting) commit({ ...submitting, status: 'submitting' })
@@ -255,13 +271,11 @@ export async function runListingPlan(input: {
   }
 
   await mapLimit(input.plan.wallets, WALLET_CONCURRENCY, async (planned) => {
+    if (input.shouldAbort?.()) return
     const record = records.get(planned.address)
     if (!record) return
     await runWallet(planned, record)
   })
-
-  progress = { ...progress, finishedAt: Date.now() }
-  input.onProgress?.(progress)
 
   return { progress, error: null }
 }

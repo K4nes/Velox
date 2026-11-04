@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
@@ -11,6 +11,7 @@ import {
 } from '@/lib/listing-plan'
 import type { ListingToken, PlanFeeTotals } from '@/lib/listing-plan'
 import {
+  WALLET_CONCURRENCY,
   listedKeys,
   runListingPlan,
   summarizeRun,
@@ -25,7 +26,10 @@ import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
 import { listWallets } from '@/lib/wallets'
 
-const WALLET_CONCURRENCY = 2
+// A run keeps submitting after its page unmounts, so the guard lives outside the
+// hook. A second mount must not sign the same tokens again while the first run
+// is still in flight.
+let activeRuns = 0
 
 export function useListingRun(input: {
   selected: readonly ListingToken[]
@@ -38,6 +42,14 @@ export function useListingRun(input: {
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
+  const epochRef = useRef(0)
+
+  useEffect(() => {
+    const epoch = epochRef.current
+    return () => {
+      if (epochRef.current === epoch) epochRef.current += 1
+    }
+  }, [])
 
   const priceWei = parsePriceEth(price)
   const chainSupported = input.collection
@@ -83,7 +95,20 @@ export function useListingRun(input: {
       return
     }
 
+    if (activeRuns > 0) {
+      setError('A listing run is still in progress')
+      toast.error('A listing run is still in progress')
+      return
+    }
+
+    const epoch = epochRef.current
+    const live = () => epoch === epochRef.current
+    const publish = (next: ListingRunProgress) => {
+      if (live()) setProgress(next)
+    }
+
     runningRef.current = true
+    activeRuns += 1
     setRunning(true)
     setError(null)
     setProgress(null)
@@ -94,6 +119,8 @@ export function useListingRun(input: {
         records.map((record) => [record.address.toLowerCase(), record])
       )
       const batches = groupListingItems(input.selected)
+      // The end time goes out with the request and comes back in the plan, so
+      // both sides compare against this same instant.
       const endTimeSec =
         Math.floor(Date.now() / 1000) + durationDays * 24 * 60 * 60
 
@@ -118,6 +145,8 @@ export function useListingRun(input: {
         })
       )
 
+      if (!live()) return
+
       const plan = buildListingPlan({
         collection: {
           slug: collection.slug,
@@ -128,6 +157,7 @@ export function useListingRun(input: {
         tokens: input.selected,
         priceWei,
         durationDays,
+        endTimeSec,
         envelopes,
       })
 
@@ -139,8 +169,11 @@ export function useListingRun(input: {
       const outcome = await runListingPlan({
         plan,
         wallets,
-        onProgress: setProgress,
+        onProgress: publish,
+        shouldAbort: () => !live(),
       })
+
+      if (!live()) return
 
       if (outcome.error) {
         setError(outcome.error)
@@ -151,12 +184,16 @@ export function useListingRun(input: {
       const keys = listedKeys(outcome.progress)
       if (keys.length > 0) input.onListed?.(keys)
     } catch (failure) {
+      if (!live()) return
       const message = failure instanceof Error ? failure.message : String(failure)
       setError(message)
       toast.error(message)
     } finally {
-      runningRef.current = false
-      setRunning(false)
+      activeRuns -= 1
+      if (live()) {
+        runningRef.current = false
+        setRunning(false)
+      }
     }
   }
 
