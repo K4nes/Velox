@@ -257,9 +257,18 @@ export function parseDomain(value: unknown): SeaportDomain {
     )
   }
 
+  // Name and version feed the domain separator, so a default would sign against
+  // a domain the payload never named.
+  if (typeof domain.name !== 'string' || typeof domain.version !== 'string') {
+    throw new SeaportError(
+      'invalid-domain',
+      'Signature domain has no name or version'
+    )
+  }
+
   return {
-    name: typeof domain.name === 'string' ? domain.name : 'Seaport',
-    version: typeof domain.version === 'string' ? domain.version : '1.6',
+    name: domain.name,
+    version: domain.version,
     chainId: domain.chainId,
     verifyingContract: verifyingContract as `0x${string}`,
   }
