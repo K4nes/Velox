@@ -8,6 +8,7 @@ import {
   typedDataForLeaf,
 } from '@/lib/seaport'
 import type {
+  OfferItem,
   OrderComponentsLeaf,
   OrderFees,
   OrderTypedData,
@@ -93,6 +94,9 @@ export type ListingPlanErrorCode =
   | 'duration-not-honored'
   | 'price-mismatch'
   | 'quantity-mismatch'
+  | 'offer-shape'
+  | 'currency-mismatch'
+  | 'decaying-order'
   | 'approval-sender-mismatch'
 
 export class ListingPlanError extends Error {
@@ -154,20 +158,29 @@ function sameToken(
   )
 }
 
-// The signature is the only consent this flow records, so the amounts it covers
-// are checked against the request first. One minor unit per consideration item
-// absorbs the split's floor rounding at any currency precision; anything larger
-// means OpenSea built a different deal.
+// The signature is the only consent this flow records, so the deal it covers is
+// checked against the request first: one offer for the selected token, a fixed
+// amount in the requested currency, and a total within one part per million of
+// the price the operator typed.
 function assertOrderEconomics(input: {
   leaf: OrderComponentsLeaf
   fees: OrderFees
   match: ListingToken
   priceAmount: bigint
   decimals: number
+  currency: string
 }): void {
   const units = BigInt(input.match.quantity)
-  const offered = BigInt(input.leaf.offer[0]?.startAmount ?? '0')
+  const [offer, ...extraOffers] = input.leaf.offer
 
+  if (!offer || extraOffers.length > 0) {
+    throw new ListingPlanError(
+      'offer-shape',
+      `OpenSea offered ${input.leaf.offer.length} assets for token #${input.match.tokenId}, expected one`
+    )
+  }
+
+  const offered = BigInt(offer.startAmount)
   if (offered !== units) {
     throw new ListingPlanError(
       'quantity-mismatch',
@@ -175,8 +188,32 @@ function assertOrderEconomics(input: {
     )
   }
 
+  const fixed = (item: OfferItem) => item.startAmount === item.endAmount
+  if (!fixed(offer)) {
+    throw new ListingPlanError(
+      'decaying-order',
+      `Order for token #${input.match.tokenId} pays out a declining amount`
+    )
+  }
+
+  const currency = input.currency.toLowerCase()
+  for (const item of input.leaf.consideration) {
+    if (item.token.toLowerCase() !== currency) {
+      throw new ListingPlanError(
+        'currency-mismatch',
+        `Order for token #${input.match.tokenId} is paid in ${item.token}, expected ${input.currency}`
+      )
+    }
+    if (!fixed(item)) {
+      throw new ListingPlanError(
+        'decaying-order',
+        `Order for token #${input.match.tokenId} pays out a declining amount`
+      )
+    }
+  }
+
   const expected = input.priceAmount * units
-  const tolerance = BigInt(input.leaf.consideration.length)
+  const tolerance = expected / 1_000_000n
   const drift = input.fees.grossWei - expected
   if (drift > tolerance || drift < -tolerance) {
     throw new ListingPlanError(
@@ -196,6 +233,7 @@ function planWallet(input: {
   expectedEndSec: number
   priceAmount: bigint
   decimals: number
+  currency: string
   chain: string
 }): PlannedWallet {
   const address = input.batch.address
@@ -278,6 +316,7 @@ function planWallet(input: {
         match,
         priceAmount: input.priceAmount,
         decimals: input.decimals,
+        currency: input.currency,
       })
 
       orders.set(match.key, {
@@ -320,6 +359,7 @@ export function buildListingPlan(input: {
   durationDays: number
   endTimeSec: number
   decimals: number
+  currency: string
   envelopes: readonly {
     address: string
     label: string
@@ -338,6 +378,7 @@ export function buildListingPlan(input: {
       expectedEndSec: input.endTimeSec,
       priceAmount: input.priceAmount,
       decimals: input.decimals,
+      currency: input.currency,
       chain: input.collection.chain,
     })
   )

@@ -100,6 +100,10 @@ export function useListingRun(input: {
       return
     }
 
+    // Captured before any wait so a start that outlives its page cannot install
+    // a slot nobody can abort.
+    const entryEpoch = epochRef.current
+
     if (liveRun) {
       if (!liveRun.aborted) {
         setError('A listing run is still in progress')
@@ -108,18 +112,23 @@ export function useListingRun(input: {
       }
 
       // The abandoned run still has a submit in flight. Wait for it to settle
-      // so the same token cannot be listed twice.
+      // so the same token cannot be listed twice, with the form locked for the
+      // duration so what the operator sees is what gets signed.
       runningRef.current = true
+      setRunning(true)
       setError('Waiting for the previous run to finish')
       while (liveRun) {
         if (!liveRun.aborted) {
           runningRef.current = false
+          setRunning(false)
           setError('A listing run is still in progress')
           toast.error('A listing run is still in progress')
           return
         }
         await liveRun.done
       }
+
+      if (entryEpoch !== epochRef.current) return
     }
 
     const epoch = epochRef.current
@@ -188,6 +197,7 @@ export function useListingRun(input: {
         durationDays,
         endTimeSec,
         decimals,
+        currency: collection.listingCurrency.address,
         envelopes,
       })
 
