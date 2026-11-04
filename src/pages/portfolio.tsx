@@ -210,7 +210,10 @@ export function PortfolioPage() {
       ? scan.running
         ? 'Scanning… no matching tokens yet.'
         : 'No held tokens match the filters.'
-      : scan.running && scan.tableState.status === 'idle'
+      : scan.running &&
+          (scan.tableState.status === 'idle' ||
+            scan.tableState.status === 'empty' ||
+            scan.tableState.status === 'error')
         ? 'Scanning…'
         : scan.tableState.message
   const statusAnnouncement = scan.running
@@ -537,7 +540,7 @@ export function PortfolioPage() {
                   colSpan={3}
                   className={cn(
                     'h-24 text-center',
-                    scan.tableState.status === 'error'
+                    scan.tableState.status === 'error' && !scan.running
                       ? 'text-destructive'
                       : 'text-muted-foreground'
                   )}
