@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { TokenImage } from '@/components/token-image'
 import { WalletSelect } from '@/components/wallet-select'
 import { usePortfolioScan } from '@/hooks/use-portfolio-scan'
 import { useWalletGroups } from '@/hooks/use-wallets'
@@ -82,28 +83,6 @@ function formatAmount(value: number): string {
   return value.toLocaleString('en-US', {
     maximumFractionDigits: Math.abs(value) < 1 ? 6 : 4,
   })
-}
-
-function TokenImage({ src, alt }: { src: string; alt: string }) {
-  const [failed, setFailed] = useState(false)
-
-  if (!src || failed) {
-    return (
-      <div className="bg-muted flex size-7 shrink-0 items-center justify-center rounded-md">
-        <ImageIcon aria-hidden className="text-muted-foreground size-3.5" />
-      </div>
-    )
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="bg-muted size-7 shrink-0 rounded-md object-cover"
-    />
-  )
 }
 
 function RarityRank({
