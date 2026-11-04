@@ -280,9 +280,7 @@ export function PortfolioPage() {
       value: summary.walletsHolding.toLocaleString('en-US'),
       secondary: walletParts.join(' · '),
     },
-  ].map((tile) =>
-    collection === null ? { ...tile, value: '—', secondary: '—' } : tile
-  )
+  ]
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -352,58 +350,65 @@ export function PortfolioPage() {
         </Button>
       </Card>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
-            {collection?.imageUrl ? (
-              <img
-                src={collection.imageUrl}
-                alt=""
-                className="size-9 rounded-lg object-cover"
-              />
-            ) : (
-              <ImageIcon aria-hidden className="text-muted-foreground size-4" />
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold">
-                {collection ? collection.name || collection.slug : '—'}
-              </h2>
-              <Badge
-                variant="outline"
-                className="px-1.5 text-[11px] tracking-[0.6px] uppercase"
-              >
-                {collection?.chain ?? '—'}
-              </Badge>
-              <Badge variant="secondary">{rarityLabel}</Badge>
+      {collection === null ? null : (
+        <>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+                {collection.imageUrl ? (
+                  <img
+                    src={collection.imageUrl}
+                    alt=""
+                    className="size-9 rounded-lg object-cover"
+                  />
+                ) : (
+                  <ImageIcon
+                    aria-hidden
+                    className="text-muted-foreground size-4"
+                  />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold">
+                    {collection.name || collection.slug}
+                  </h2>
+                  <Badge
+                    variant="outline"
+                    className="px-1.5 text-[11px] tracking-[0.6px] uppercase"
+                  >
+                    {collection.chain}
+                  </Badge>
+                  <Badge variant="secondary">{rarityLabel}</Badge>
+                </div>
+                <p className="text-muted-foreground text-[11px]">
+                  Contract {contractLabel} • Supply {supplyLabel} • Floor{' '}
+                  {floorLabel}
+                </p>
+              </div>
             </div>
-            <p className="text-muted-foreground text-[11px]">
-              Contract {contractLabel} • Supply {supplyLabel} • Floor{' '}
-              {floorLabel}
-            </p>
+            <Separator />
           </div>
-        </div>
-        <Separator />
-      </div>
 
-      <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-        {tiles.map((tile) => (
-          <Card key={tile.label} className="gap-1 px-4">
-            <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-              {tile.label}
-            </dt>
-            <dd className="flex flex-col gap-0.5">
-              <span className="text-card-foreground text-lg font-semibold">
-                {tile.value}
-              </span>
-              <span className="text-muted-foreground text-[11px]">
-                {tile.secondary}
-              </span>
-            </dd>
-          </Card>
-        ))}
-      </dl>
+          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+            {tiles.map((tile) => (
+              <Card key={tile.label} className="gap-1 px-4">
+                <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                  {tile.label}
+                </dt>
+                <dd className="flex flex-col gap-0.5">
+                  <span className="text-card-foreground text-lg font-semibold">
+                    {tile.value}
+                  </span>
+                  <span className="text-muted-foreground text-[11px]">
+                    {tile.secondary}
+                  </span>
+                </dd>
+              </Card>
+            ))}
+          </dl>
+        </>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
