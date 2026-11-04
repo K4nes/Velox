@@ -58,15 +58,15 @@ const TIER_LABELS: Record<RarityTier, string> = {
 }
 
 const TIER_TEXT: Record<RarityTier, string> = {
-  legendary: 'text-orange-400',
-  epic: 'text-purple-400',
-  rare: 'text-blue-400',
+  legendary: 'text-orange-700 dark:text-orange-400',
+  epic: 'text-purple-700 dark:text-purple-400',
+  rare: 'text-blue-700 dark:text-blue-400',
   common: 'text-muted-foreground',
 }
 
 const SORTS: readonly { value: HoldingSort; label: string }[] = [
-  { value: 'rarest', label: 'Rarity rank · rarest first' },
-  { value: 'commonest', label: 'Rarity rank · commonest first' },
+  { value: 'rarest', label: 'Rarest first' },
+  { value: 'commonest', label: 'Commonest first' },
 ]
 
 const NO_HOLDINGS: ScanningHolding[] = []
@@ -120,13 +120,13 @@ function RarityRank({
         <div className="flex flex-col gap-0.5">
           <span
             className={cn(
-              'text-[13px] font-medium',
+              'text-[13px] font-medium tabular-nums',
               tier === null ? null : TIER_TEXT[tier]
             )}
           >
             #{row.rarity.rank}
           </span>
-          <span className="text-muted-foreground text-[11px]">
+          <span className="text-muted-foreground text-xs">
             {tier === null ? '—' : TIER_LABELS[tier]}
           </span>
         </div>
@@ -136,28 +136,28 @@ function RarityRank({
       return (
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-medium">—</span>
-          <span className="text-muted-foreground text-[11px]">Loading…</span>
+          <span className="text-muted-foreground text-xs">Loading…</span>
         </div>
       )
     case 'unranked':
       return (
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-medium">—</span>
-          <span className="text-muted-foreground text-[11px]">No rank</span>
+          <span className="text-muted-foreground text-xs">No rank</span>
         </div>
       )
     case 'missing':
       return (
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-medium">—</span>
-          <span className="text-muted-foreground text-[11px]">Not found</span>
+          <span className="text-muted-foreground text-xs">Not found</span>
         </div>
       )
     case 'failed':
       return (
         <div className="flex flex-col gap-0.5" title={row.rarity.message}>
           <span className="text-[13px] font-medium">—</span>
-          <span className="text-muted-foreground text-[11px]">Unavailable</span>
+          <span className="text-muted-foreground text-xs">Unavailable</span>
         </div>
       )
   }
@@ -237,13 +237,13 @@ export function PortfolioPage() {
   const floorSecondary =
     totalFloor !== null && stats?.floorSymbol === 'ETH' && ethUsd !== null
       ? `≈ $${Math.round(totalFloor * ethUsd).toLocaleString('en-US')}`
-      : 'Collection floor'
+      : ''
 
   const tiles = [
     {
       label: 'Total owned',
       value: summary.units.toLocaleString('en-US'),
-      secondary: `${summary.rows.toLocaleString('en-US')} tokens`,
+      secondary: `${summary.rows.toLocaleString('en-US')} ${summary.rows === 1 ? 'token' : 'tokens'}`,
     },
     {
       label: 'Best rarity',
@@ -261,7 +261,7 @@ export function PortfolioPage() {
     {
       label: 'Ranked',
       value: `${summary.ranked}/${summary.rows}`,
-      secondary: rankParts.length > 0 ? rankParts.join(' · ') : 'All ranked',
+      secondary: rankParts.length > 0 ? rankParts.join(', ') : '',
     },
     {
       label: 'Collection supply',
@@ -271,7 +271,7 @@ export function PortfolioPage() {
     {
       label: 'Wallets holding',
       value: summary.walletsHolding.toLocaleString('en-US'),
-      secondary: walletParts.join(' · '),
+      secondary: walletParts.join(', '),
     },
   ]
 
@@ -368,14 +368,13 @@ export function PortfolioPage() {
                   </h2>
                   <Badge
                     variant="outline"
-                    className="px-1.5 text-[11px] tracking-[0.6px] uppercase"
+                    className="px-1.5 text-xs tracking-[0.6px] uppercase"
                   >
                     {collection.chain}
                   </Badge>
                 </div>
-                <p className="text-muted-foreground text-[11px]">
-                  Contract {contractLabel} • Supply {supplyLabel} • Floor{' '}
-                  {floorLabel}
+                <p className="text-muted-foreground text-xs">
+                  Contract {contractLabel}, Floor {floorLabel}
                 </p>
               </div>
             </div>
@@ -385,15 +384,15 @@ export function PortfolioPage() {
           <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
             {tiles.map((tile) => (
               <Card key={tile.label} className="gap-1 px-4">
-                <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   {tile.label}
                 </dt>
                 <dd className="flex flex-col gap-0.5">
-                  <span className="text-card-foreground text-lg font-semibold">
+                  <span className="text-card-foreground text-base font-semibold tabular-nums">
                     {tile.value}
                   </span>
                   {tile.secondary ? (
-                    <span className="text-muted-foreground text-[11px]">
+                    <span className="text-muted-foreground text-xs">
                       {tile.secondary}
                     </span>
                   ) : null}
@@ -455,7 +454,9 @@ export function PortfolioPage() {
             <h2 className="truncate text-[13px] font-semibold">
               Held NFT Inventory
             </h2>
-            <Badge variant="secondary">{visible.length} items</Badge>
+            <Badge variant="secondary">
+              {visible.length} {visible.length === 1 ? 'item' : 'items'}
+            </Badge>
           </div>
           <div className="relative w-60 shrink-0">
             <Search
@@ -469,7 +470,7 @@ export function PortfolioPage() {
               id="token-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Token #ID"
+              placeholder="Search tokens"
               className="pl-8"
             />
           </div>
@@ -534,7 +535,7 @@ export function PortfolioPage() {
                       {holding.quantity > 1 ? (
                         <Badge
                           variant="secondary"
-                          className="h-5 px-1.5 text-[11px]"
+                          className="h-5 px-1.5 text-xs"
                         >
                           ×{holding.quantity}
                         </Badge>
@@ -549,7 +550,7 @@ export function PortfolioPage() {
                       <span className="text-[13px] font-medium">
                         {holding.owner.label}
                       </span>
-                      <span className="text-muted-foreground text-[11px]">
+                      <span className="text-muted-foreground text-xs">
                         {shortenAddress(holding.owner.address)}
                       </span>
                     </div>
