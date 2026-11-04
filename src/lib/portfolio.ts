@@ -13,7 +13,7 @@ export type ScanWallet = { id: string; label: string; address: string }
 export type CollapsedWallet = { address: string; labels: string[] }
 export type RarityState =
   | { status: 'pending' }
-  | { status: 'ranked'; rank: number; topPercent: number | null }
+  | { status: 'ranked'; rank: number }
   | { status: 'unranked' }
   | { status: 'missing' }
   | { status: 'failed'; message: string }
@@ -61,7 +61,8 @@ export type PortfolioTableState =
   | { status: 'error'; message: string }
   | { status: 'empty'; message: string }
   | { status: 'ready'; rows: ScanningHolding[] }
-export type RarityBandKey = 'all' | 'top1' | 'top10' | 'top33' | 'rest' | 'no-rank'
+export type RarityTier = 'legendary' | 'epic' | 'rare' | 'common'
+export type RarityTierFilter = 'all' | RarityTier | 'no-rank'
 export type HoldingSort = 'rarest' | 'commonest'
 
 export function resolveScanWallets(
@@ -97,35 +98,41 @@ export function percentileOf(
   return (rank / maxRank) * 100
 }
 
-export function rarityBandOf(
-  row: ScanningHolding,
+export function rarityTierOf(
+  rank: number,
   maxRank: number | null
-): RarityBandKey {
-  if (row.rarity.status !== 'ranked') return 'no-rank'
-
-  const percentile = percentileOf(row.rarity.rank, maxRank)
-  if (percentile === null) return 'no-rank'
-  if (percentile <= 1) return 'top1'
-  if (percentile <= 10) return 'top10'
-  if (percentile <= 33) return 'top33'
-  return 'rest'
+): RarityTier | null {
+  const percentile = percentileOf(rank, maxRank)
+  if (percentile === null) return null
+  if (percentile <= 1) return 'legendary'
+  if (percentile <= 10) return 'epic'
+  if (percentile <= 33) return 'rare'
+  return 'common'
 }
 
-export function countRarityBands(
+export function rarityFilterOf(
+  row: ScanningHolding,
+  maxRank: number | null
+): RarityTierFilter {
+  if (row.rarity.status !== 'ranked') return 'no-rank'
+  return rarityTierOf(row.rarity.rank, maxRank) ?? 'no-rank'
+}
+
+export function countRarityTiers(
   rows: readonly ScanningHolding[],
   maxRank: number | null
-): Record<RarityBandKey, number> {
-  const counts: Record<RarityBandKey, number> = {
+): Record<RarityTierFilter, number> {
+  const counts: Record<RarityTierFilter, number> = {
     all: rows.length,
-    top1: 0,
-    top10: 0,
-    top33: 0,
-    rest: 0,
+    legendary: 0,
+    epic: 0,
+    rare: 0,
+    common: 0,
     'no-rank': 0,
   }
 
   for (const row of rows) {
-    counts[rarityBandOf(row, maxRank)] += 1
+    counts[rarityFilterOf(row, maxRank)] += 1
   }
 
   return counts
@@ -188,12 +195,13 @@ export function sortHoldings(
 export function portfolioStats(input: {
   holdings: readonly ScanningHolding[]
   wallets: readonly WalletScan[]
+  maxRank: number | null
 }): {
   rows: number
   units: number
   walletsHolding: number
   bestRank: number | null
-  bestTopPercent: number | null
+  bestTier: RarityTier | null
   ranked: number
   pending: number
   unranked: number
@@ -205,7 +213,7 @@ export function portfolioStats(input: {
   let unranked = 0
   let unavailable = 0
   let bestRank: number | null = null
-  let bestTopPercent: number | null = null
+  let bestTier: RarityTier | null = null
 
   for (const row of input.holdings) {
     units += row.quantity
@@ -215,7 +223,7 @@ export function portfolioStats(input: {
         ranked += 1
         if (bestRank === null || row.rarity.rank < bestRank) {
           bestRank = row.rarity.rank
-          bestTopPercent = row.rarity.topPercent
+          bestTier = rarityTierOf(row.rarity.rank, input.maxRank)
         }
         break
       case 'pending':
@@ -236,7 +244,7 @@ export function portfolioStats(input: {
     units,
     walletsHolding: input.wallets.filter((wallet) => wallet.tokens > 0).length,
     bestRank,
-    bestTopPercent,
+    bestTier,
     ranked,
     pending,
     unranked,
@@ -296,7 +304,6 @@ export async function scanPortfolio(input: {
   onSnapshot?: (snapshot: ScanSnapshot) => void
 }): Promise<PortfolioScanResult> {
   const collection = await getCollection(input.slug)
-  const maxRank = collection.rarity?.maxRank ?? null
 
   let stats: CollectionStats | null = null
   let ethUsd: number | null = null
@@ -456,13 +463,7 @@ export async function scanPortfolio(input: {
         const rank = byToken.get(row.tokenId) ?? null
         setRarity(
           key,
-          rank === null
-            ? { status: 'unranked' }
-            : {
-                status: 'ranked',
-                rank,
-                topPercent: percentileOf(rank, maxRank),
-              }
+          rank === null ? { status: 'unranked' } : { status: 'ranked', rank }
         )
       }
     } catch (failure) {

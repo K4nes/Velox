@@ -25,29 +25,45 @@ import { WalletSelect } from '@/components/wallet-select'
 import { usePortfolioScan } from '@/hooks/use-portfolio-scan'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import {
-  countRarityBands,
+  countRarityTiers,
   portfolioStats,
-  rarityBandOf,
+  rarityFilterOf,
+  rarityTierOf,
   searchHoldings,
   sortHoldings,
 } from '@/lib/portfolio'
 import type {
   CollapsedWallet,
   HoldingSort,
-  RarityBandKey,
+  RarityTier,
+  RarityTierFilter,
   ScanningHolding,
   WalletScan,
 } from '@/lib/portfolio'
 import { cn } from '@/lib/utils'
 
-const BANDS: readonly { key: RarityBandKey; label: string }[] = [
+const TIER_FILTERS: readonly { key: RarityTierFilter; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'top1', label: 'Top 1%' },
-  { key: 'top10', label: '1-10%' },
-  { key: 'top33', label: '10-33%' },
-  { key: 'rest', label: 'Rest' },
+  { key: 'legendary', label: 'Legendary' },
+  { key: 'epic', label: 'Epic' },
+  { key: 'rare', label: 'Rare' },
+  { key: 'common', label: 'Common' },
   { key: 'no-rank', label: 'No rank' },
 ]
+
+const TIER_LABELS: Record<RarityTier, string> = {
+  legendary: 'Legendary',
+  epic: 'Epic',
+  rare: 'Rare',
+  common: 'Common',
+}
+
+const TIER_TEXT: Record<RarityTier, string> = {
+  legendary: 'text-orange-400',
+  epic: 'text-purple-400',
+  rare: 'text-blue-400',
+  common: 'text-muted-foreground',
+}
 
 const SORTS: readonly { value: HoldingSort; label: string }[] = [
   { value: 'rarest', label: 'Rarity rank · rarest first' },
@@ -62,11 +78,6 @@ function shortenAddress(address: string): string {
   return address.length > 10
     ? `${address.slice(0, 6)}…${address.slice(-4)}`
     : address
-}
-
-function formatPercent(value: number): string {
-  const digits = value < 1 ? 2 : value < 10 ? 1 : 0
-  return `${value.toFixed(digits).replace(/\.0+$/, '')}%`
 }
 
 function formatAmount(value: number): string {
@@ -95,19 +106,33 @@ function TokenImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-function RarityRank({ row }: { row: ScanningHolding }) {
+function RarityRank({
+  row,
+  maxRank,
+}: {
+  row: ScanningHolding
+  maxRank: number | null
+}) {
   switch (row.rarity.status) {
-    case 'ranked':
+    case 'ranked': {
+      const tier = rarityTierOf(row.rarity.rank, maxRank)
+
       return (
         <div className="flex flex-col gap-0.5">
-          <span className="text-[13px] font-medium">#{row.rarity.rank}</span>
+          <span
+            className={cn(
+              'text-[13px] font-medium',
+              tier === null ? null : TIER_TEXT[tier]
+            )}
+          >
+            #{row.rarity.rank}
+          </span>
           <span className="text-muted-foreground text-[11px]">
-            {row.rarity.topPercent === null
-              ? '—'
-              : `Top ${formatPercent(row.rarity.topPercent)}`}
+            {tier === null ? '—' : TIER_LABELS[tier]}
           </span>
         </div>
       )
+    }
     case 'pending':
       return (
         <div className="flex flex-col gap-0.5">
@@ -143,7 +168,7 @@ export function PortfolioPage() {
   const scan = usePortfolioScan()
   const { groups, error: walletsError } = useWalletGroups()
   const [query, setQuery] = useState('')
-  const [band, setBand] = useState<RarityBandKey>('all')
+  const [tier, setTier] = useState<RarityTierFilter>('all')
   const [sort, setSort] = useState<HoldingSort>('rarest')
 
   const snapshot = scan.state.status === 'scanning' ? scan.state.snapshot : null
@@ -160,23 +185,23 @@ export function PortfolioPage() {
     () => searchHoldings(holdings, query),
     [holdings, query]
   )
-  const bands = useMemo(
-    () => countRarityBands(searched, maxRank),
+  const tiers = useMemo(
+    () => countRarityTiers(searched, maxRank),
     [searched, maxRank]
   )
   const visible = useMemo(
     () =>
       sortHoldings(
-        band === 'all'
+        tier === 'all'
           ? searched
-          : searched.filter((row) => rarityBandOf(row, maxRank) === band),
+          : searched.filter((row) => rarityFilterOf(row, maxRank) === tier),
         sort
       ),
-    [searched, band, maxRank, sort]
+    [searched, tier, maxRank, sort]
   )
   const summary = useMemo(
-    () => portfolioStats({ holdings, wallets }),
-    [holdings, wallets]
+    () => portfolioStats({ holdings, wallets, maxRank }),
+    [holdings, wallets, maxRank]
   )
 
   const rarityLabel = collection
@@ -232,8 +257,8 @@ export function PortfolioPage() {
       label: 'Best rarity',
       value: summary.bestRank !== null ? `#${summary.bestRank}` : '—',
       secondary:
-        summary.bestTopPercent !== null
-          ? `Top ${formatPercent(summary.bestTopPercent)}`
+        summary.bestTier !== null
+          ? TIER_LABELS[summary.bestTier]
           : 'No ranked tokens',
     },
     {
@@ -385,23 +410,23 @@ export function PortfolioPage() {
         <div
           className="flex flex-wrap items-center gap-2"
           role="group"
-          aria-label="Filter by rarity band"
+          aria-label="Filter by rarity tier"
         >
-          {BANDS.map((option) => {
-            const active = option.key === band
+          {TIER_FILTERS.map((option) => {
+            const active = option.key === tier
 
             return (
               <Button
                 key={option.key}
                 variant="ghost"
                 aria-pressed={active}
-                onClick={() => setBand(option.key)}
+                onClick={() => setTier(option.key)}
                 className={cn(
                   'px-2.5 font-medium',
                   active ? 'bg-muted text-foreground' : 'text-muted-foreground'
                 )}
               >
-                {option.label} ({bands[option.key]})
+                {option.label} ({tiers[option.key]})
               </Button>
             )
           })}
@@ -532,7 +557,7 @@ export function PortfolioPage() {
                     </div>
                   </TableCell>
                   <TableCell className="px-3">
-                    <RarityRank row={holding} />
+                    <RarityRank row={holding} maxRank={maxRank} />
                   </TableCell>
                 </TableRow>
               ))
