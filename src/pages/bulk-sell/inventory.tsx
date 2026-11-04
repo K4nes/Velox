@@ -112,9 +112,10 @@ export function Inventory({
   onToggleToken: (key: string) => void
   onToggleAll: () => void
 }) {
+  const selectable = rows.filter((row) => Math.floor(row.quantity) >= 1)
   const selectedVisible = rows.filter((row) => selectedKeys.includes(row.key))
   const headerChecked: boolean | 'indeterminate' =
-    rows.length > 0 && selectedVisible.length === rows.length
+    selectable.length > 0 && selectedVisible.length === selectable.length
       ? true
       : selectedVisible.length > 0
         ? 'indeterminate'
