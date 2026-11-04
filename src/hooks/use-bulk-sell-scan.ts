@@ -196,6 +196,10 @@ export function useBulkSellScan() {
     setSelectedKeys((current) => current.filter((key) => !keys.includes(key)))
   }
 
+  function selectKeys(keys: readonly string[]) {
+    setSelectedKeys(keys)
+  }
+
   return {
     url,
     selectedWallets,
@@ -214,6 +218,7 @@ export function useBulkSellScan() {
     toggleToken,
     toggleAll,
     deselect,
+    selectKeys,
     scan,
   }
 }

@@ -1,31 +1,141 @@
-import { useState } from 'react'
-import { Gavel, RefreshCw, ScanLine, Search } from 'lucide-react'
-import { EmptyState } from '@/components/empty-state'
+import { useMemo } from 'react'
+import { Scan } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
+import { chainBySlug } from '@/config/chains'
+import { useBulkSellScan } from '@/hooks/use-bulk-sell-scan'
+import { useCollectionOffers } from '@/hooks/use-collection-offers'
+import { useInstantSellRun } from '@/hooks/use-instant-sell-run'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { planSales } from '@/lib/instant-sell'
+import type { SellStepState } from '@/lib/sell-run'
+import { sellStepsByToken } from '@/lib/sell-run'
+import { Inventory } from '@/pages/instant-sell/inventory'
+import type { InventoryRow } from '@/pages/instant-sell/inventory'
+import { SellRail } from '@/pages/instant-sell/sell-rail'
 
-const feeRows = [
-  { label: 'Gross proceeds', value: '0' },
-  { label: 'Marketplace fee · 1%', value: '0' },
-  { label: 'Royalty fee', value: '–' },
-]
-
-const selectionStats = [
-  { label: 'Selected', value: '0' },
-  { label: 'Avg offer', value: '–' },
-  { label: 'Floor', value: '–' },
-]
+const NO_STEPS = new Map<string, SellStepState>()
 
 export function InstantSellPage() {
-  const [collectionUrl, setCollectionUrl] = useState('')
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [filter, setFilter] = useState('')
+  const scan = useBulkSellScan()
+  const offers = useCollectionOffers(scan.collection)
+  const run = useInstantSellRun({
+    onSold: scan.deselect,
+    onSettled: offers.refresh,
+  })
   const { groups } = useWalletGroups()
+
+  const plan = useMemo(
+    () =>
+      planSales({
+        selected: scan.selection,
+        ladder: offers.ladder,
+        nowSec: Math.floor(Date.now() / 1000),
+      }),
+    [scan.selection, offers.ladder]
+  )
+
+  const statuses = useMemo(
+    () => (run.progress ? sellStepsByToken(run.progress) : NO_STEPS),
+    [run.progress]
+  )
+
+  const selectedSet = useMemo(
+    () => new Set(scan.selectedKeys),
+    [scan.selectedKeys]
+  )
+
+  const offersState = offers.state
+
+  const rows = useMemo(() => {
+    const best = offers.ladder?.offers[0] ?? null
+
+    return scan.rows.map((token): InventoryRow => {
+      const selected = selectedSet.has(token.key)
+      const assigned = plan.assigned.get(token.key) ?? null
+      const sold = statuses.get(token.key)?.status === 'sold'
+      let blocked: InventoryRow['blocked'] = null
+
+      if (sold) {
+        blocked = 'sold'
+      } else if (Math.floor(token.quantity) < 1) {
+        blocked = 'sub-unit'
+      } else if (selected) {
+        blocked = plan.uncovered.get(token.key) ?? null
+      } else if (!offers.ladder) {
+        blocked =
+          offersState.status === 'loading'
+            ? 'loading'
+            : offersState.status === 'failed'
+              ? 'unavailable'
+              : 'no-bid'
+      } else if (offers.ladder.remainingUnits < 1) {
+        blocked = 'depth-exhausted'
+      }
+
+      return {
+        token,
+        best,
+        assigned,
+        blocked,
+        selected,
+        status: statuses.get(token.key),
+      }
+    })
+  }, [scan.rows, selectedSet, plan, statuses, offers.ladder, offersState.status])
+
+  const visibleSelectable = rows.filter(
+    (row) =>
+      Math.floor(row.token.quantity) >= 1 &&
+      row.blocked !== 'sold' &&
+      (row.selected || row.blocked === null)
+  )
+  const allVisibleSelected =
+    visibleSelectable.length > 0 &&
+    visibleSelectable.every((row) => row.selected)
+  const someVisibleSelected =
+    !allVisibleSelected && visibleSelectable.some((row) => row.selected)
+
+  function toggleVisible() {
+    if (visibleSelectable.length === 0) return
+
+    const keys = new Set(visibleSelectable.map((row) => row.token.key))
+    const everySelected = visibleSelectable.every((row) => row.selected)
+    scan.selectKeys(
+      everySelected
+        ? scan.selectedKeys.filter((key) => !keys.has(key))
+        : [...new Set([...scan.selectedKeys, ...keys])]
+    )
+  }
+
+  const chainSupported = scan.collection
+    ? chainBySlug(scan.collection.chain) !== undefined
+    : true
+
+  const blockedReason = !scan.collection
+    ? 'Scan a collection to load bids'
+    : !chainSupported
+      ? 'Chain not supported'
+      : offersState.status === 'loading' && offersState.book === null
+        ? 'Loading offers…'
+        : offersState.status === 'failed' && offersState.book === null
+          ? 'Offers could not be loaded — refresh'
+          : !offers.ladder
+            ? 'No active collection offers'
+            : scan.selection.length === 0
+              ? 'Select at least one token'
+              : plan.targets.length === 0
+                ? 'None of the selected tokens has a bid'
+                : null
+
+  function check() {
+    run.reset()
+    void scan.scan()
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
@@ -36,135 +146,73 @@ export function InstantSellPage() {
           </label>
           <Input
             id="collection-url"
-            value={collectionUrl}
-            onChange={(event) => setCollectionUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/... or https://scatter.art/..."
+            value={scan.url}
+            onChange={(event) => scan.changeUrl(event.target.value)}
+            placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+            disabled={scan.running || run.running}
           />
         </div>
+
         <div
           className="flex flex-col gap-1.5 lg:w-[280px]"
           role="group"
-          aria-labelledby="instant-sell-wallet-label"
+          aria-labelledby="instant-wallet-label"
         >
-          <span id="instant-sell-wallet-label" className="text-xs font-medium">
+          <span id="instant-wallet-label" className="text-xs font-medium">
             Wallet
           </span>
           <WalletSelect
             groups={groups}
-            selected={selectedWallets}
-            onSelectedChange={setSelectedWallets}
+            selected={scan.selectedWallets}
+            onSelectedChange={scan.changeWallets}
+            disabled={scan.running || run.running}
+            aria-labelledby="instant-wallet-label"
             className="w-full"
           />
         </div>
-        <Button className="shrink-0" disabled>
+
+        <Button
+          className="shrink-0"
+          onClick={check}
+          disabled={!scan.canScan || run.running}
+        >
+          {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
           Scan held NFTs
         </Button>
       </Card>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-          <div className="flex h-12 items-center justify-between gap-2 border-b px-4">
-            <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
-            <div className="relative w-60 shrink-0">
-              <Search
-                aria-hidden
-                className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-              />
-              <label htmlFor="inventory-filter" className="sr-only">
-                Filter by token #
-              </label>
-              <Input
-                id="inventory-filter"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filter by token #"
-                className="pl-8"
-              />
-            </div>
-          </div>
+        <Inventory
+          state={scan.state}
+          rows={rows}
+          totalRows={scan.totalRows}
+          query={scan.query}
+          onQueryChange={scan.setQuery}
+          allVisibleSelected={allVisibleSelected}
+          someVisibleSelected={someVisibleSelected}
+          onToggleVisible={toggleVisible}
+          running={run.running}
+          onToggleToken={scan.toggleToken}
+          currencySymbol={
+            plan.currency?.symbol ?? offers.ladder?.currency.symbol ?? 'ETH'
+          }
+        />
 
-          <div className="flex h-12 items-center justify-end gap-2 px-4">
-            <Button variant="outline">Refresh</Button>
-            <Button variant="outline">Select all</Button>
-            <Button variant="outline">Clear</Button>
-          </div>
-
-          <Table aria-label="Held NFT inventory">
-            <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
-              <TableRow>
-                <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                  Token
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={1} className="p-0">
-                  <EmptyState
-                    icon={ScanLine}
-                    title="No held NFTs found"
-                    description="Scan the collection to load the tokens held across the selected wallets."
-                  />
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </Card>
-
-        <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]">
-          <Card className="shrink-0 gap-3 p-4">
-            <h2 className="text-[13px] font-semibold">Net proceeds</h2>
-            <div className="flex items-end gap-1.5">
-              <span className="text-[28px] leading-none font-semibold">0</span>
-              <span className="text-muted-foreground text-xs font-medium">WETH</span>
-            </div>
-            <span className="text-muted-foreground text-[13px]">–</span>
-            <Separator />
-            <dl className="flex flex-col gap-3">
-              {feeRows.map((row) => (
-                <div key={row.label} className="flex items-center justify-between gap-3">
-                  <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                    {row.label}
-                  </dt>
-                  <dd className="text-[13px] font-medium tabular-nums">{row.value}</dd>
-                </div>
-              ))}
-            </dl>
-            <Separator />
-            <dl className="grid grid-cols-3 gap-3">
-              {selectionStats.map((stat) => (
-                <div key={stat.label} className="flex flex-col gap-0.5">
-                  <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                    {stat.label}
-                  </dt>
-                  <dd className="text-[13px] font-medium tabular-nums">{stat.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
-
-          <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-            <div className="flex h-12 items-center justify-between gap-2 border-b px-4">
-              <h2 className="truncate text-[13px] font-semibold">Active OpenSea Offers</h2>
-              <Button variant="ghost" size="icon" aria-label="Refresh offers">
-                <RefreshCw />
-              </Button>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="m-auto flex flex-col items-center">
-                <EmptyState
-                  icon={Gavel}
-                  title="No active bids"
-                  description="No active OpenSea offers found for this collection."
-                />
-              </div>
-            </div>
-
-            <div className="mt-auto shrink-0 border-t p-4">
-              <Button className="h-10 w-full">Select NFTs to instant sell</Button>
-            </div>
-          </Card>
-        </div>
+        <SellRail
+          offers={offersState}
+          ladders={offers.ladders}
+          ladder={offers.ladder}
+          currency={offers.currency}
+          onCurrencyChange={offers.setCurrency}
+          onRefresh={offers.refresh}
+          plan={plan}
+          selectedCount={scan.selection.length}
+          summary={run.summary}
+          error={run.error}
+          blockedReason={blockedReason}
+          running={run.running}
+          onAccept={() => void run.start(plan.targets)}
+        />
       </div>
     </div>
   )
