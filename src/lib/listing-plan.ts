@@ -155,10 +155,9 @@ function sameToken(
 }
 
 // The signature is the only consent this flow records, so the amounts it covers
-// are checked against the request first. A wei of slack absorbs the fee split's
-// floor rounding; anything larger means OpenSea built a different deal.
-const PRICE_TOLERANCE_WEI = 1_000_000n
-
+// are checked against the request first. One minor unit per consideration item
+// absorbs the split's floor rounding at any currency precision; anything larger
+// means OpenSea built a different deal.
 function assertOrderEconomics(input: {
   leaf: OrderComponentsLeaf
   fees: OrderFees
@@ -177,8 +176,9 @@ function assertOrderEconomics(input: {
   }
 
   const expected = input.priceAmount * units
+  const tolerance = BigInt(input.leaf.consideration.length)
   const drift = input.fees.grossWei - expected
-  if (drift > PRICE_TOLERANCE_WEI || drift < -PRICE_TOLERANCE_WEI) {
+  if (drift > tolerance || drift < -tolerance) {
     throw new ListingPlanError(
       'price-mismatch',
       `OpenSea priced token #${input.match.tokenId} at ${formatUnits(

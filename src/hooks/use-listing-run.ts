@@ -27,9 +27,9 @@ import type { CollectionInfo } from '@/lib/opensea'
 import { listWallets } from '@/lib/wallets'
 
 // A run keeps submitting after its page unmounts, so the guard lives outside the
-// hook. A second mount only waits for a run that can still submit; once the page
-// is gone the old run signs nothing more and the new one may start.
-type RunSlot = { aborted: boolean }
+// hook. A second mount waits for a run that lost its page to settle before it
+// starts, because a submit already in flight still lands.
+type RunSlot = { aborted: boolean; done: Promise<void>; settle: () => void }
 
 let liveRun: RunSlot | null = null
 
@@ -100,10 +100,26 @@ export function useListingRun(input: {
       return
     }
 
-    if (liveRun && !liveRun.aborted) {
-      setError('A listing run is still in progress')
-      toast.error('A listing run is still in progress')
-      return
+    if (liveRun) {
+      if (!liveRun.aborted) {
+        setError('A listing run is still in progress')
+        toast.error('A listing run is still in progress')
+        return
+      }
+
+      // The abandoned run still has a submit in flight. Wait for it to settle
+      // so the same token cannot be listed twice.
+      runningRef.current = true
+      setError('Waiting for the previous run to finish')
+      while (liveRun) {
+        if (!liveRun.aborted) {
+          runningRef.current = false
+          setError('A listing run is still in progress')
+          toast.error('A listing run is still in progress')
+          return
+        }
+        await liveRun.done
+      }
     }
 
     const epoch = epochRef.current
@@ -111,7 +127,12 @@ export function useListingRun(input: {
     const publish = (next: ListingRunProgress) => {
       if (live()) setProgress(next)
     }
-    const slot: RunSlot = { aborted: false }
+    // The project's TS lib predates Promise.withResolvers.
+    let settle = () => {}
+    const done = new Promise<void>((resolve) => {
+      settle = resolve
+    })
+    const slot: RunSlot = { aborted: false, done, settle }
     liveRun = slot
     slotRef.current = slot
 
@@ -199,6 +220,7 @@ export function useListingRun(input: {
       toast.error(message)
     } finally {
       slot.aborted = true
+      slot.settle()
       slotRef.current = null
       if (liveRun === slot) liveRun = null
       if (live()) {
