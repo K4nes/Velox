@@ -273,7 +273,7 @@ export function PortfolioPage() {
   const tiles = [
     {
       label: 'Total owned',
-      value: summary.units.toLocaleString('en-US'),
+      value: formatAmount(summary.units),
       secondary: `${summary.rows.toLocaleString('en-US')} ${summary.rows === 1 ? 'token' : 'tokens'}`,
     },
     {
