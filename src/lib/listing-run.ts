@@ -17,6 +17,7 @@ export type RunStepStatus =
   | 'approving'
   | 'signing'
   | 'submitting'
+  | 'approved'
   | 'listed'
   | 'failed'
 
@@ -30,6 +31,7 @@ export type RunStepState = {
 } & (
   | { status: 'queued' }
   | { status: 'approving' | 'signing' | 'submitting' }
+  | { status: 'approved' }
   | { status: 'listed'; orderHash: string | null }
   | { status: 'failed'; error: string }
 )
@@ -56,6 +58,7 @@ const WALLET_CONCURRENCY = 2
 export const RUN_STEP_LABEL: Record<RunStepStatus, string> = {
   queued: 'Queued',
   approving: 'Approving',
+  approved: 'Approved',
   signing: 'Signing',
   submitting: 'Submitting',
   listed: 'Listed',
@@ -65,6 +68,7 @@ export const RUN_STEP_LABEL: Record<RunStepStatus, string> = {
 export const RUN_STEP_TONE: Record<RunStepStatus, string> = {
   queued: 'text-muted-foreground',
   approving: 'text-foreground',
+  approved: 'text-primary',
   signing: 'text-foreground',
   submitting: 'text-foreground',
   listed: 'text-primary',
@@ -212,10 +216,9 @@ export async function runListingPlan(input: {
         return
       }
 
-      // An approval has no success state of its own in the status union, so it
-      // shares the terminal `listed` state and never carries a hash.
+      // The approval is done; its orders still have to be signed.
       const approved = stateOf(approval.id)
-      if (approved) commit({ ...approved, status: 'listed', orderHash: null })
+      if (approved) commit({ ...approved, status: 'approved' })
     }
 
     for (const order of orders) {

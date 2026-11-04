@@ -105,6 +105,10 @@ export function useBulkSellScan() {
           `${failed.length} of ${result.scans.length} wallets failed — ${failed[0]?.error ?? ''}`
         )
       }
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : String(failure)
+      setState({ status: 'failed', message })
+      toast.error(message)
     } finally {
       runningRef.current = false
       setRunning(false)
@@ -140,7 +144,7 @@ export function useBulkSellScan() {
                 chain: row.chain,
                 contract: row.contractAddress,
                 tokenId: row.tokenId,
-                quantity: row.quantity,
+                quantity: Math.max(1, Math.floor(row.quantity)),
               },
             ]
           : []

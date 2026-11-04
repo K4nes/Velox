@@ -111,7 +111,11 @@ export function ListingRail({
         />
         <SummaryRow
           label="Fees"
-          value={`-${formatEth(estimatedTotals.feeWei)} ${symbol}`}
+          value={
+            estimatedTotals.feeWei > 0n
+              ? `-${formatEth(estimatedTotals.feeWei)} ${symbol}`
+              : `0 ${symbol}`
+          }
         />
 
         <div className="bg-muted flex flex-col gap-0.5 rounded-[10px] p-3">
