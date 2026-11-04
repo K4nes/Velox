@@ -182,7 +182,7 @@ function planWallet(input: {
       }
 
       approvals.push({
-        id: `approval:${address}`,
+        id: `approval:${address}:${approvals.length}`,
         kind: 'approval',
         address,
         label: input.batch.label,
