@@ -212,8 +212,6 @@ type RawCollection = {
   total_supply?: number
   rarity?: {
     max_rank?: number
-    strategy_id?: string
-    strategy_version?: string
   } | null
   contracts?: { address?: string; chain?: string }[]
 }
@@ -282,6 +280,8 @@ type RawAccountNft = {
   image_url?: string
   opensea_url?: string
   quantity?: number
+  quantity_string?: string
+  decimals?: number | null
 }
 
 export async function getAccountNfts(input: {
@@ -312,7 +312,17 @@ export async function getAccountNfts(input: {
   return {
     nfts: body.nfts.flatMap((raw) => {
       if (typeof raw.identifier !== 'string' || raw.identifier === '') return []
-      const quantity = raw.quantity ?? 1
+      const rawQuantity = Number(raw.quantity_string ?? raw.quantity ?? 1)
+      const decimals =
+        typeof raw.decimals === 'number' &&
+        Number.isInteger(raw.decimals) &&
+        raw.decimals > 0
+          ? raw.decimals
+          : 0
+      const quantity =
+        Number.isFinite(rawQuantity) && rawQuantity > 0
+          ? rawQuantity / 10 ** decimals
+          : 1
 
       return [
         {
@@ -322,8 +332,7 @@ export async function getAccountNfts(input: {
           name: raw.name ?? '',
           imageUrl: raw.display_image_url ?? raw.image_url ?? '',
           openseaUrl: raw.opensea_url ?? '',
-          quantity:
-            Number.isInteger(quantity) && quantity >= 1 ? quantity : 1,
+          quantity,
         },
       ]
     }),
