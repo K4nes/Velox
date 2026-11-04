@@ -63,7 +63,7 @@ export function ListingRail({
       <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="list-price" className="text-xs font-medium">
-            Price per item
+            Price per item · {symbol}
           </label>
           <Input
             id="list-price"
