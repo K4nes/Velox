@@ -133,17 +133,15 @@ export function SwapWallets({
             {batch?.jobs.map((job) => {
               const draft = amountFor(amounts, job.walletId)
               const hintId = `swap-amount-${job.walletId}`
-              // Parsed from the draft, not the display batch's amount, which
-              // lags a keystroke behind.
               const parsed = parseFixedAmount(draft, sellDecimals)
-              const overBalance =
+              const draftOverBalance =
                 parsed !== null &&
                 job.available !== null &&
                 parsed > job.available
               const maxBlocked = draft.kind === 'max' && nativeSell
               const hint = maxBlocked
                 ? `Max is not available for ${sellSymbol}`
-                : overBalance
+                : draftOverBalance
                   ? 'Exceeds balance'
                   : null
 

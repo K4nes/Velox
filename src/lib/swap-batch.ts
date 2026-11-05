@@ -96,8 +96,6 @@ export async function resolveSwapBatch(input: {
   return { spec, jobs, total, shortfall, unresolved }
 }
 
-// Includes each resolved amount, so editing one wallet's draft clears the
-// previous run's states instead of showing them against the new amounts.
 export function swapBatchKey(batch: SwapBatch): string {
   return [
     specKey(batch.spec, batch.jobs.map((job) => job.walletId)),
