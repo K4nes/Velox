@@ -26,11 +26,20 @@ export const WALLET_CONCURRENCY = 2
 // caller which transaction may have reached the node.
 export class BroadcastError extends Error {
   readonly txHash: `0x${string}`
+  readonly from: `0x${string}`
+  readonly nonce: number
 
-  constructor(txHash: `0x${string}`, cause: Error) {
+  constructor(
+    txHash: `0x${string}`,
+    cause: Error,
+    from: `0x${string}`,
+    nonce: number
+  ) {
     super(cause.message)
     this.name = 'BroadcastError'
     this.txHash = txHash
+    this.from = from
+    this.nonce = nonce
   }
 }
 
@@ -79,7 +88,12 @@ export async function sendTransaction(input: {
   value: bigint
   gas?: TxGas
   shouldAbort?: () => boolean
-}): Promise<{ txHash: string; chain: string }> {
+}): Promise<{
+  txHash: string
+  chain: string
+  from: `0x${string}`
+  nonce: number
+}> {
   const key = input.wallet.address.toLowerCase()
   const previous = inflight.get(key) ?? Promise.resolve()
   const next = previous.then(
@@ -103,7 +117,12 @@ async function broadcast(input: {
   value: bigint
   gas?: TxGas
   shouldAbort?: () => boolean
-}): Promise<{ txHash: string; chain: string }> {
+}): Promise<{
+  txHash: string
+  chain: string
+  from: `0x${string}`
+  nonce: number
+}> {
   const entry = chainBySlug(input.chainSlug)
   if (!entry) {
     throw new Error(`Unsupported chain: ${input.chainSlug}`)
@@ -162,13 +181,21 @@ async function broadcast(input: {
   try {
     await client.sendRawTransaction({ serializedTransaction })
   } catch (error) {
-    if (error instanceof HttpRequestError || error instanceof TimeoutError) {
-      throw new BroadcastError(txHash, error)
+    // A 4xx is the proxy rejecting the request before the node sees it; only a
+    // network fault, a timeout, or a server-side failure can hide a broadcast.
+    const ambiguous =
+      error instanceof TimeoutError ||
+      (error instanceof HttpRequestError &&
+        (error.status === undefined ||
+          error.status === 408 ||
+          error.status >= 500))
+    if (ambiguous) {
+      throw new BroadcastError(txHash, error, account.address, nonce)
     }
     throw error
   }
 
-  return { txHash, chain: input.chainSlug }
+  return { txHash, chain: input.chainSlug, from: account.address, nonce }
 }
 
 export async function waitForReceipt(
@@ -191,13 +218,15 @@ export type ReceiptOutcome = 'success' | 'reverted' | 'replaced' | 'unresolved'
 // the timeout, leaves the outcome genuinely unknown to us.
 export async function waitForReceiptOutcome(
   chainSlug: string,
-  txHash: string
+  txHash: string,
+  replacement?: { from: `0x${string}`; nonce: number }
 ): Promise<ReceiptOutcome> {
   try {
     const client = await clientFor(chainSlug)
     const receipt = await client.waitForTransactionReceipt({
       hash: txHash as `0x${string}`,
       timeout: 90_000,
+      ...(replacement ? { replacement } : {}),
     })
 
     if (receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) {

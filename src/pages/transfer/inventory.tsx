@@ -67,12 +67,7 @@ function StatusCell({
   }
 
   const live = step.status === 'signing' || step.status === 'confirming'
-  const txHash =
-    step.status === 'confirming' ||
-    step.status === 'sent' ||
-    step.status === 'unknown'
-      ? step.txHash
-      : null
+  const txHash = 'txHash' in step ? step.txHash : null
 
   return (
     <div className="flex max-w-[220px] flex-col gap-0.5">
@@ -232,6 +227,7 @@ export function Inventory({
           {rows.map((row) => {
             const key = row.token.key
             const selected = selectedKeys.includes(key)
+            const step = tokenStates.get(key)
 
             return (
               <TableRow key={key}>
@@ -243,7 +239,9 @@ export function Inventory({
                     title={
                       running
                         ? 'A transfer run is in progress'
-                        : (row.blockedReason ?? undefined)
+                        : step?.status === 'unknown'
+                          ? 'Unconfirmed. Check the explorer before retrying.'
+                          : (row.blockedReason ?? undefined)
                     }
                     onCheckedChange={() => onToggleToken(key)}
                   />

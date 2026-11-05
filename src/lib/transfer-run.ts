@@ -159,7 +159,12 @@ export async function runTransferPlan(input: {
       return
     }
 
-    const broadcast: { id: string; txHash: string }[] = []
+    const broadcast: {
+      id: string
+      txHash: string
+      from: `0x${string}`
+      nonce: number
+    }[] = []
 
     for (const transfer of planned.transfers) {
       if (input.shouldAbort?.()) break
@@ -179,7 +184,12 @@ export async function runTransferPlan(input: {
           value: 0n,
           shouldAbort: input.shouldAbort,
         })
-        broadcast.push({ id: transfer.id, txHash: sent.txHash })
+        broadcast.push({
+          id: transfer.id,
+          txHash: sent.txHash,
+          from: sent.from,
+          nonce: sent.nonce,
+        })
 
         const confirming = stateOf(transfer.id)
         if (confirming) {
@@ -187,7 +197,12 @@ export async function runTransferPlan(input: {
         }
       } catch (error) {
         if (error instanceof BroadcastError) {
-          broadcast.push({ id: transfer.id, txHash: error.txHash })
+          broadcast.push({
+            id: transfer.id,
+            txHash: error.txHash,
+            from: error.from,
+            nonce: error.nonce,
+          })
           const confirming = stateOf(transfer.id)
           if (confirming) {
             commit({ ...confirming, status: 'confirming', txHash: error.txHash })
@@ -221,7 +236,8 @@ export async function runTransferPlan(input: {
 
       const outcome = await waitForReceiptOutcome(
         input.plan.chain,
-        pending.txHash
+        pending.txHash,
+        { from: pending.from, nonce: pending.nonce }
       )
 
       if (outcome === 'success') {

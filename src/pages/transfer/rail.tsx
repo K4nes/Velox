@@ -72,7 +72,7 @@ export function TransferRail({
   const [touched, setTouched] = useState(false)
   const showDestinationError = touched && destinationMessage !== null
   const hideBlockedReason =
-    showDestinationError && blockedReason === destinationMessage
+    blockedReason !== null && blockedReason === destinationMessage
 
   return (
     <div className="flex w-full shrink-0 flex-col xl:w-[340px]">

@@ -42,6 +42,9 @@ export function useTransferRun(input: {
     error: string | null
   } | null>(null)
   const [progress, setProgress] = useState<TransferRunProgress | null>(null)
+  const [history, setHistory] = useState<Map<string, TransferStepState>>(
+    new Map()
+  )
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
@@ -63,14 +66,15 @@ export function useTransferRun(input: {
 
     const name = parsed.name
     const epoch = epochRef.current
+    let active = true
     const timer = window.setTimeout(() => {
       resolveEnsAddress(name)
         .then((address) => {
-          if (epoch !== epochRef.current) return
+          if (!active || epoch !== epochRef.current) return
           setResolved({ name, address, error: null })
         })
         .catch((failure: unknown) => {
-          if (epoch !== epochRef.current) return
+          if (!active || epoch !== epochRef.current) return
           setResolved({
             name,
             address: null,
@@ -81,7 +85,10 @@ export function useTransferRun(input: {
         })
     }, RESOLVE_DEBOUNCE_MS)
 
-    return () => window.clearTimeout(timer)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
   }, [parsed])
 
   const destination = useMemo<DestinationResolution>(() => {
@@ -130,11 +137,13 @@ export function useTransferRun(input: {
     chain: input.chain,
   })
 
-  const steps = useMemo(
-    () =>
-      progress ? tokenStates(progress) : new Map<string, TransferStepState>(),
-    [progress]
-  )
+  const steps = useMemo(() => {
+    const merged = new Map(history)
+    if (progress) {
+      for (const [key, step] of tokenStates(progress)) merged.set(key, step)
+    }
+    return merged
+  }, [history, progress])
   const summary: TransferRunSummary | null = progress
     ? summarizeTransferRun(progress)
     : null
@@ -150,6 +159,7 @@ export function useTransferRun(input: {
 
   function reset() {
     setProgress(null)
+    setHistory(new Map())
     setError(null)
   }
 
@@ -194,7 +204,26 @@ export function useTransferRun(input: {
     const epoch = epochRef.current
     const live = () => epoch === epochRef.current
     const publish = (next: TransferRunProgress) => {
-      if (live()) setProgress(next)
+      if (!live()) return
+      setProgress(next)
+      setHistory((previous) => {
+        const merged = new Map(previous)
+        let changed = false
+        for (const step of next.steps) {
+          if (
+            step.status !== 'sent' &&
+            step.status !== 'unknown' &&
+            step.status !== 'failed'
+          ) {
+            continue
+          }
+          if (merged.get(step.tokenKey) !== step) {
+            merged.set(step.tokenKey, step)
+            changed = true
+          }
+        }
+        return changed ? merged : previous
+      })
     }
     // The project's TS lib predates Promise.withResolvers.
     let settle = () => {}
@@ -228,6 +257,7 @@ export function useTransferRun(input: {
       if (!live()) return
 
       if (outcome.error) {
+        setProgress(null)
         setError(outcome.error)
         toast.error(outcome.error)
         return
@@ -238,6 +268,12 @@ export function useTransferRun(input: {
       input.onSpent(spent)
       input.onDeselect([...spent.keys()])
 
+      const parts: string[] = []
+      if (result.sent > 0) parts.push(`${result.sent} sent`)
+      if (result.unknown > 0) parts.push(`${result.unknown} unconfirmed`)
+      if (result.failed > 0) parts.push(`${result.failed} failed`)
+      const summary = parts.join(', ')
+
       if (result.failed > 0) {
         let firstError = ''
         for (const step of outcome.progress.steps) {
@@ -246,16 +282,16 @@ export function useTransferRun(input: {
             break
           }
         }
-        toast.error(`${result.failed} failed — ${firstError}`)
+        toast.error(`${summary} — ${firstError}`)
         return
       }
 
       if (result.unknown > 0) {
-        toast.warning(`${result.unknown} unconfirmed, check the explorer`)
+        toast.warning(`${summary}, check the explorer`)
         return
       }
 
-      if (result.sent > 0) toast.success(`${result.sent} sent`)
+      if (result.sent > 0) toast.success(summary)
     } catch (failure) {
       if (!live()) return
       const message = failure instanceof Error ? failure.message : String(failure)
