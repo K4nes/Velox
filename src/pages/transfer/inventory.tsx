@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import type { TransferScanRow } from '@/hooks/use-transfer-scan'
-import type { StandardProbe } from '@/lib/token-standard'
 import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer-run'
 import type { TransferStepState } from '@/lib/transfer-run'
 import { cn } from '@/lib/utils'
@@ -89,23 +88,6 @@ function StatusCell({ step }: { step: TransferStepState | undefined }) {
   )
 }
 
-function rowBlocker(
-  row: TransferScanRow,
-  probe: StandardProbe | undefined,
-  running: boolean
-): string | undefined {
-  if (running) return 'A transfer run is in progress'
-  if (row.remaining < 1) {
-    return 'The wallet holds less than one whole unit of this token'
-  }
-  if (row.standard === null) {
-    if (probe?.status === 'unsupported') return probe.reason
-    if (probe?.status === 'unreadable') return probe.error
-    return 'Reading the token standard…'
-  }
-  return undefined
-}
-
 export function Inventory({
   state,
   rows,
@@ -113,13 +95,10 @@ export function Inventory({
   query,
   onQueryChange,
   selectedKeys,
-  amounts,
-  standards,
   tokenStates,
   running,
   onToggleToken,
   onToggleAll,
-  onAmountChange,
 }: {
   state: HoldingsScanState
   rows: readonly TransferScanRow[]
@@ -127,17 +106,12 @@ export function Inventory({
   query: string
   onQueryChange: (value: string) => void
   selectedKeys: readonly string[]
-  amounts: ReadonlyMap<string, number>
-  standards: ReadonlyMap<string, StandardProbe>
   tokenStates: Map<string, TransferStepState>
   running: boolean
   onToggleToken: (key: string) => void
   onToggleAll: () => void
-  onAmountChange: (key: string, value: string) => void
 }) {
-  const selectable = rows.filter(
-    (row) => row.standard !== null && row.remaining >= 1
-  )
+  const selectable = rows.filter((row) => row.selectable)
   const selectedVisible = rows.filter((row) =>
     selectedKeys.includes(row.token.key)
   )
@@ -229,16 +203,13 @@ export function Inventory({
             <TableHead className="text-muted-foreground px-3 text-xs font-medium">
               NFT
             </TableHead>
-            <TableHead className="text-muted-foreground w-[190px] px-3 text-xs font-medium">
+            <TableHead className="text-muted-foreground w-[150px] px-3 text-xs font-medium">
               Source wallet
             </TableHead>
-            <TableHead className="text-muted-foreground w-[110px] px-3 text-xs font-medium">
+            <TableHead className="text-muted-foreground w-[90px] px-3 text-xs font-medium">
               Chain
             </TableHead>
-            <TableHead className="text-muted-foreground w-[90px] px-3 text-xs font-medium">
-              Qty
-            </TableHead>
-            <TableHead className="text-muted-foreground w-[220px] px-3 text-xs font-medium">
+            <TableHead className="text-muted-foreground w-[170px] px-3 text-xs font-medium">
               Status
             </TableHead>
           </TableRow>
@@ -247,7 +218,6 @@ export function Inventory({
           {rows.map((row) => {
             const key = row.token.key
             const selected = selectedKeys.includes(key)
-            const probe = standards.get(row.token.contractAddress.toLowerCase())
 
             return (
               <TableRow key={key}>
@@ -255,8 +225,12 @@ export function Inventory({
                   <Checkbox
                     aria-label={`Select token #${row.token.tokenId}`}
                     checked={selected}
-                    disabled={running || row.standard === null || row.remaining < 1}
-                    title={rowBlocker(row, probe, running)}
+                    disabled={running || !row.selectable}
+                    title={
+                      running
+                        ? 'A transfer run is in progress'
+                        : (row.blockedReason ?? undefined)
+                    }
                     onCheckedChange={() => onToggleToken(key)}
                   />
                 </TableCell>
@@ -274,9 +248,6 @@ export function Inventory({
                         #{row.token.tokenId}
                       </span>
                     </div>
-                    {row.standard === 'erc1155' ? (
-                      <Badge variant="secondary">ERC-1155</Badge>
-                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell className="px-3">
@@ -291,29 +262,6 @@ export function Inventory({
                 </TableCell>
                 <TableCell className="px-3">
                   <span className="text-[13px]">{row.token.chain}</span>
-                </TableCell>
-                <TableCell className="px-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {row.remaining}
-                    </span>
-                    {row.standard === 'erc1155' &&
-                    selected &&
-                    row.remaining > 1 ? (
-                      <Input
-                        aria-label={`Amount of token #${row.token.tokenId} to transfer`}
-                        inputMode="numeric"
-                        min={1}
-                        max={row.remaining}
-                        value={String(
-                          Math.min(amounts.get(key) ?? 1, row.remaining)
-                        )}
-                        onChange={(event) => onAmountChange(key, event.target.value)}
-                        disabled={running}
-                        className="h-8 w-16 text-right tabular-nums"
-                      />
-                    ) : null}
-                  </div>
                 </TableCell>
                 <TableCell className="px-3">
                   <StatusCell step={tokenStates.get(key)} />

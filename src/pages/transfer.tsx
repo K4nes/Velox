@@ -69,7 +69,7 @@ export function TransferPage() {
         </Button>
       </Card>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row">
         <Inventory
           state={scan.state}
           rows={scan.rows}
@@ -77,13 +77,10 @@ export function TransferPage() {
           query={scan.query}
           onQueryChange={scan.setQuery}
           selectedKeys={scan.selectedKeys}
-          amounts={scan.amounts}
-          standards={scan.standards}
           tokenStates={run.tokenStates}
           running={run.running}
           onToggleToken={scan.toggleToken}
           onToggleAll={scan.toggleAll}
-          onAmountChange={scan.setAmount}
         />
 
         <TransferRail
@@ -95,11 +92,14 @@ export function TransferPage() {
           onDestinationChange={run.changeDestination}
           destination={run.destination}
           selections={scan.selection}
+          selectionGroups={scan.selectionGroups}
           summary={run.summary}
           error={run.error}
           blockedReason={run.blockedReason}
           running={run.running}
           onTransfer={() => void run.start()}
+          onRemoveToken={scan.removeToken}
+          onRemoveGroup={scan.removeGroup}
         />
       </div>
     </div>

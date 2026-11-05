@@ -155,7 +155,6 @@ export function destinationLabel(
 export function selectedTransfers(input: {
   tokens: readonly HeldToken[]
   standards: ReadonlyMap<string, StandardProbe>
-  amounts: ReadonlyMap<string, number>
   sent: ReadonlyMap<string, number>
   selectedKeys: readonly string[]
 }): TransferSelection[] {
@@ -171,15 +170,6 @@ export function selectedTransfers(input: {
       Math.floor(token.quantity) - (input.sent.get(token.key) ?? 0)
     if (available < 1) continue
 
-    // ERC-721 moves one token per call whatever the row says; ERC-1155 moves the
-    // amount the operator typed, capped at what the wallet still holds.
-    const requested =
-      probe.standard === 'erc721'
-        ? 1
-        : Math.floor(input.amounts.get(token.key) ?? 1)
-    const amount = Math.min(requested, available)
-    if (!Number.isFinite(amount) || amount < 1) continue
-
     selections.push({
       key: token.key,
       chain: token.chain,
@@ -188,7 +178,7 @@ export function selectedTransfers(input: {
       standard: probe.standard,
       decimals: token.decimals,
       from: { address: token.owner.address, label: token.owner.label },
-      amount,
+      amount: 1,
       available,
     })
   }

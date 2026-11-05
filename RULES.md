@@ -181,6 +181,7 @@ The fixed right-hand column of a workspace page.
 ```
 
 300px at `lg` and up, full width below it: the rail never sits beside the table under `lg`.
+`transfer` is the exception at 340px, because its rail carries the grouped selection; it sits beside the table at `xl` and stacks below it under `xl`.
 The page-level CTA is the last card's footer — `mt-auto shrink-0 border-t p-4`, button
 `h-10 w-full`.
 A batch whose parameters live outside the rail, in the card above the table (`swap`), puts

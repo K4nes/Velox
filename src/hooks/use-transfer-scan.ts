@@ -3,19 +3,32 @@ import { useHoldingsScan } from '@/hooks/use-holdings-scan'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import type { HeldToken } from '@/lib/holdings'
 import { probeStandards } from '@/lib/token-standard'
-import type { StandardProbe, TokenStandard } from '@/lib/token-standard'
+import type { StandardProbe } from '@/lib/token-standard'
 import { selectedTransfers } from '@/lib/transfer-plan'
 import type { TransferSelection } from '@/lib/transfer-plan'
 
 export type TransferScanRow = {
   token: HeldToken
-  standard: TokenStandard | null
-  remaining: number
+  selectable: boolean
+  blockedReason: string | null
 }
 
 export type TransferScanWallet = { id: string; label: string; address: string }
 
+export type TransferSelectionGroup = {
+  contract: string
+  name: string
+  imageUrl: string
+  tokens: { key: string; tokenId: string; ownerLabel: string }[]
+}
+
 const NO_PROBES: ReadonlyMap<string, StandardProbe> = new Map()
+
+function shortContract(contract: string): string {
+  return contract.length > 12
+    ? `${contract.slice(0, 6)}…${contract.slice(-4)}`
+    : contract
+}
 
 export function useTransferScan() {
   const scan = useHoldingsScan()
@@ -25,13 +38,13 @@ export function useTransferScan() {
     probes: ReadonlyMap<string, StandardProbe>
   }>({ key: '', probes: NO_PROBES })
   const [selectedKeys, setSelectedKeys] = useState<readonly string[]>([])
-  const [amounts, setAmounts] = useState<ReadonlyMap<string, number>>(new Map())
   const [sent, setSent] = useState<ReadonlyMap<string, number>>(new Map())
 
   const state = scan.state
   const tokens = scan.tokens
-  // A probe belongs to the collection it was made for. Keying the state makes a
-  // rescan show "reading" instead of the previous collection's standard.
+  const collection = state.status === 'ready' ? state.collection : null
+  // A probe belongs to the collection it was made for. Keying the state keeps a
+  // rescan from reusing the previous collection's probes.
   const scanKey =
     state.status === 'ready'
       ? `${state.collection.chain}:${state.collection.slug}`
@@ -89,30 +102,62 @@ export function useTransferScan() {
     () =>
       scan.rows.map((token) => {
         const probe = standards.get(token.contractAddress.toLowerCase())
-        return {
-          token,
-          standard: probe?.status === 'known' ? probe.standard : null,
-          remaining: Math.floor(token.quantity) - (sent.get(token.key) ?? 0),
+        const remaining = Math.floor(token.quantity) - (sent.get(token.key) ?? 0)
+
+        let blockedReason: string | null = null
+        if (remaining < 1) {
+          blockedReason = 'This token has already been transferred'
+        } else if (!probe) {
+          blockedReason = 'Checking this token…'
+        } else if (
+          probe.status === 'unsupported' ||
+          probe.status === 'unreadable'
+        ) {
+          blockedReason = 'This token cannot be transferred'
         }
+
+        return { token, selectable: blockedReason === null, blockedReason }
       }),
     [scan.rows, standards, sent]
   )
 
   const selection = useMemo<TransferSelection[]>(
-    () =>
-      selectedTransfers({
-        tokens,
-        standards,
-        amounts,
-        sent,
-        selectedKeys,
-      }),
-    [tokens, standards, amounts, sent, selectedKeys]
+    () => selectedTransfers({ tokens, standards, sent, selectedKeys }),
+    [tokens, standards, sent, selectedKeys]
   )
+
+  const selectionGroups = useMemo<TransferSelectionGroup[]>(() => {
+    const byContract = new Map<string, TransferSelectionGroup>()
+
+    for (const entry of selection) {
+      const contract = entry.contract.toLowerCase()
+      const token = {
+        key: entry.key,
+        tokenId: entry.tokenId,
+        ownerLabel: entry.from.label,
+      }
+      const group = byContract.get(contract)
+      if (group) {
+        group.tokens.push(token)
+        continue
+      }
+
+      byContract.set(contract, {
+        contract: entry.contract,
+        name:
+          collection?.name ||
+          collection?.slug ||
+          shortContract(entry.contract),
+        imageUrl: collection?.imageUrl ?? '',
+        tokens: [token],
+      })
+    }
+
+    return [...byContract.values()]
+  }, [selection, collection])
 
   function resetSelection() {
     setSelectedKeys([])
-    setAmounts(new Map())
     setSent(new Map())
   }
 
@@ -126,7 +171,7 @@ export function useTransferScan() {
 
   function toggleAll() {
     const visible = rows
-      .filter((row) => row.standard !== null && row.remaining >= 1)
+      .filter((row) => row.selectable)
       .map((row) => row.token.key)
 
     if (
@@ -137,31 +182,20 @@ export function useTransferScan() {
       return
     }
 
-    setAmounts((current) => {
-      const next = new Map(current)
-      for (const key of visible) next.set(key, 1)
-      return next
-    })
     setSelectedKeys((current) => [...new Set([...current, ...visible])])
   }
 
-  function setAmount(key: string, value: string) {
-    const token = tokens.find((entry) => entry.key === key)
-    const ceiling = token
-      ? Math.max(1, Math.floor(token.quantity) - (sent.get(key) ?? 0))
-      : 1
-    const digits = value.replace(/\D/g, '')
-    const parsed = Number.parseInt(digits, 10)
-    const amount = Number.isNaN(parsed)
-      ? 1
-      : Math.min(Math.max(parsed, 1), ceiling)
-
-    setAmounts((current) => new Map(current).set(key, amount))
+  function removeToken(key: string) {
+    setSelectedKeys((current) => current.filter((value) => value !== key))
   }
 
-  function clear() {
-    setSelectedKeys([])
-    setAmounts(new Map())
+  function removeGroup(contract: string) {
+    const target = contract.toLowerCase()
+    deselect(
+      selection
+        .filter((entry) => entry.contract.toLowerCase() === target)
+        .map((entry) => entry.key)
+    )
   }
 
   function deselect(keys: readonly string[]) {
@@ -194,13 +228,12 @@ export function useTransferScan() {
     setQuery: scan.setQuery,
     running: scan.running,
     canScan: scan.canScan,
-    collection: scan.collection,
+    collection,
     groups,
     wallets,
-    standards,
     selectedKeys,
-    amounts,
     selection,
+    selectionGroups,
     changeUrl: (next: string) => {
       if (scan.running) return
       resetSelection()
@@ -213,8 +246,8 @@ export function useTransferScan() {
     },
     toggleToken,
     toggleAll,
-    setAmount,
-    clear,
+    removeToken,
+    removeGroup,
     deselect,
     applySent,
     scan: rescan,
