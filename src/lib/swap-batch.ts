@@ -1,7 +1,7 @@
 import { assetKey, assetOptions } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/async'
 import { readTokenBalance } from '@/lib/erc20'
-import { amountFor, parseFixedAmount, specKey } from '@/lib/swap-spec'
+import { amountFor, parseFixedAmount } from '@/lib/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
 import { clientFor } from '@/lib/tx'
 import type { StoredWallet } from '@/lib/wallets'
@@ -12,6 +12,7 @@ export type SwapBatchJob = {
   readonly address: `0x${string}`
   readonly amount: bigint | null
   readonly available: bigint | null
+  readonly maxUnreadable: boolean
 }
 
 export type SwapBatch = {
@@ -20,6 +21,7 @@ export type SwapBatch = {
   readonly total: bigint
   readonly shortfall: number
   readonly unresolved: number
+  readonly maxUnreadable: number
 }
 
 // One balance read per wallet; the client is hoisted because `clientFor`
@@ -70,6 +72,7 @@ export async function resolveSwapBatch(input: {
       // A native `max` has no amount: spending the whole balance leaves no gas.
       const amount =
         draft.kind === 'max' ? (maxResolves ? available : null) : fixed
+      const maxUnreadable = maxResolves && available === null
 
       return {
         walletId: wallet.id,
@@ -77,6 +80,7 @@ export async function resolveSwapBatch(input: {
         address,
         amount,
         available,
+        maxUnreadable,
       }
     }
   )
@@ -84,7 +88,9 @@ export async function resolveSwapBatch(input: {
   let total = 0n
   let shortfall = 0
   let unresolved = 0
+  let maxUnreadable = 0
   for (const job of jobs) {
+    if (job.maxUnreadable) maxUnreadable += 1
     if (job.amount === null) {
       unresolved += 1
       continue
@@ -93,12 +99,5 @@ export async function resolveSwapBatch(input: {
     if (job.available !== null && job.amount > job.available) shortfall += 1
   }
 
-  return { spec, jobs, total, shortfall, unresolved }
-}
-
-export function swapBatchKey(batch: SwapBatch): string {
-  return [
-    specKey(batch.spec, batch.jobs.map((job) => job.walletId)),
-    ...batch.jobs.map((job) => job.amount?.toString() ?? ''),
-  ].join('|')
+  return { spec, jobs, total, shortfall, unresolved, maxUnreadable }
 }

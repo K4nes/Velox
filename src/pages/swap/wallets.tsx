@@ -141,9 +141,11 @@ export function SwapWallets({
               const maxBlocked = draft.kind === 'max' && nativeSell
               const hint = maxBlocked
                 ? `Max is not available for ${sellSymbol}`
-                : draftOverBalance
-                  ? 'Exceeds balance'
-                  : null
+                : job.maxUnreadable && draft.kind === 'max'
+                  ? `Could not read ${sellSymbol} balance`
+                  : draftOverBalance
+                    ? 'Exceeds balance'
+                    : null
 
               return (
                 <TableRow key={job.walletId} className="h-14">
