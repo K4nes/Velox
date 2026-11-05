@@ -159,7 +159,7 @@ export function routeLabel(spec: SwapSpec): string {
   const toName = toChain?.name ?? spec.to.chain
 
   return spec.from.chain === spec.to.chain
-    ? `${spec.from.symbol} → ${spec.to.symbol} · ${fromName}`
+    ? `${spec.from.symbol} → ${spec.to.symbol}`
     : `${spec.from.symbol} → ${spec.to.symbol} · ${fromName} → ${toName}`
 }
 
