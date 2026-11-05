@@ -51,14 +51,28 @@ function BodyMessage({
   )
 }
 
-function StatusCell({ step }: { step: TransferStepState | undefined }) {
+function StatusCell({
+  step,
+  blockedReason,
+}: {
+  step: TransferStepState | undefined
+  blockedReason: string | null
+}) {
   if (!step) {
-    return <span className="text-muted-foreground text-xs">—</span>
+    return blockedReason ? (
+      <span className="text-muted-foreground text-xs">{blockedReason}</span>
+    ) : (
+      <span className="text-muted-foreground text-xs">—</span>
+    )
   }
 
   const live = step.status === 'signing' || step.status === 'confirming'
   const txHash =
-    step.status === 'confirming' || step.status === 'sent' ? step.txHash : null
+    step.status === 'confirming' ||
+    step.status === 'sent' ||
+    step.status === 'unknown'
+      ? step.txHash
+      : null
 
   return (
     <div className="flex max-w-[220px] flex-col gap-0.5">
@@ -76,7 +90,7 @@ function StatusCell({ step }: { step: TransferStepState | undefined }) {
           </span>
         ) : null}
       </span>
-      {step.status === 'failed' ? (
+      {step.status === 'failed' || step.status === 'unknown' ? (
         <span
           className="text-muted-foreground truncate text-xs"
           title={step.error}
@@ -244,7 +258,10 @@ export function Inventory({
                       <span className="max-w-[220px] truncate text-[13px] font-medium">
                         {row.token.name || `#${row.token.tokenId}`}
                       </span>
-                      <span className="text-muted-foreground text-xs tabular-nums">
+                      <span
+                        className="text-muted-foreground max-w-[220px] truncate text-xs tabular-nums"
+                        title={`#${row.token.tokenId}`}
+                      >
                         #{row.token.tokenId}
                       </span>
                     </div>
@@ -264,7 +281,10 @@ export function Inventory({
                   <span className="text-[13px]">{row.token.chain}</span>
                 </TableCell>
                 <TableCell className="px-3">
-                  <StatusCell step={tokenStates.get(key)} />
+                  <StatusCell
+                    step={tokenStates.get(key)}
+                    blockedReason={row.blockedReason}
+                  />
                 </TableCell>
               </TableRow>
             )

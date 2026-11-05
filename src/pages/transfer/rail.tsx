@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useState } from 'react'
 
 import { TokenImage } from '@/components/token-image'
 import { Badge } from '@/components/ui/badge'
@@ -68,6 +69,10 @@ export function TransferRail({
     destination.status === 'invalid' || destination.status === 'failed'
       ? destination.message
       : null
+  const [touched, setTouched] = useState(false)
+  const showDestinationError = touched && destinationMessage !== null
+  const hideBlockedReason =
+    showDestinationError && blockedReason === destinationMessage
 
   return (
     <div className="flex w-full shrink-0 flex-col xl:w-[340px]">
@@ -107,16 +112,17 @@ export function TransferRail({
                 id="destination-address"
                 value={destinationText}
                 onChange={(event) => onDestinationChange(event.target.value)}
+                onBlur={() => setTouched(true)}
                 placeholder="0x… or name.eth"
                 disabled={running}
-                aria-invalid={destinationMessage !== null}
+                aria-invalid={showDestinationError || undefined}
                 aria-describedby={
-                  destinationMessage !== null
+                  showDestinationError
                     ? 'destination-address-error'
                     : undefined
                 }
               />
-              {destinationMessage !== null ? (
+              {showDestinationError ? (
                 <p
                   id="destination-address-error"
                   className="text-destructive text-xs"
@@ -169,7 +175,10 @@ export function TransferRail({
               <div className="ml-3.5 flex flex-col gap-1 border-l pl-3">
                 {group.tokens.map((token) => (
                   <div key={token.key} className="flex items-center gap-2">
-                    <span className="w-12 shrink-0 font-mono text-[11px] font-semibold tabular-nums">
+                    <span
+                      className="max-w-[72px] shrink-0 truncate font-mono text-[11px] font-semibold tabular-nums"
+                      title={`#${token.tokenId}`}
+                    >
                       #{token.tokenId}
                     </span>
                     <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
@@ -200,6 +209,9 @@ export function TransferRail({
             <p className="text-muted-foreground mt-1 text-xs">
               {summary.sent} of {summary.total} sent
               {summary.failed > 0 ? `, ${summary.failed} failed` : ''}
+              {summary.unknown > 0
+                ? `, ${summary.unknown} unconfirmed`
+                : ''}
             </p>
           ) : null}
 
@@ -226,7 +238,10 @@ export function TransferRail({
             )}
           </Button>
 
-          {!running && blockedReason !== null && selections.length > 0 ? (
+          {!running &&
+          blockedReason !== null &&
+          selections.length > 0 &&
+          !hideBlockedReason ? (
             <p className="text-muted-foreground mt-2 text-xs">{blockedReason}</p>
           ) : null}
         </div>

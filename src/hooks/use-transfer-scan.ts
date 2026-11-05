@@ -38,7 +38,7 @@ export function useTransferScan() {
     probes: ReadonlyMap<string, StandardProbe>
   }>({ key: '', probes: NO_PROBES })
   const [selectedKeys, setSelectedKeys] = useState<readonly string[]>([])
-  const [sent, setSent] = useState<ReadonlyMap<string, number>>(new Map())
+  const [spent, setSpent] = useState<ReadonlyMap<string, number>>(new Map())
 
   const state = scan.state
   const tokens = scan.tokens
@@ -73,13 +73,9 @@ export function useTransferScan() {
     probeStandards({
       chain: state.collection.chain,
       tokens: [...byContract.values()],
+    }).then((probes) => {
+      if (!cancelled) setProbeState({ key: scanKey, probes })
     })
-      .then((probes) => {
-        if (!cancelled) setProbeState({ key: scanKey, probes })
-      })
-      .catch(() => {
-        if (!cancelled) setProbeState({ key: scanKey, probes: NO_PROBES })
-      })
 
     return () => {
       cancelled = true
@@ -102,28 +98,33 @@ export function useTransferScan() {
     () =>
       scan.rows.map((token) => {
         const probe = standards.get(token.contractAddress.toLowerCase())
-        const remaining = Math.floor(token.quantity) - (sent.get(token.key) ?? 0)
+        const used = spent.get(token.key) ?? 0
+        const remaining = Math.floor(token.quantity) - used
 
+        // A spent token is blocked by the ledger even when the chain has not
+        // caught up yet, so the same row cannot be queued twice.
         let blockedReason: string | null = null
         if (remaining < 1) {
-          blockedReason = 'This token has already been transferred'
+          blockedReason =
+            used > 0
+              ? 'This token has already been transferred'
+              : 'This token has no transferable balance'
         } else if (!probe) {
           blockedReason = 'Checking this token…'
-        } else if (
-          probe.status === 'unsupported' ||
-          probe.status === 'unreadable'
-        ) {
+        } else if (probe.status === 'unsupported') {
           blockedReason = 'This token cannot be transferred'
+        } else if (probe.status === 'unreadable') {
+          blockedReason = 'Could not check this token'
         }
 
         return { token, selectable: blockedReason === null, blockedReason }
       }),
-    [scan.rows, standards, sent]
+    [scan.rows, standards, spent]
   )
 
   const selection = useMemo<TransferSelection[]>(
-    () => selectedTransfers({ tokens, standards, sent, selectedKeys }),
-    [tokens, standards, sent, selectedKeys]
+    () => selectedTransfers({ tokens, standards, spent, selectedKeys }),
+    [tokens, standards, spent, selectedKeys]
   )
 
   const selectionGroups = useMemo<TransferSelectionGroup[]>(() => {
@@ -158,7 +159,7 @@ export function useTransferScan() {
 
   function resetSelection() {
     setSelectedKeys([])
-    setSent(new Map())
+    setSpent(new Map())
   }
 
   function toggleToken(key: string) {
@@ -202,8 +203,8 @@ export function useTransferScan() {
     setSelectedKeys((current) => current.filter((key) => !keys.includes(key)))
   }
 
-  function applySent(units: Map<string, number>) {
-    setSent((current) => {
+  function applySpent(units: Map<string, number>) {
+    setSpent((current) => {
       const next = new Map(current)
       for (const [key, amount] of units) {
         next.set(key, (next.get(key) ?? 0) + amount)
@@ -249,7 +250,7 @@ export function useTransferScan() {
     removeToken,
     removeGroup,
     deselect,
-    applySent,
+    applySpent,
     scan: rescan,
   }
 }

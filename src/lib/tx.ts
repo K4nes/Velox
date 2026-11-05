@@ -1,4 +1,11 @@
-import { createPublicClient, defineChain, http } from 'viem'
+import {
+  HttpRequestError,
+  TimeoutError,
+  createPublicClient,
+  defineChain,
+  http,
+  keccak256,
+} from 'viem'
 import type { Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
@@ -14,6 +21,18 @@ export type TxGas = {
 }
 
 export const WALLET_CONCURRENCY = 2
+
+// The hash is computed before the send, so a transport failure still tells the
+// caller which transaction may have reached the node.
+export class BroadcastError extends Error {
+  readonly txHash: `0x${string}`
+
+  constructor(txHash: `0x${string}`, cause: Error) {
+    super(cause.message)
+    this.name = 'BroadcastError'
+    this.txHash = txHash
+  }
+}
 
 export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
   return defineChain({
@@ -138,7 +157,16 @@ async function broadcast(input: {
     throw new Error('Transaction stopped before broadcast')
   }
 
-  const txHash = await client.sendRawTransaction({ serializedTransaction })
+  const txHash = keccak256(serializedTransaction)
+
+  try {
+    await client.sendRawTransaction({ serializedTransaction })
+  } catch (error) {
+    if (error instanceof HttpRequestError || error instanceof TimeoutError) {
+      throw new BroadcastError(txHash, error)
+    }
+    throw error
+  }
 
   return { txHash, chain: input.chainSlug }
 }
@@ -154,4 +182,30 @@ export async function waitForReceipt(
   })
 
   return receipt.status
+}
+
+export type ReceiptOutcome = 'success' | 'reverted' | 'replaced' | 'unresolved'
+
+// A receipt for a different hash means the sender's nonce was filled by a
+// replacement, so this transaction never landed. Any other failure, including
+// the timeout, leaves the outcome genuinely unknown to us.
+export async function waitForReceiptOutcome(
+  chainSlug: string,
+  txHash: string
+): Promise<ReceiptOutcome> {
+  try {
+    const client = await clientFor(chainSlug)
+    const receipt = await client.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+      timeout: 90_000,
+    })
+
+    if (receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) {
+      return 'replaced'
+    }
+
+    return receipt.status
+  } catch {
+    return 'unresolved'
+  }
 }

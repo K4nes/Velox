@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { resolveEnsAddress } from '@/lib/ens'
-import { runTransferPlan, sentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer-run'
+import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer-run'
 import type {
   TransferRunProgress,
   TransferRunSummary,
@@ -17,6 +17,7 @@ import type {
   TransferSelection,
 } from '@/lib/transfer-plan'
 import { listWallets } from '@/lib/wallets'
+import { redactUrls } from '@/lib/utils'
 
 const RESOLVE_DEBOUNCE_MS = 400
 
@@ -31,7 +32,7 @@ export function useTransferRun(input: {
   wallets: readonly { id: string; label: string; address: string }[]
   selections: readonly TransferSelection[]
   chain: string | null
-  onSent: (sent: Map<string, number>) => void
+  onSpent: (spent: Map<string, number>) => void
   onDeselect: (keys: string[]) => void
 }) {
   const [destinationText, setDestinationText] = useState('')
@@ -73,7 +74,9 @@ export function useTransferRun(input: {
           setResolved({
             name,
             address: null,
-            error: failure instanceof Error ? failure.message : String(failure),
+            error: redactUrls(
+              failure instanceof Error ? failure.message : String(failure)
+            ),
           })
         })
     }, RESOLVE_DEBOUNCE_MS)
@@ -115,9 +118,10 @@ export function useTransferRun(input: {
   const pickerSelection = useMemo(() => {
     if (destination.status !== 'ready') return []
     const target = destination.destination.address.toLowerCase()
-    return input.wallets
-      .filter((wallet) => wallet.address.toLowerCase() === target)
-      .map((wallet) => wallet.id)
+    const match = input.wallets.find(
+      (wallet) => wallet.address.toLowerCase() === target
+    )
+    return match ? [match.id] : []
   }, [destination, input.wallets])
 
   const blockedReason = explainTransferBlockers({
@@ -230,9 +234,9 @@ export function useTransferRun(input: {
       }
 
       const result = summarizeTransferRun(outcome.progress)
-      const units = sentUnits(outcome.progress)
-      input.onSent(units)
-      input.onDeselect([...units.keys()])
+      const spent = spentUnits(outcome.progress)
+      input.onSpent(spent)
+      input.onDeselect([...spent.keys()])
 
       if (result.failed > 0) {
         let firstError = ''
@@ -243,6 +247,11 @@ export function useTransferRun(input: {
           }
         }
         toast.error(`${result.failed} failed — ${firstError}`)
+        return
+      }
+
+      if (result.unknown > 0) {
+        toast.warning(`${result.unknown} unconfirmed, check the explorer`)
         return
       }
 

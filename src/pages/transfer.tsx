@@ -16,7 +16,7 @@ export function TransferPage() {
     wallets: scan.wallets,
     selections: scan.selection,
     chain: scan.collection?.chain ?? null,
-    onSent: scan.applySent,
+    onSpent: scan.applySpent,
     onDeselect: scan.deselect,
   })
 

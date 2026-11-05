@@ -1,4 +1,4 @@
-import { encodeFunctionData, isAddress, parseUnits } from 'viem'
+import { encodeFunctionData, getAddress, isAddress, parseUnits } from 'viem'
 import { normalize } from 'viem/ens'
 import { chainBySlug } from '@/config/chains'
 import type { HeldToken } from '@/lib/holdings'
@@ -54,8 +54,6 @@ export type TransferPlan = {
   chain: string
   destination: Destination
   wallets: PlannedTransferWallet[]
-  transferCount: number
-  unitCount: number
 }
 
 export type TransferPlanErrorCode =
@@ -116,16 +114,22 @@ export function parseDestination(text: string): ParsedDestination {
   const value = text.trim()
   if (value === '') return { kind: 'empty' }
 
-  // Strict checksum: a lower/upper-case address passes, a mixed-case typo fails
-  // instead of sending the token to a different wallet.
-  if (isAddress(value)) {
+  // A single-case hex body carries no EIP-55 checksum, so there is nothing to
+  // verify; mixed case must match its checksum or a typo would send the token
+  // to a different wallet. The `0x` prefix stays lowercase either way.
+  const body = value.slice(2)
+  const plainCase = body === body.toLowerCase() || body === body.toUpperCase()
+
+  if (isAddress(value, { strict: !plainCase })) {
     if (value.toLowerCase() === ZERO_ADDRESS) {
       return {
         kind: 'invalid',
         message: 'The zero address cannot receive NFTs.',
       }
     }
-    return { kind: 'address', address: value }
+    // viem's ABI encoder re-checks the address strictly, so the accepted
+    // single-case form goes back out in its EIP-55 shape.
+    return { kind: 'address', address: getAddress(value) }
   }
 
   try {
@@ -155,7 +159,7 @@ export function destinationLabel(
 export function selectedTransfers(input: {
   tokens: readonly HeldToken[]
   standards: ReadonlyMap<string, StandardProbe>
-  sent: ReadonlyMap<string, number>
+  spent: ReadonlyMap<string, number>
   selectedKeys: readonly string[]
 }): TransferSelection[] {
   const selections: TransferSelection[] = []
@@ -167,7 +171,7 @@ export function selectedTransfers(input: {
     if (probe?.status !== 'known') continue
 
     const available =
-      Math.floor(token.quantity) - (input.sent.get(token.key) ?? 0)
+      Math.floor(token.quantity) - (input.spent.get(token.key) ?? 0)
     if (available < 1) continue
 
     selections.push({
@@ -322,21 +326,10 @@ export function buildTransferPlan(input: {
     wallets.set(address, wallet)
   }
 
-  const groups = [...wallets.values()]
-
   return {
     chain: input.chain,
     destination: input.destination,
-    wallets: groups,
-    transferCount: groups.reduce(
-      (sum, wallet) => sum + wallet.transfers.length,
-      0
-    ),
-    unitCount: groups.reduce(
-      (sum, wallet) =>
-        sum + wallet.transfers.reduce((units, transfer) => units + transfer.amount, 0),
-      0
-    ),
+    wallets: [...wallets.values()],
   }
 }
 

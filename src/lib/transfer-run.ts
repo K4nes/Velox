@@ -1,11 +1,17 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
-import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/tx'
+import {
+  BroadcastError,
+  WALLET_CONCURRENCY,
+  sendTransaction,
+  waitForReceiptOutcome,
+} from '@/lib/tx'
 import type {
   TransferPlan,
   PlannedTransferWallet,
 } from '@/lib/transfer-plan'
+import { redactUrls } from '@/lib/utils'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -14,6 +20,7 @@ export type TransferStepStatus =
   | 'signing'
   | 'confirming'
   | 'sent'
+  | 'unknown'
   | 'failed'
 
 export type TransferStepState = {
@@ -30,6 +37,7 @@ export type TransferStepState = {
   | { status: 'signing' }
   | { status: 'confirming'; txHash: string }
   | { status: 'sent'; txHash: string }
+  | { status: 'unknown'; txHash: string; error: string }
   | { status: 'failed'; error: string; txHash: string | null }
 )
 
@@ -40,13 +48,19 @@ export type TransferRunOutcome = {
   error: string | null
 }
 
-export type TransferRunSummary = { total: number; sent: number; failed: number }
+export type TransferRunSummary = {
+  total: number
+  sent: number
+  unknown: number
+  failed: number
+}
 
 export const TRANSFER_STEP_LABEL: Record<TransferStepStatus, string> = {
   queued: 'Queued',
   signing: 'Signing',
   confirming: 'Confirming',
   sent: 'Sent',
+  unknown: 'Unconfirmed',
   failed: 'Failed',
 }
 
@@ -55,13 +69,14 @@ export const TRANSFER_STEP_TONE: Record<TransferStepStatus, string> = {
   signing: 'text-foreground',
   confirming: 'text-foreground',
   sent: 'text-primary',
+  unknown: 'text-warning',
   failed: 'text-destructive',
 }
 
 const RECEIPT_CONCURRENCY = 4
 
 function failureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return redactUrls(error instanceof Error ? error.message : String(error))
 }
 
 export async function runTransferPlan(input: {
@@ -171,6 +186,15 @@ export async function runTransferPlan(input: {
           commit({ ...confirming, status: 'confirming', txHash: sent.txHash })
         }
       } catch (error) {
+        if (error instanceof BroadcastError) {
+          broadcast.push({ id: transfer.id, txHash: error.txHash })
+          const confirming = stateOf(transfer.id)
+          if (confirming) {
+            commit({ ...confirming, status: 'confirming', txHash: error.txHash })
+          }
+          continue
+        }
+
         const current = stateOf(transfer.id)
         // The abort check inside `sendTransaction` runs before broadcast, so a
         // row stopped there never left the queue.
@@ -195,26 +219,43 @@ export async function runTransferPlan(input: {
       const current = stateOf(pending.id)
       if (!current || current.status !== 'confirming') return
 
-      try {
-        const receipt = await waitForReceipt(input.plan.chain, pending.txHash)
-        if (receipt === 'reverted') {
-          commit({
-            ...current,
-            status: 'failed',
-            error: 'Transaction reverted',
-            txHash: pending.txHash,
-          })
-          return
-        }
+      const outcome = await waitForReceiptOutcome(
+        input.plan.chain,
+        pending.txHash
+      )
+
+      if (outcome === 'success') {
         commit({ ...current, status: 'sent', txHash: pending.txHash })
-      } catch (error) {
+        return
+      }
+
+      if (outcome === 'reverted') {
         commit({
           ...current,
           status: 'failed',
-          error: failureMessage(error),
+          error: 'Transaction reverted',
           txHash: pending.txHash,
         })
+        return
       }
+
+      if (outcome === 'replaced') {
+        commit({
+          ...current,
+          status: 'unknown',
+          txHash: pending.txHash,
+          error:
+            'This transaction was replaced or dropped. Check the destination before retrying.',
+        })
+        return
+      }
+
+      commit({
+        ...current,
+        status: 'unknown',
+        txHash: pending.txHash,
+        error: 'Still unconfirmed. Check the explorer before retrying.',
+      })
     })
   }
 
@@ -234,13 +275,13 @@ export function tokenStates(
   )
 }
 
-export function sentUnits(
+export function spentUnits(
   progress: TransferRunProgress
 ): Map<string, number> {
   const units = new Map<string, number>()
 
   for (const step of progress.steps) {
-    if (step.status !== 'sent') continue
+    if (step.status !== 'sent' && step.status !== 'unknown') continue
     units.set(step.tokenKey, step.amount)
   }
 
@@ -250,11 +291,17 @@ export function sentUnits(
 export function summarizeTransferRun(
   progress: TransferRunProgress
 ): TransferRunSummary {
-  const summary: TransferRunSummary = { total: 0, sent: 0, failed: 0 }
+  const summary: TransferRunSummary = {
+    total: 0,
+    sent: 0,
+    unknown: 0,
+    failed: 0,
+  }
 
   for (const step of progress.steps) {
     summary.total += 1
     if (step.status === 'sent') summary.sent += 1
+    if (step.status === 'unknown') summary.unknown += 1
     if (step.status === 'failed') summary.failed += 1
   }
 
