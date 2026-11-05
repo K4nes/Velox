@@ -18,7 +18,7 @@ import {
 export type WalletGroup = {
   id: string
   name: string
-  wallets: { id: string; name: string }[]
+  wallets: { id: string; name: string; address: string }[]
 }
 
 type WalletSelectProps = {

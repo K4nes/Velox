@@ -1,4 +1,11 @@
-import { createPublicClient, defineChain, http } from 'viem'
+import {
+  HttpRequestError,
+  TimeoutError,
+  createPublicClient,
+  defineChain,
+  http,
+  keccak256,
+} from 'viem'
 import type { Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
@@ -11,6 +18,29 @@ export type TxGas = {
   gasLimit?: bigint
   maxFeePerGas?: bigint
   maxPriorityFeePerGas?: bigint
+}
+
+export const WALLET_CONCURRENCY = 2
+
+// The hash is computed before the send, so a transport failure still tells the
+// caller which transaction may have reached the node.
+export class BroadcastError extends Error {
+  readonly txHash: `0x${string}`
+  readonly from: `0x${string}`
+  readonly nonce: number
+
+  constructor(
+    txHash: `0x${string}`,
+    cause: Error,
+    from: `0x${string}`,
+    nonce: number
+  ) {
+    super(cause.message)
+    this.name = 'BroadcastError'
+    this.txHash = txHash
+    this.from = from
+    this.nonce = nonce
+  }
 }
 
 export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
@@ -58,7 +88,12 @@ export async function sendTransaction(input: {
   value: bigint
   gas?: TxGas
   shouldAbort?: () => boolean
-}): Promise<{ txHash: string; chain: string }> {
+}): Promise<{
+  txHash: string
+  chain: string
+  from: `0x${string}`
+  nonce: number
+}> {
   const key = input.wallet.address.toLowerCase()
   const previous = inflight.get(key) ?? Promise.resolve()
   const next = previous.then(
@@ -82,7 +117,12 @@ async function broadcast(input: {
   value: bigint
   gas?: TxGas
   shouldAbort?: () => boolean
-}): Promise<{ txHash: string; chain: string }> {
+}): Promise<{
+  txHash: string
+  chain: string
+  from: `0x${string}`
+  nonce: number
+}> {
   const entry = chainBySlug(input.chainSlug)
   if (!entry) {
     throw new Error(`Unsupported chain: ${input.chainSlug}`)
@@ -136,9 +176,26 @@ async function broadcast(input: {
     throw new Error('Transaction stopped before broadcast')
   }
 
-  const txHash = await client.sendRawTransaction({ serializedTransaction })
+  const txHash = keccak256(serializedTransaction)
 
-  return { txHash, chain: input.chainSlug }
+  try {
+    await client.sendRawTransaction({ serializedTransaction })
+  } catch (error) {
+    // A 4xx is the proxy rejecting the request before the node sees it; only a
+    // network fault, a timeout, or a server-side failure can hide a broadcast.
+    const ambiguous =
+      error instanceof TimeoutError ||
+      (error instanceof HttpRequestError &&
+        (error.status === undefined ||
+          error.status === 408 ||
+          error.status >= 500))
+    if (ambiguous) {
+      throw new BroadcastError(txHash, error, account.address, nonce)
+    }
+    throw error
+  }
+
+  return { txHash, chain: input.chainSlug, from: account.address, nonce }
 }
 
 export async function waitForReceipt(
@@ -152,4 +209,64 @@ export async function waitForReceipt(
   })
 
   return receipt.status
+}
+
+export type ReceiptOutcome = {
+  status: 'success' | 'reverted' | 'replaced' | 'unresolved'
+  txHash: string
+}
+
+// A receipt for a different hash means the sender's nonce was filled by a
+// replacement. A repriced replacement carries the same transfer, so its receipt
+// is this transfer's outcome; a cancelled or unrelated one did not move it.
+export async function waitForReceiptOutcome(
+  chainSlug: string,
+  txHash: string,
+  replacementHint?: {
+    from: `0x${string}`
+    nonce: number
+    to: `0x${string}`
+    input: `0x${string}`
+    value: bigint
+  }
+): Promise<ReceiptOutcome> {
+  const replacementRef: {
+    current: {
+      reason: 'cancelled' | 'replaced' | 'repriced'
+      txHash: string
+      status: 'success' | 'reverted'
+    } | null
+  } = { current: null }
+
+  try {
+    const client = await clientFor(chainSlug)
+    const receipt = await client.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+      timeout: 90_000,
+      ...(replacementHint ? { replacement: replacementHint } : {}),
+      onReplaced: (response) => {
+        replacementRef.current = {
+          reason: response.reason,
+          txHash: response.transactionReceipt.transactionHash,
+          status: response.transactionReceipt.status,
+        }
+      },
+    })
+
+    if (receipt.transactionHash.toLowerCase() === txHash.toLowerCase()) {
+      return { status: receipt.status, txHash: receipt.transactionHash }
+    }
+
+    const replacement = replacementRef.current
+    if (replacement?.reason === 'repriced') {
+      return {
+        status: replacement.status,
+        txHash: replacement.txHash,
+      }
+    }
+
+    return { status: 'replaced', txHash: receipt.transactionHash }
+  } catch {
+    return { status: 'unresolved', txHash }
+  }
 }

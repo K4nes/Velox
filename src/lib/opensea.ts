@@ -60,6 +60,7 @@ export type AccountNft = {
   imageUrl: string
   openseaUrl: string
   quantity: number
+  decimals: number
 }
 
 export type AccountNftPage = { nfts: AccountNft[]; next: string | null }
@@ -399,6 +400,7 @@ export async function getAccountNfts(input: {
           imageUrl: raw.display_image_url ?? raw.image_url ?? '',
           openseaUrl: raw.opensea_url ?? '',
           quantity,
+          decimals,
         },
       ]
     }),

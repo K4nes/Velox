@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { BulkSellScanState } from '@/hooks/use-bulk-sell-scan'
+import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import type { CollectionOffer, UncoveredReason } from '@/lib/instant-sell'
 import type { HeldToken } from '@/lib/holdings'
 import { SELL_STEP_LABEL, SELL_STEP_TONE } from '@/lib/sell-run'
@@ -206,7 +206,7 @@ export function Inventory({
   onToggleToken,
   currencySymbol,
 }: {
-  state: BulkSellScanState
+  state: HoldingsScanState
   rows: readonly InventoryRow[]
   totalRows: number
   query: string

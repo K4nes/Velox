@@ -24,7 +24,7 @@ function buildGroups(folders: FolderRecord[], wallets: StoredWallet[]): WalletGr
 
   for (const wallet of [...wallets].sort((a, b) => a.createdAt - b.createdAt)) {
     const group = byId.get(wallet.folderId) ?? orphan
-    group.wallets.push({ id: wallet.id, name: wallet.label })
+    group.wallets.push({ id: wallet.id, name: wallet.label, address: wallet.address })
   }
 
   if (!unassigned && orphan.wallets.length > 0) {
