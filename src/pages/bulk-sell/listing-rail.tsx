@@ -1,5 +1,6 @@
 import { formatUnits } from 'viem'
 
+import { SummaryRow } from '@/components/summary-row'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,15 +21,6 @@ function formatAmount(amount: bigint, decimals: number): string {
   const [whole, fraction] = formatUnits(amount, decimals).split('.')
   const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
   return trimmed ? `${whole}.${trimmed}` : whole
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{value}</span>
-    </div>
-  )
 }
 
 export function ListingRail({
