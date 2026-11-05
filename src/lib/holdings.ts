@@ -18,6 +18,7 @@ export type HeldToken = {
   imageUrl: string
   openseaUrl: string
   quantity: number
+  decimals: number
   owner: ScanWallet
 }
 
@@ -113,6 +114,7 @@ export async function scanHeldTokens(input: {
             imageUrl: nft.imageUrl,
             openseaUrl: nft.openseaUrl,
             quantity: nft.quantity,
+            decimals: nft.decimals,
             owner: wallet,
           }
           tokens.set(key, token)
