@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { ArrowRight, Layers, ScrollText } from 'lucide-react'
+import { ArrowDown, ArrowLeftRight, RefreshCw } from 'lucide-react'
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,387 +11,312 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { chainBySlug, chains } from '@/config/chains'
+import { useSwap } from '@/hooks/use-swap'
+import type { SwapStatus } from '@/hooks/use-swap'
+import { formatBalance } from '@/lib/wallet-model'
 
-const chains = ['Ethereum', 'Base', 'Robinhood Chain']
-const assets = ['WETH · Wrapped Ether', 'ETH · Ether', 'USDC · USD Coin']
-const slippageOptions = ['Auto · 0.5%', '0.1%', '0.5%', '1%']
-
-const amountInput = (raw: string) => (/^\d*\.?\d*$/.test(raw) ? raw : null)
-
-type SwapRow = {
-  id: string
-  wallet: string
-  address: string
-  balance: number
-  received: number
-  fee: number
-  steps: string
-  status: 'Ready' | 'Quote expired'
-  gasFunded: boolean
+const PHASE: Record<SwapStatus['phase'], { label: string; tone: string }> = {
+  idle: { label: 'Idle', tone: 'text-muted-foreground' },
+  submitting: { label: 'Submitting', tone: 'text-foreground' },
+  pending: { label: 'Pending', tone: 'text-foreground' },
+  confirmed: { label: 'Confirmed', tone: 'text-success' },
+  reverted: { label: 'Reverted', tone: 'text-destructive' },
+  unconfirmed: { label: 'Unconfirmed', tone: 'text-warning' },
+  failed: { label: 'Failed', tone: 'text-destructive' },
 }
 
-const swapRows: SwapRow[] = []
-
 export function SwapPage() {
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [origin, setOrigin] = useState(chains[0])
-  const [destination, setDestination] = useState('Same as origin')
-  const [sellAsset, setSellAsset] = useState(assets[0])
-  const [buyAsset, setBuyAsset] = useState(assets[1])
-  const [slippage, setSlippage] = useState(slippageOptions[0])
-  const [defaultAmount, setDefaultAmount] = useState('')
-  const [amounts, setAmounts] = useState<Record<string, string>>({})
-  const { groups } = useWalletGroups()
-
-  const sellSymbol = sellAsset.split(' · ')[0]
-  const buySymbol = buyAsset.split(' · ')[0]
-
-  const totalIn = swapRows.reduce(
-    (sum, row) =>
-      sum + (Number.parseFloat(amounts[row.id] ?? defaultAmount) || 0),
-    0
-  )
-  const readyCount = swapRows.filter((row) => row.status === 'Ready').length
-  const expiredCount = swapRows.length - readyCount
-  const fundedCount = swapRows.filter((row) => row.gasFunded).length
-  const pendingApprovals = swapRows.filter((row) =>
-    row.steps.startsWith('Approve')
-  ).length
-
-  const hasRows = swapRows.length > 0
-  const walletCountLabel = `${swapRows.length} ${
-    swapRows.length === 1 ? 'wallet' : 'wallets'
-  }`
-  const route =
-    destination === 'Same as origin' || destination === origin
-      ? `Same-chain swap · ${origin}`
-      : `${origin} → ${destination}`
-
-  const readiness = [
-    {
-      label: 'Relay quotes',
-      value: hasRows ? `${readyCount} fresh · ${expiredCount} expired` : '–',
-    },
-    {
-      label: 'Token approvals',
-      value: hasRows
-        ? `${pendingApprovals} wallet${pendingApprovals === 1 ? '' : 's'} pending`
-        : '–',
-    },
-    {
-      label: 'Native gas',
-      value: hasRows ? `${fundedCount} of ${swapRows.length} funded` : '–',
-    },
-    { label: 'Route', value: route },
-  ]
+  const swap = useSwap()
+  const phase = PHASE[swap.status.phase]
+  const chainName = chainBySlug(swap.chainSlug)?.name ?? swap.chainSlug
+  const reason = swap.plan.status === 'blocked' ? swap.plan.reason : null
+  const alerting =
+    reason === 'amount-invalid' ||
+    reason === 'unavailable' ||
+    reason === 'unsupported-chain'
+  const tone =
+    reason === 'insufficient-balance' || reason === 'insufficient-gas'
+      ? 'text-warning'
+      : alerting
+        ? 'text-destructive'
+        : 'text-muted-foreground'
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
-      <Card className="gap-3 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div
-            className="flex flex-col gap-1.5 lg:w-[280px]"
-            role="group"
+      <Card className="gap-3 p-4 lg:flex-row lg:items-end">
+        <div
+          className="flex flex-col gap-1.5 lg:w-[280px]"
+          role="group"
+          aria-labelledby="swap-wallet-label"
+        >
+          <span id="swap-wallet-label" className="text-xs font-medium">
+            Wallet
+          </span>
+          <WalletSelect
+            groups={swap.groups}
+            selected={swap.walletIds}
+            onSelectedChange={swap.setWalletIds}
+            single
+            disabled={swap.locked}
             aria-labelledby="swap-wallet-label"
+            className="w-full"
+          />
+        </div>
+
+        <div className="flex flex-1 flex-col gap-1.5">
+          <label htmlFor="swap-chain" className="text-xs font-medium">
+            Chain
+          </label>
+          <Select
+            value={swap.chainSlug}
+            onValueChange={swap.setChainSlug}
+            disabled={swap.locked}
           >
-            <span id="swap-wallet-label" className="text-xs font-medium">
-              Wallet
-            </span>
-            <WalletSelect
-              groups={groups}
-              selected={selectedWallets}
-              onSelectedChange={setSelectedWallets}
-              aria-labelledby="swap-wallet-label"
-              className="w-full"
-            />
-          </div>
-
-          <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="swap-origin" className="text-xs font-medium">
-              Origin chain
-            </label>
-            <Select value={origin} onValueChange={setOrigin}>
-              <SelectTrigger id="swap-origin" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {chains.map((chain) => (
-                  <SelectItem key={chain} value={chain}>
-                    {chain}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="swap-destination" className="text-xs font-medium">
-              Destination chain
-            </label>
-            <Select value={destination} onValueChange={setDestination}>
-              <SelectTrigger id="swap-destination" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['Same as origin', ...chains].map((chain) => (
-                  <SelectItem key={chain} value={chain}>
-                    {chain}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <SelectTrigger id="swap-chain" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" sideOffset={4}>
+              {chains.map((chain) => (
+                <SelectItem key={chain.slug} value={chain.slug}>
+                  {chain.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="swap-sell" className="text-xs font-medium">
-              Sell / Source asset
-            </label>
-            <Select value={sellAsset} onValueChange={setSellAsset}>
-              <SelectTrigger id="swap-sell" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {assets.map((asset) => (
-                  <SelectItem key={asset} value={asset}>
-                    {asset}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="hidden shrink-0 pb-2 lg:block">
-            <ArrowRight aria-hidden className="text-muted-foreground size-4" />
-          </div>
-
-          <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="swap-buy" className="text-xs font-medium">
-              Receive asset
-            </label>
-            <Select value={buyAsset} onValueChange={setBuyAsset}>
-              <SelectTrigger id="swap-buy" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {assets.map((asset) => (
-                  <SelectItem key={asset} value={asset}>
-                    {asset}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-1.5 lg:w-[200px]">
-            <label htmlFor="swap-slippage" className="text-xs font-medium">
-              Slippage tolerance
-            </label>
-            <Select value={slippage} onValueChange={setSlippage}>
-              <SelectTrigger id="swap-slippage" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {slippageOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <Button
+          variant="outline"
+          className="shrink-0"
+          onClick={swap.refresh}
+          disabled={!swap.canRefresh}
+        >
+          <RefreshCw className={swap.reading ? 'animate-spin' : undefined} />
+          Refresh
+        </Button>
       </Card>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
           <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="truncate text-[13px] font-semibold">Batch</h2>
-              <Badge variant="secondary">{walletCountLabel}</Badge>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <label
-                htmlFor="default-amount"
-                className="text-xs font-medium whitespace-nowrap"
-              >
-                Default amount
-              </label>
-              <Input
-                id="default-amount"
-                inputMode="decimal"
-                placeholder="0.0"
-                value={defaultAmount}
-                onChange={(event) => {
-                  const next = amountInput(event.target.value)
-                  if (next !== null) setDefaultAmount(next)
-                }}
-                className="w-[140px]"
-              />
-            </div>
+            <h2 className="truncate text-[13px] font-semibold">Wrap / Unwrap</h2>
+            <Badge variant="secondary">1:1</Badge>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-            <Table aria-label="Swap batch">
-              <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
-                <TableRow>
-                  <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                    Wallet
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[120px] px-3 text-xs font-medium">
-                    Balance
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[120px] px-3 text-xs font-medium">
-                    Amount
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[140px] px-3 text-xs font-medium">
-                    Est. received
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[100px] px-3 text-xs font-medium">
-                    Fee
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[130px] px-3 text-xs font-medium">
-                    Steps
-                  </TableHead>
-                  <TableHead className="text-muted-foreground w-[140px] px-3 text-xs font-medium">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {swapRows.map((row) => (
-                  <TableRow key={row.id} className="h-14">
-                    <TableCell className="px-3 py-2">
-                      <div className="flex flex-col">
-                        <span className="text-[13px] font-medium">
-                          {row.wallet}
-                        </span>
-                        <span className="text-muted-foreground text-[11px]">
-                          {row.address}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground px-3 py-2 text-[13px] tabular-nums">
-                      {row.balance.toFixed(4)} {sellSymbol}
-                    </TableCell>
-                    <TableCell className="px-3 py-2">
-                      <label htmlFor={`amount-${row.id}`} className="sr-only">
-                        Amount for {row.wallet}
-                      </label>
-                      <Input
-                        id={`amount-${row.id}`}
-                        inputMode="decimal"
-                        value={amounts[row.id] ?? defaultAmount}
-                        onChange={(event) => {
-                          const next = amountInput(event.target.value)
-                          if (next === null) return
-                          setAmounts((current) => ({
-                            ...current,
-                            [row.id]: next,
-                          }))
-                        }}
-                        className="w-24"
-                      />
-                    </TableCell>
-                    <TableCell className="px-3 py-2 text-[13px] tabular-nums">
-                      {row.received.toFixed(4)} {buySymbol}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground px-3 py-2 text-[13px] tabular-nums">
-                      {row.fee.toFixed(4)} ETH
-                    </TableCell>
-                    <TableCell className="text-muted-foreground px-3 py-2 text-[13px]">
-                      {row.steps}
-                    </TableCell>
-                    <TableCell className="px-3 py-2">
-                      <Badge
-                        variant="outline"
-                        className={
-                          row.status === 'Ready'
-                            ? 'border-success/30 bg-success/10 text-success'
-                            : 'border-warning/30 bg-warning/10 text-warning'
-                        }
-                      >
-                        {row.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="flex flex-col gap-4 p-4">
+            <div className="flex gap-2" role="group" aria-label="Direction">
+              <Button
+                variant={swap.direction === 'wrap' ? 'default' : 'outline'}
+                className="flex-1"
+                aria-pressed={swap.direction === 'wrap'}
+                disabled={swap.locked}
+                onClick={() => swap.setDirection('wrap')}
+              >
+                Wrap
+              </Button>
+              <Button
+                variant={swap.direction === 'unwrap' ? 'default' : 'outline'}
+                className="flex-1"
+                aria-pressed={swap.direction === 'unwrap'}
+                disabled={swap.locked}
+                onClick={() => swap.setDirection('unwrap')}
+              >
+                Unwrap
+              </Button>
+            </div>
 
-            {!hasRows ? (
-              <div className="flex flex-1 items-center justify-center p-4">
-                <EmptyState
-                  icon={Layers}
-                  title="No wallets in the batch"
-                  description="Pick the wallets and the assets above to build a swap batch."
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="swap-amount" className="text-xs font-medium">
+                Amount ({swap.fromSymbol})
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="swap-amount"
+                  inputMode="decimal"
+                  placeholder="0.0"
+                  className="tabular-nums"
+                  value={swap.amount}
+                  onChange={(event) => swap.setAmount(event.target.value)}
+                  disabled={swap.locked}
+                  aria-invalid={swap.invalidAmount}
+                  aria-describedby="swap-amount-help swap-block"
                 />
+                <Button
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  onClick={swap.applyMax}
+                  disabled={!swap.canMax || swap.locked}
+                  aria-label="Use the maximum amount"
+                >
+                  MAX
+                </Button>
+              </div>
+              <p
+                id="swap-amount-help"
+                className="text-muted-foreground text-[11px] tabular-nums"
+              >
+                Max{' '}
+                {swap.max === null
+                  ? '—'
+                  : formatBalance(swap.max, swap.fromSymbol)}
+              </p>
+            </div>
+
+            <dl className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">From</dt>
+                <dd className="text-[13px] tabular-nums">
+                  {swap.fromBalance === null
+                    ? '—'
+                    : formatBalance(swap.fromBalance, swap.fromSymbol)}
+                </dd>
+              </div>
+              <div className="flex justify-center">
+                <ArrowDown aria-hidden className="text-muted-foreground size-4" />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">To</dt>
+                <dd className="text-[13px] tabular-nums">
+                  {swap.toBalance === null
+                    ? '—'
+                    : formatBalance(swap.toBalance, swap.toSymbol)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t pt-3">
+                <dt className="text-[13px]">You receive</dt>
+                <dd className="text-[13px] tabular-nums">
+                  {swap.plan.status === 'ready'
+                    ? formatBalance(swap.plan.amount, swap.toSymbol)
+                    : '—'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">Rate</dt>
+                <dd className="text-muted-foreground text-[13px] tabular-nums">
+                  1 {swap.fromSymbol} = 1 {swap.toSymbol} · no fee beyond gas
+                </dd>
+              </div>
+            </dl>
+
+            {swap.plan.status === 'blocked' ? (
+              <div>
+                <p
+                  id="swap-block"
+                  role={alerting ? 'alert' : undefined}
+                  className={`text-xs ${tone}`}
+                >
+                  {swap.plan.message}
+                </p>
+                {swap.plan.reason === 'unavailable' && swap.readError ? (
+                  <p className="text-muted-foreground mt-1 text-[11px] break-all">
+                    {swap.readError}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
 
-          <div className="mt-auto flex shrink-0 flex-col gap-3 border-t p-4 xl:flex-row xl:items-center xl:justify-between">
-            <span className="text-lg font-semibold tabular-nums">
-              {totalIn.toFixed(4)} {sellSymbol}
-            </span>
-            <div className="flex items-center gap-2 xl:justify-end">
-              {expiredCount > 0 ? (
-                <span className="text-warning text-xs">
-                  {expiredCount} {expiredCount === 1 ? 'quote' : 'quotes'}{' '}
-                  expired
-                </span>
+          <div className="mt-auto shrink-0 border-t p-4">
+            <Button
+              className="h-10 w-full"
+              disabled={swap.plan.status !== 'ready' || swap.locked}
+              onClick={() => void swap.submit()}
+            >
+              {swap.status.phase === 'submitting' ? (
+                <Spinner data-icon="inline-start" />
               ) : null}
-              <Button variant="ghost" disabled={!hasRows}>
-                Requote all
-              </Button>
-              <Button className="h-10" disabled={readyCount === 0}>
-                Execute
-              </Button>
-            </div>
+              {swap.actionLabel}
+            </Button>
           </div>
         </Card>
 
         <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]">
-          <Card className="shrink-0 gap-0 overflow-hidden py-0">
-            <div className="flex h-12 shrink-0 items-center border-b px-4">
-              <h2 className="truncate text-[13px] font-semibold">
-                Batch readiness
-              </h2>
-            </div>
-            <dl className="flex flex-col gap-3 p-4">
-              {readiness.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <dt className="text-[13px]">{row.label}</dt>
-                  <dd className="text-muted-foreground text-[13px] tabular-nums">
-                    {row.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </Card>
-
           <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-            <div className="flex h-12 shrink-0 items-center border-b px-4">
-              <h2 className="truncate text-[13px] font-semibold">Runner log</h2>
+            <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+              <h2 className="truncate text-[13px] font-semibold">Transaction</h2>
+              <Badge variant="outline" className={phase.tone}>
+                {phase.label}
+              </Badge>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="m-auto flex flex-col items-center">
-                <EmptyState icon={ScrollText} title="Nothing executed yet" />
+
+            <dl className="flex flex-col gap-3 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">Wallet</dt>
+                <dd className="min-w-0 text-right">
+                  <span className="block truncate text-[13px] font-medium">
+                    {swap.wallet?.label ?? '—'}
+                  </span>
+                  <span className="text-muted-foreground block truncate text-[11px]">
+                    {swap.wallet?.address ?? ''}
+                  </span>
+                </dd>
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">Chain</dt>
+                <dd className="text-muted-foreground text-[13px]">{chainName}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-[13px]">Max gas</dt>
+                <dd className="text-muted-foreground text-[13px] tabular-nums">
+                  {swap.gasCost === null
+                    ? '—'
+                    : formatBalance(swap.gasCost, swap.nativeSymbol)}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-auto shrink-0 border-t p-4" aria-live="polite">
+              {swap.status.phase === 'idle' ? (
+                <EmptyState
+                  icon={ArrowLeftRight}
+                  title="Nothing wrapped yet"
+                  description="Pick a wallet and an amount, then wrap or unwrap."
+                />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span className={`text-[13px] font-medium ${phase.tone}`}>
+                    {phase.label}
+                  </span>
+                  {swap.status.phase === 'confirmed' ? (
+                    <span className="text-muted-foreground text-[11px]">
+                      {swap.status.tx.direction === 'wrap'
+                        ? 'Wrapped'
+                        : 'Unwrapped'}{' '}
+                      {formatBalance(
+                        swap.status.tx.amount,
+                        swap.status.tx.symbol
+                      )}
+                    </span>
+                  ) : null}
+                  {'tx' in swap.status ? (
+                    <span className="font-mono text-[11px] break-all">
+                      {swap.status.tx.txHash}
+                    </span>
+                  ) : null}
+                  {swap.status.phase === 'failed' ||
+                  swap.status.phase === 'unconfirmed' ? (
+                    <span className="text-muted-foreground text-[11px] break-all">
+                      {swap.status.message}
+                    </span>
+                  ) : null}
+                  {swap.status.phase === 'unconfirmed' ? (
+                    <Button
+                      variant="outline"
+                      className="h-8"
+                      disabled={swap.checking}
+                      onClick={() => void swap.recheck()}
+                    >
+                      {swap.checking ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : null}
+                      Check status
+                    </Button>
+                  ) : null}
+                </div>
+              )}
             </div>
           </Card>
         </div>

@@ -183,9 +183,9 @@ The fixed right-hand column of a workspace page.
 300px at `lg` and up, full width below it: the rail never sits beside the table under `lg`.
 The page-level CTA is the last card's footer — `mt-auto shrink-0 border-t p-4`, button
 `h-10 w-full`.
-A batch whose parameters live outside the rail, in the card above the table (`swap`), puts
-the CTA in the table card's footer instead, `h-10` and not `w-full`, beside the total at
-`xl`. The rail footer stays the rule wherever the action comes from a rail card
+A single-ticket page (`swap`) puts the CTA in the footer of the card that owns the form,
+still `mt-auto shrink-0 border-t p-4` with `h-10 w-full`; its rail is a readout, not the
+action. The rail footer stays the rule wherever the action comes from a rail card
 (`bulk-sell`, `instant-sell`, `transfer`).
 
 ### Controls
