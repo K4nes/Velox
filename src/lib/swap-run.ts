@@ -168,7 +168,7 @@ export async function runSwapPlan(input: {
     label: job.label,
     address: job.address,
     amount: job.amount,
-    status: 'queued',
+    status: 'queued' as const,
   }))
   let progress: SwapRunProgress = { states }
   const emit = () => input.onProgress?.(progress)
@@ -575,7 +575,7 @@ export function walletStates(
 }
 
 export function summarizeSwapRun(progress: SwapRunProgress): SwapRunSummary {
-  const summary: SwapRunSummary = {
+  const summary = {
     total: 0,
     active: 0,
     done: 0,

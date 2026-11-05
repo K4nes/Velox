@@ -42,8 +42,9 @@ export async function resolveSwapBatch(input: {
   }
 
   const client = await clientFor(spec.from.chain)
+  const fromRef = spec.from.ref
   const fixed = parseFixedAmount(spec.amount, spec.from.decimals)
-  const maxResolves = spec.amount.kind === 'max' && spec.from.ref.kind !== 'native'
+  const maxResolves = spec.amount.kind === 'max' && fromRef.kind !== 'native'
 
   const jobs = await mapLimit(
     input.wallets,
@@ -53,11 +54,11 @@ export async function resolveSwapBatch(input: {
       let available: bigint | null = null
       try {
         available =
-          spec.from.ref.kind === 'native'
+          fromRef.kind === 'native'
             ? await client.getBalance({ address })
             : await readTokenBalance({
                 client,
-                token: spec.from.ref.address,
+                token: fromRef.address,
                 owner: address,
               })
       } catch {

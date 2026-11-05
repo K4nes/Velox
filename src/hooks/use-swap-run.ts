@@ -141,13 +141,14 @@ export function useSwapRun(input: {
       if (result.failed > 0) {
         toast.error(message)
       } else if (
-        result.unconfirmed > 0 ||
-        result.refunded > 0 ||
-        result.active > 0
+        result.done > 0 &&
+        result.unconfirmed === 0 &&
+        result.refunded === 0 &&
+        result.active === 0
       ) {
-        toast.warning(message)
-      } else {
         toast.success(message)
+      } else {
+        toast.warning(message)
       }
     } catch (failure) {
       if (!live()) return

@@ -1,4 +1,4 @@
-import { parseUnits } from 'viem'
+import { formatUnits, parseUnits } from 'viem'
 
 import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
@@ -65,6 +65,15 @@ export function parseFixedAmount(
   }
 }
 
+// Dust matters here: a balance too small for six decimals would otherwise
+// render as 0 and look like an empty wallet.
+export function formatSwapAmount(amount: bigint, decimals: number): string {
+  const [whole, fraction] = formatUnits(amount, decimals).split('.')
+  const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
+  if (trimmed) return `${whole}.${trimmed}`
+  return amount > 0n && whole === '0' ? '<0.000001' : whole
+}
+
 // Derived from values, never object identity, so a re-render that rebuilds
 // `spec` does not invalidate a resolved batch.
 export function specKey(
@@ -91,11 +100,6 @@ export function explainSwapBlockers(input: {
 }): string | null {
   const { spec } = input
   if (input.walletCount === 0) return 'Select at least one wallet'
-  if (input.pending) return 'Reading balances…'
-  if (input.batch === null) return 'Reading balances…'
-  if (input.batch.jobs.length === 0) {
-    return 'No saved wallets match the selection'
-  }
 
   if (spec.amount.kind === 'fixed') {
     if (spec.amount.text.trim() === '') return 'Enter an amount'
@@ -113,6 +117,12 @@ export function explainSwapBlockers(input: {
     assetKey(spec.from.ref) === assetKey(spec.to.ref)
   ) {
     return 'Pick two different assets'
+  }
+
+  if (input.pending) return 'Reading balances…'
+  if (input.batch === null) return 'Reading balances…'
+  if (input.batch.jobs.length === 0) {
+    return 'No saved wallets match the selection'
   }
 
   if (input.batch.shortfall > 0) {

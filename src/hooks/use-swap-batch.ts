@@ -4,6 +4,7 @@ import { resolveSwapBatch } from '@/lib/swap-batch'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { specKey } from '@/lib/swap-spec'
 import type { SwapSpec } from '@/lib/swap-spec'
+import { redactUrls } from '@/lib/utils'
 import { listWallets } from '@/lib/wallets'
 
 const DEBOUNCE_MS = 300
@@ -57,7 +58,11 @@ export function useSwapBatch(
         .catch((failure) => {
           if (cancelled) return
           setResolved(null)
-          setError(failure instanceof Error ? failure.message : String(failure))
+          setError(
+            redactUrls(
+              failure instanceof Error ? failure.message : String(failure)
+            )
+          )
         })
         .finally(() => {
           if (!cancelled) setPending(false)

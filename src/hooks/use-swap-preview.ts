@@ -7,7 +7,6 @@ import { specKey } from '@/lib/swap-spec'
 import type { SwapSpec } from '@/lib/swap-spec'
 
 export type SwapPreview = {
-  readonly wallet: `0x${string}`
   readonly operation: SwapOperation
   readonly amountOut: bigint
 }
@@ -48,7 +47,6 @@ export function useSwapPreview(
           setResolved({
             key,
             preview: {
-              wallet,
               operation: quote.operation,
               amountOut: quote.amountOut,
             },
