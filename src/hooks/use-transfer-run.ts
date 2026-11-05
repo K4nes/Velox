@@ -257,6 +257,14 @@ export function useTransferRun(input: {
       if (!live()) return
 
       if (outcome.error) {
+        const failedKeys = new Set(
+          outcome.progress.steps.map((step) => step.tokenKey)
+        )
+        setHistory((previous) => {
+          const next = new Map(previous)
+          for (const key of failedKeys) next.delete(key)
+          return next
+        })
         setProgress(null)
         setError(outcome.error)
         toast.error(outcome.error)

@@ -211,30 +211,56 @@ export async function waitForReceipt(
   return receipt.status
 }
 
-export type ReceiptOutcome = 'success' | 'reverted' | 'replaced' | 'unresolved'
+export type ReceiptOutcome = {
+  status: 'success' | 'reverted' | 'replaced' | 'unresolved'
+  txHash: string
+}
 
 // A receipt for a different hash means the sender's nonce was filled by a
-// replacement, so this transaction never landed. Any other failure, including
-// the timeout, leaves the outcome genuinely unknown to us.
+// replacement. A repriced replacement carries the same transfer, so its receipt
+// is this transfer's outcome; a cancelled or unrelated one did not move it.
 export async function waitForReceiptOutcome(
   chainSlug: string,
   txHash: string,
-  replacement?: { from: `0x${string}`; nonce: number }
+  replacementHint?: { from: `0x${string}`; nonce: number }
 ): Promise<ReceiptOutcome> {
+  const replacementRef: {
+    current: {
+      reason: 'cancelled' | 'replaced' | 'repriced'
+      txHash: string
+      status: 'success' | 'reverted'
+    } | null
+  } = { current: null }
+
   try {
     const client = await clientFor(chainSlug)
     const receipt = await client.waitForTransactionReceipt({
       hash: txHash as `0x${string}`,
       timeout: 90_000,
-      ...(replacement ? { replacement } : {}),
+      ...(replacementHint ? { replacement: replacementHint } : {}),
+      onReplaced: (response) => {
+        replacementRef.current = {
+          reason: response.reason,
+          txHash: response.transactionReceipt.transactionHash,
+          status: response.transactionReceipt.status,
+        }
+      },
     })
 
-    if (receipt.transactionHash.toLowerCase() !== txHash.toLowerCase()) {
-      return 'replaced'
+    if (receipt.transactionHash.toLowerCase() === txHash.toLowerCase()) {
+      return { status: receipt.status, txHash: receipt.transactionHash }
     }
 
-    return receipt.status
+    const replacement = replacementRef.current
+    if (replacement?.reason === 'repriced') {
+      return {
+        status: replacement.status,
+        txHash: replacement.txHash,
+      }
+    }
+
+    return { status: 'replaced', txHash: receipt.transactionHash }
   } catch {
-    return 'unresolved'
+    return { status: 'unresolved', txHash }
   }
 }

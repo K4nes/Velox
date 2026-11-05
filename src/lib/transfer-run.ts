@@ -240,22 +240,22 @@ export async function runTransferPlan(input: {
         { from: pending.from, nonce: pending.nonce }
       )
 
-      if (outcome === 'success') {
-        commit({ ...current, status: 'sent', txHash: pending.txHash })
+      if (outcome.status === 'success') {
+        commit({ ...current, status: 'sent', txHash: outcome.txHash })
         return
       }
 
-      if (outcome === 'reverted') {
+      if (outcome.status === 'reverted') {
         commit({
           ...current,
           status: 'failed',
           error: 'Transaction reverted',
-          txHash: pending.txHash,
+          txHash: outcome.txHash,
         })
         return
       }
 
-      if (outcome === 'replaced') {
+      if (outcome.status === 'replaced') {
         commit({
           ...current,
           status: 'unknown',
