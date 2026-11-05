@@ -134,6 +134,10 @@ export function SwapWallets({
               const draft = amountFor(amounts, job.walletId)
               const hintId = `swap-amount-${job.walletId}`
               const parsed = parseFixedAmount(draft, sellDecimals)
+              const invalidAmount =
+                draft.kind === 'fixed' &&
+                draft.text.trim() !== '' &&
+                parsed === null
               const draftOverBalance =
                 parsed !== null &&
                 job.available !== null &&
@@ -143,9 +147,11 @@ export function SwapWallets({
                 ? `Max is not available for ${sellSymbol}`
                 : job.maxUnreadable && draft.kind === 'max'
                   ? `Could not read ${sellSymbol} balance`
-                  : draftOverBalance
-                    ? 'Exceeds balance'
-                    : null
+                  : invalidAmount
+                    ? `Enter a valid ${sellSymbol} amount`
+                    : draftOverBalance
+                      ? 'Exceeds balance'
+                      : null
 
               return (
                 <TableRow key={job.walletId} className="h-14">

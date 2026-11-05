@@ -117,12 +117,33 @@ export function specKey(
 
 export function explainSwapBlockers(input: {
   spec: SwapSpec
-  walletCount: number
+  walletIds: readonly string[]
+  amounts: SwapAmounts
   pending: boolean
   batch: SwapBatch | null
 }): string | null {
   const { spec } = input
-  if (input.walletCount === 0) return 'Select at least one wallet'
+  if (input.walletIds.length === 0) return 'Select at least one wallet'
+
+  const drafts = input.walletIds.map((id) => amountFor(input.amounts, id))
+
+  if (
+    drafts.some(
+      (draft) =>
+        draft.kind === 'fixed' &&
+        draft.text.trim() !== '' &&
+        parseFixedAmount(draft, spec.from.decimals) === null
+    )
+  ) {
+    return `Enter a valid ${spec.from.symbol} amount`
+  }
+
+  if (
+    spec.from.ref.kind === 'native' &&
+    drafts.some((draft) => draft.kind === 'max')
+  ) {
+    return 'Max is not available for a native asset. Enter an amount instead'
+  }
 
   if (
     spec.from.chain === spec.to.chain &&

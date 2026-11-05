@@ -27,7 +27,8 @@ export function SwapPage() {
 
   const blockedReason = explainSwapBlockers({
     spec,
-    walletCount: walletIds.length,
+    walletIds,
+    amounts,
     pending: batch.pending,
     batch: batch.value,
   })
