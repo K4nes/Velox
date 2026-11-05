@@ -2,28 +2,37 @@ import { useEffect, useState } from 'react'
 
 import { resolveSwapBatch } from '@/lib/swap-batch'
 import type { SwapBatch } from '@/lib/swap-batch'
-import { specKey } from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+import { amountFor, amountKey, specKey } from '@/lib/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
 import { redactUrls } from '@/lib/utils'
 import { listWallets } from '@/lib/wallets'
 
 const DEBOUNCE_MS = 300
 
 // The batch is the only writer of resolved amounts. `value` is non-null only
-// while it still matches the current spec and selection, so a run can never
-// spend an amount the operator has already changed.
+// while it still matches the current spec, selection, and every draft, so a run
+// can never spend an amount the operator has already changed. `display` needs
+// only the spec and selection, so rows stay mounted through an amount edit and
+// the focused input survives the keystroke.
 export function useSwapBatch(
   spec: SwapSpec,
-  walletIds: readonly string[]
+  walletIds: readonly string[],
+  amounts: SwapAmounts
 ): {
   value: SwapBatch | null
+  display: SwapBatch | null
   pending: boolean
   error: string | null
   refresh: () => void
 } {
-  const key = specKey(spec, walletIds)
+  const rowsKey = specKey(spec, walletIds)
+  const key = [
+    rowsKey,
+    ...walletIds.map((id) => amountKey(amountFor(amounts, id))),
+  ].join('|')
   const [resolved, setResolved] = useState<{
     key: string
+    rowsKey: string
     batch: SwapBatch
   } | null>(null)
   const [pending, setPending] = useState(false)
@@ -47,12 +56,13 @@ export function useSwapBatch(
         .then((wallets) =>
           resolveSwapBatch({
             spec,
+            amounts,
             wallets: wallets.filter((wallet) => ids.has(wallet.id)),
           })
         )
         .then((batch) => {
           if (cancelled) return
-          setResolved({ key, batch })
+          setResolved({ key, rowsKey, batch })
           setError(null)
         })
         .catch((failure) => {
@@ -73,10 +83,12 @@ export function useSwapBatch(
       cancelled = true
       clearTimeout(timer)
     }
-  }, [key, spec, walletIds, version])
+  }, [key, spec, walletIds, amounts, version])
 
   return {
     value: resolved !== null && resolved.key === key ? resolved.batch : null,
+    display:
+      resolved !== null && resolved.rowsKey === rowsKey ? resolved.batch : null,
     pending,
     error,
     refresh: () => setVersion((current) => current + 1),

@@ -2,7 +2,9 @@ import { Layers } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -12,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatSwapAmount } from '@/lib/swap-spec'
+import { amountFor, formatSwapAmount, parseFixedAmount } from '@/lib/swap-spec'
+import type { SwapAmounts } from '@/lib/swap-spec'
 import { SWAP_WALLET_TONE, swapWalletLabel } from '@/lib/swap-run'
 import type { SwapWalletState } from '@/lib/swap-run'
 import type { SwapBatch } from '@/lib/swap-batch'
@@ -77,16 +80,25 @@ function StatusCell({ state }: { state: SwapWalletState | undefined }) {
 
 export function SwapWallets({
   batch,
+  amounts,
   states,
   pending,
+  disabled,
+  onAmountChange,
+  onMaxAmount,
 }: {
   batch: SwapBatch | null
+  amounts: SwapAmounts
   states: Map<string, SwapWalletState>
   pending: boolean
+  disabled: boolean
+  onAmountChange: (walletId: string, text: string) => void
+  onMaxAmount: (walletId: string) => void
 }) {
   const count = batch?.jobs.length ?? 0
   const sellSymbol = batch?.spec.from.symbol ?? ''
   const sellDecimals = batch?.spec.from.decimals ?? 18
+  const nativeSell = batch?.spec.from.ref.kind === 'native'
 
   return (
     <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
@@ -109,7 +121,7 @@ export function SwapWallets({
               <TableHead className="text-muted-foreground w-[160px] px-3 text-xs font-medium">
                 Balance
               </TableHead>
-              <TableHead className="text-muted-foreground w-[160px] px-3 text-xs font-medium">
+              <TableHead className="text-muted-foreground w-[200px] px-3 text-xs font-medium">
                 Amount
               </TableHead>
               <TableHead className="text-muted-foreground w-[240px] px-3 text-xs font-medium">
@@ -118,31 +130,86 @@ export function SwapWallets({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {batch?.jobs.map((job) => (
-              <TableRow key={job.walletId} className="h-14">
-                <TableCell className="px-3 py-2">
-                  <div className="flex flex-col">
-                    <span className="text-[13px] font-medium">{job.label}</span>
-                    <span className="text-muted-foreground text-[11px]">
-                      {shortAddress(job.address)}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-3 py-2 text-[13px] tabular-nums">
-                  {job.available === null
-                    ? '—'
-                    : `${formatSwapAmount(job.available, sellDecimals)} ${sellSymbol}`}
-                </TableCell>
-                <TableCell className="px-3 py-2 text-[13px] tabular-nums">
-                  {job.amount === null
-                    ? '—'
-                    : `${formatSwapAmount(job.amount, sellDecimals)} ${sellSymbol}`}
-                </TableCell>
-                <TableCell className="px-3 py-2">
-                  <StatusCell state={states.get(job.walletId)} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {batch?.jobs.map((job) => {
+              const draft = amountFor(amounts, job.walletId)
+              const hintId = `swap-amount-${job.walletId}`
+              // Parsed from the draft, not the display batch's amount, which
+              // lags a keystroke behind.
+              const parsed = parseFixedAmount(draft, sellDecimals)
+              const overBalance =
+                parsed !== null &&
+                job.available !== null &&
+                parsed > job.available
+              const maxBlocked = draft.kind === 'max' && nativeSell
+              const hint = maxBlocked
+                ? `Max is not available for ${sellSymbol}`
+                : overBalance
+                  ? 'Exceeds balance'
+                  : null
+
+              return (
+                <TableRow key={job.walletId} className="h-14">
+                  <TableCell className="px-3 py-2">
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-medium">
+                        {job.label}
+                      </span>
+                      <span className="text-muted-foreground text-[11px]">
+                        {shortAddress(job.address)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-3 py-2 text-[13px] tabular-nums">
+                    {job.available === null
+                      ? '—'
+                      : `${formatSwapAmount(job.available, sellDecimals)} ${sellSymbol}`}
+                  </TableCell>
+                  <TableCell className="px-3 py-2">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          inputMode="decimal"
+                          aria-label={`Amount for ${job.label}`}
+                          aria-invalid={hint !== null || undefined}
+                          aria-describedby={hint ? hintId : undefined}
+                          placeholder={draft.kind === 'max' ? 'Max' : '0.0'}
+                          value={draft.kind === 'fixed' ? draft.text : ''}
+                          onChange={(event) => {
+                            const next = event.target.value
+                            if (/^\d*\.?\d*$/.test(next)) {
+                              onAmountChange(job.walletId, next)
+                            }
+                          }}
+                          disabled={disabled}
+                          className="h-8 w-[110px] text-[13px] tabular-nums"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={
+                            draft.kind === 'max' ? 'secondary' : 'outline'
+                          }
+                          aria-pressed={draft.kind === 'max'}
+                          aria-label={`Max for ${job.label}`}
+                          onClick={() => onMaxAmount(job.walletId)}
+                          disabled={disabled}
+                        >
+                          Max
+                        </Button>
+                      </div>
+                      {hint ? (
+                        <span id={hintId} className="text-destructive text-[11px]">
+                          {hint}
+                        </span>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-3 py-2">
+                    <StatusCell state={states.get(job.walletId)} />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
 

@@ -1,8 +1,8 @@
 import { assetKey, assetOptions } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/async'
 import { readTokenBalance } from '@/lib/erc20'
-import { parseFixedAmount } from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+import { amountFor, parseFixedAmount, specKey } from '@/lib/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
 import { clientFor } from '@/lib/tx'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -28,6 +28,7 @@ const BALANCE_CONCURRENCY = 5
 
 export async function resolveSwapBatch(input: {
   spec: SwapSpec
+  amounts: SwapAmounts
   wallets: readonly Pick<StoredWallet, 'id' | 'label' | 'address'>[]
 }): Promise<SwapBatch> {
   const { spec } = input
@@ -43,14 +44,15 @@ export async function resolveSwapBatch(input: {
 
   const client = await clientFor(spec.from.chain)
   const fromRef = spec.from.ref
-  const fixed = parseFixedAmount(spec.amount, spec.from.decimals)
-  const maxResolves = spec.amount.kind === 'max' && fromRef.kind !== 'native'
 
   const jobs = await mapLimit(
     input.wallets,
     BALANCE_CONCURRENCY,
     async (wallet): Promise<SwapBatchJob> => {
       const address = wallet.address as `0x${string}`
+      const draft = amountFor(input.amounts, wallet.id)
+      const fixed = parseFixedAmount(draft, spec.from.decimals)
+      const maxResolves = draft.kind === 'max' && fromRef.kind !== 'native'
       let available: bigint | null = null
       try {
         available =
@@ -67,11 +69,7 @@ export async function resolveSwapBatch(input: {
 
       // A native `max` has no amount: spending the whole balance leaves no gas.
       const amount =
-        spec.amount.kind === 'max'
-          ? maxResolves
-            ? available
-            : null
-          : fixed
+        draft.kind === 'max' ? (maxResolves ? available : null) : fixed
 
       return {
         walletId: wallet.id,
@@ -96,4 +94,13 @@ export async function resolveSwapBatch(input: {
   }
 
   return { spec, jobs, total, shortfall, unresolved }
+}
+
+// Includes each resolved amount, so editing one wallet's draft clears the
+// previous run's states instead of showing them against the new amounts.
+export function swapBatchKey(batch: SwapBatch): string {
+  return [
+    specKey(batch.spec, batch.jobs.map((job) => job.walletId)),
+    ...batch.jobs.map((job) => job.amount?.toString() ?? ''),
+  ].join('|')
 }

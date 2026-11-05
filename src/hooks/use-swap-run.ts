@@ -8,8 +8,8 @@ import {
   runKindLabel,
 } from '@/lib/run-slot'
 import type { RunSlot } from '@/lib/run-slot'
+import { swapBatchKey } from '@/lib/swap-batch'
 import type { SwapBatch } from '@/lib/swap-batch'
-import { specKey } from '@/lib/swap-spec'
 import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
 import type {
   SwapRunProgress,
@@ -43,12 +43,7 @@ export function useSwapRun(input: {
     }
   }, [])
 
-  const batchKey = input.batch
-    ? specKey(
-        input.batch.spec,
-        input.batch.jobs.map((job) => job.walletId)
-      )
-    : null
+  const batchKey = input.batch ? swapBatchKey(input.batch) : null
 
   useEffect(() => {
     setProgress(null)

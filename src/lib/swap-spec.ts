@@ -14,10 +14,39 @@ export type SwapAmountInput =
   | { readonly kind: 'fixed'; readonly text: string }
   | { readonly kind: 'max' }
 
+export type SwapAmounts = Readonly<Record<string, SwapAmountInput>>
+
+const EMPTY_AMOUNT: SwapAmountInput = { kind: 'fixed', text: '' }
+
+export function amountFor(
+  amounts: SwapAmounts,
+  walletId: string
+): SwapAmountInput {
+  return amounts[walletId] ?? EMPTY_AMOUNT
+}
+
+export function amountKey(input: SwapAmountInput): string {
+  return input.kind === 'max' ? 'max' : `fixed:${input.text}`
+}
+
+export function withAmountText(
+  amounts: SwapAmounts,
+  walletId: string,
+  text: string
+): SwapAmounts {
+  return { ...amounts, [walletId]: { kind: 'fixed', text } }
+}
+
+export function withMaxAmount(
+  amounts: SwapAmounts,
+  walletId: string
+): SwapAmounts {
+  return { ...amounts, [walletId]: { kind: 'max' } }
+}
+
 export type SwapSpec = {
   readonly from: SwapAssetOption
   readonly to: SwapAssetOption
-  readonly amount: SwapAmountInput
   readonly slippageBps: number | null
 }
 
@@ -43,7 +72,7 @@ export function defaultSwapSpec(): SwapSpec {
     throw new Error('Ethereum WETH and ETH are not configured')
   }
 
-  return { from, to, amount: { kind: 'fixed', text: '' }, slippageBps: null }
+  return { from, to, slippageBps: null }
 }
 
 export function parseFixedAmount(
@@ -81,7 +110,6 @@ export function specKey(
   return [
     `${spec.from.chain}:${assetKey(spec.from.ref)}`,
     `${spec.to.chain}:${assetKey(spec.to.ref)}`,
-    spec.amount.kind === 'fixed' ? `fixed:${spec.amount.text}` : 'max',
     spec.slippageBps === null ? 'auto' : String(spec.slippageBps),
     walletIds.join(','),
   ].join('|')
@@ -95,17 +123,6 @@ export function explainSwapBlockers(input: {
 }): string | null {
   const { spec } = input
   if (input.walletCount === 0) return 'Select at least one wallet'
-
-  if (spec.amount.kind === 'fixed') {
-    if (spec.amount.text.trim() === '') return 'Enter an amount'
-    if (parseFixedAmount(spec.amount, spec.from.decimals) === null) {
-      return `Enter a valid ${spec.from.symbol} amount`
-    }
-  }
-
-  if (spec.amount.kind === 'max' && spec.from.ref.kind === 'native') {
-    return 'Max is not available for a native asset. Enter an amount instead'
-  }
 
   if (
     spec.from.chain === spec.to.chain &&
@@ -129,9 +146,7 @@ export function explainSwapBlockers(input: {
 
   if (input.batch.unresolved > 0) {
     const count = input.batch.unresolved
-    return `${count} ${count === 1 ? 'wallet' : 'wallets'} could not read the ${
-      spec.from.symbol
-    } balance`
+    return `${count} ${count === 1 ? 'wallet needs' : 'wallets need'} an amount`
   }
 
   return null
@@ -171,14 +186,6 @@ export function withDestinationChain(
 export function withDestinationAsset(spec: SwapSpec, key: string): SwapSpec {
   const to = assetByKey(spec.to.chain, key)
   return to ? { ...spec, to } : spec
-}
-
-export function withAmountText(spec: SwapSpec, text: string): SwapSpec {
-  return { ...spec, amount: { kind: 'fixed', text } }
-}
-
-export function withMaxAmount(spec: SwapSpec): SwapSpec {
-  return { ...spec, amount: { kind: 'max' } }
 }
 
 export function withSlippage(spec: SwapSpec, bps: number | null): SwapSpec {

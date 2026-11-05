@@ -4,8 +4,13 @@ import { useSwapBatch } from '@/hooks/use-swap-batch'
 import { useSwapPreview } from '@/hooks/use-swap-preview'
 import { useSwapRun } from '@/hooks/use-swap-run'
 import { useWalletGroups } from '@/hooks/use-wallets'
-import { defaultSwapSpec, explainSwapBlockers } from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+import {
+  defaultSwapSpec,
+  explainSwapBlockers,
+  withAmountText,
+  withMaxAmount,
+} from '@/lib/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
 import { SwapComposer } from '@/pages/swap/composer'
 import { SwapRail } from '@/pages/swap/rail'
 import { SwapWallets } from '@/pages/swap/wallets'
@@ -14,8 +19,9 @@ export function SwapPage() {
   const { groups } = useWalletGroups()
   const [walletIds, setWalletIds] = useState<string[]>([])
   const [spec, setSpec] = useState<SwapSpec>(defaultSwapSpec)
+  const [amounts, setAmounts] = useState<SwapAmounts>({})
 
-  const batch = useSwapBatch(spec, walletIds)
+  const batch = useSwapBatch(spec, walletIds, amounts)
   const preview = useSwapPreview(spec, batch.value?.jobs[0] ?? null)
   const run = useSwapRun({ batch: batch.value, onSettled: batch.refresh })
 
@@ -39,9 +45,17 @@ export function SwapPage() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <SwapWallets
-          batch={batch.value}
+          batch={batch.display}
+          amounts={amounts}
           states={run.states}
           pending={batch.pending}
+          disabled={run.running}
+          onAmountChange={(walletId, text) =>
+            setAmounts((current) => withAmountText(current, walletId, text))
+          }
+          onMaxAmount={(walletId) =>
+            setAmounts((current) => withMaxAmount(current, walletId))
+          }
         />
         <SwapRail
           spec={spec}

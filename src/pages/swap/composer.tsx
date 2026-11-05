@@ -1,8 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -17,10 +15,8 @@ import type { ChainSlug } from '@/config/chains'
 import { assetKey, assetOptions } from '@/config/swap-assets'
 import {
   SLIPPAGE_OPTIONS,
-  withAmountText,
   withDestinationAsset,
   withDestinationChain,
-  withMaxAmount,
   withOriginAsset,
   withOriginChain,
   withSlippage,
@@ -192,36 +188,6 @@ export function SwapComposer({
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5 lg:w-[240px]">
-          <label htmlFor="swap-amount" className="text-xs font-medium">
-            Amount
-          </label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="swap-amount"
-              inputMode="decimal"
-              placeholder={spec.amount.kind === 'max' ? 'Max' : '0.0'}
-              value={spec.amount.kind === 'fixed' ? spec.amount.text : ''}
-              onChange={(event) => {
-                const next = event.target.value
-                if (/^\d*\.?\d*$/.test(next)) {
-                  onSpecChange(withAmountText(spec, next))
-                }
-              }}
-              disabled={disabled}
-            />
-            <Button
-              type="button"
-              variant={spec.amount.kind === 'max' ? 'secondary' : 'outline'}
-              aria-pressed={spec.amount.kind === 'max'}
-              onClick={() => onSpecChange(withMaxAmount(spec))}
-              disabled={disabled}
-            >
-              Max
-            </Button>
-          </div>
         </div>
       </div>
     </Card>
