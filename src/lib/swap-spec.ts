@@ -165,8 +165,8 @@ export function explainSwapBlockers(input: {
     } less ${spec.from.symbol} than the amount`
   }
 
-  if (input.batch.maxUnreadable > 0) {
-    const count = input.batch.maxUnreadable
+  if (input.batch.balanceUnreadable > 0) {
+    const count = input.batch.balanceUnreadable
     return `${count} ${
       count === 1 ? 'wallet could' : 'wallets could'
     } not read the ${spec.from.symbol} balance`

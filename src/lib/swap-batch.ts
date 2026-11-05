@@ -12,7 +12,7 @@ export type SwapBatchJob = {
   readonly address: `0x${string}`
   readonly amount: bigint | null
   readonly available: bigint | null
-  readonly maxUnreadable: boolean
+  readonly balanceUnreadable: boolean
 }
 
 export type SwapBatch = {
@@ -21,7 +21,7 @@ export type SwapBatch = {
   readonly total: bigint
   readonly shortfall: number
   readonly unresolved: number
-  readonly maxUnreadable: number
+  readonly balanceUnreadable: number
 }
 
 // One balance read per wallet; the client is hoisted because `clientFor`
@@ -72,7 +72,7 @@ export async function resolveSwapBatch(input: {
       // A native `max` has no amount: spending the whole balance leaves no gas.
       const amount =
         draft.kind === 'max' ? (maxResolves ? available : null) : fixed
-      const maxUnreadable = maxResolves && available === null
+      const balanceUnreadable = available === null
 
       return {
         walletId: wallet.id,
@@ -80,7 +80,7 @@ export async function resolveSwapBatch(input: {
         address,
         amount,
         available,
-        maxUnreadable,
+        balanceUnreadable,
       }
     }
   )
@@ -88,9 +88,9 @@ export async function resolveSwapBatch(input: {
   let total = 0n
   let shortfall = 0
   let unresolved = 0
-  let maxUnreadable = 0
+  let balanceUnreadable = 0
   for (const job of jobs) {
-    if (job.maxUnreadable) maxUnreadable += 1
+    if (job.balanceUnreadable) balanceUnreadable += 1
     if (job.amount === null) {
       unresolved += 1
       continue
@@ -99,5 +99,5 @@ export async function resolveSwapBatch(input: {
     if (job.available !== null && job.amount > job.available) shortfall += 1
   }
 
-  return { spec, jobs, total, shortfall, unresolved, maxUnreadable }
+  return { spec, jobs, total, shortfall, unresolved, balanceUnreadable }
 }
