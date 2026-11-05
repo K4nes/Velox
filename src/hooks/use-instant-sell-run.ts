@@ -5,6 +5,7 @@ import {
   abortRunSlot,
   claimRunSlot,
   releaseRunSlot,
+  runKindLabel,
 } from '@/lib/run-slot'
 import type { RunSlot } from '@/lib/run-slot'
 import {
@@ -73,10 +74,7 @@ export function useInstantSellRun(input: {
     if (claim.kind === 'busy') {
       runningRef.current = false
       if (entryEpoch === epochRef.current) {
-        const message =
-          claim.running === 'listing'
-            ? 'A bulk sell run is still in progress'
-            : 'An instant sell run is still in progress'
+        const message = runKindLabel(claim.running)
         setRunning(false)
         setError(message)
         toast.error(message)
