@@ -43,8 +43,6 @@ export function useSwapRun(input: {
     }
   }, [])
 
-  // Progress describes the batch it ran against. Editing the trade or the
-  // selection invalidates it, so the rows never show another trade's outcome.
   const batchKey = input.batch
     ? specKey(
         input.batch.spec,

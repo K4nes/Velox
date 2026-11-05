@@ -46,8 +46,6 @@ export function defaultSwapSpec(): SwapSpec {
   return { from, to, amount: { kind: 'fixed', text: '' }, slippageBps: null }
 }
 
-// Shape copied from parsePrice: reject anything that is not a plain decimal,
-// and let parseUnits reject more fraction digits than the asset has.
 export function parseFixedAmount(
   input: SwapAmountInput,
   decimals: number
@@ -89,9 +87,6 @@ export function specKey(
   ].join('|')
 }
 
-// The one reason the CTA is disabled, or null. Selection first, then the
-// amount, then the trade shape, so the first thing to fix is the first thing
-// shown.
 export function explainSwapBlockers(input: {
   spec: SwapSpec
   walletCount: number

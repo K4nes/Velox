@@ -46,8 +46,6 @@ export function assetKey(ref: SwapAssetRef): string {
   return ref.kind === 'native' ? 'native' : ref.address.toLowerCase()
 }
 
-// Native first, then the wrapped native when the chain defines one, then the
-// curated tokens for that chain.
 export function assetOptions(chain: ChainSlug): readonly SwapAssetOption[] {
   const entry = chains.find((candidate) => candidate.slug === chain)
   if (!entry) return []

@@ -108,9 +108,6 @@ type Broadcast = {
   nonce: number
 }
 
-// The hash is computed before the send, so a transport failure does not prove
-// the node missed the transaction. Treat it as broadcast and let the receipt
-// decide; never resend from here.
 async function broadcastStep(input: {
   wallet: StoredWallet
   tx: SwapTx
@@ -150,8 +147,6 @@ type SettleEntry = {
   step: SwapTxStep
 }
 
-// Sends in phase 1, settles in phase 2, so a wallet's 150 s intent poll never
-// delays another wallet's send.
 export async function runSwapPlan(input: {
   batch: SwapBatch
   wallets: readonly StoredWallet[]
@@ -223,8 +218,6 @@ export async function runSwapPlan(input: {
       return
     }
 
-    // A key that signs as another address burns gas on a transaction from a
-    // wallet this batch never measured.
     if (account.address.toLowerCase() !== job.address.toLowerCase()) {
       commit(index, {
         ...base(job),
@@ -521,8 +514,15 @@ export async function runSwapPlan(input: {
         detail: indexDetail ? `${indexDetail}. ${unsettled}` : unsettled,
       })
     }
-    // `pending` here means the caller aborted the poll: the row stays waiting,
-    // live, and the summary counts it as pending. Relay can still settle.
+    if (status.kind === 'pending') {
+      const unwatched = 'Settlement not watched after the run stopped'
+      commit(index, {
+        ...base(job),
+        status: 'waiting',
+        tx: sent.ref,
+        detail: indexDetail ? `${indexDetail}. ${unwatched}` : unwatched,
+      })
+    }
   })
 
   return { progress, error: null }
