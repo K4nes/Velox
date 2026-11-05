@@ -72,7 +72,9 @@ export async function resolveSwapBatch(input: {
       // A native `max` has no amount: spending the whole balance leaves no gas.
       const amount =
         draft.kind === 'max' ? (maxResolves ? available : null) : fixed
-      const balanceUnreadable = available === null
+      const balanceUnreadable =
+        available === null &&
+        (draft.kind === 'max' || draft.text.trim() !== '')
 
       return {
         walletId: wallet.id,
