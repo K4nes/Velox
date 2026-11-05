@@ -83,7 +83,7 @@ export function useSwapBatch(
       cancelled = true
       clearTimeout(timer)
     }
-  }, [key, spec, walletIds, amounts, version])
+  }, [key, rowsKey, spec, walletIds, amounts, version])
 
   return {
     value: resolved !== null && resolved.key === key ? resolved.batch : null,
