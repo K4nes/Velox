@@ -2,7 +2,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
 import { submitListingOrder } from '@/lib/opensea'
-import { sendTransaction, waitForReceipt } from '@/lib/tx'
+import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/tx'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 import type {
@@ -50,8 +50,6 @@ export type RunSummary = {
   listed: number
   failed: number
 }
-
-export const WALLET_CONCURRENCY = 2
 
 export const RUN_STEP_LABEL: Record<RunStepStatus, string> = {
   queued: 'Queued',

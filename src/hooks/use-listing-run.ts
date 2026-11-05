@@ -11,7 +11,6 @@ import {
 } from '@/lib/listing-plan'
 import type { ListingToken, PlanFeeTotals } from '@/lib/listing-plan'
 import {
-  WALLET_CONCURRENCY,
   listedKeys,
   runListingPlan,
   summarizeRun,
@@ -24,6 +23,7 @@ import type {
 } from '@/lib/listing-run'
 import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
+import { WALLET_CONCURRENCY } from '@/lib/tx'
 import { listWallets } from '@/lib/wallets'
 
 // A run keeps submitting after its page unmounts, so the guard lives outside the

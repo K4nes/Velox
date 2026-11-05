@@ -13,6 +13,8 @@ export type TxGas = {
   maxPriorityFeePerGas?: bigint
 }
 
+export const WALLET_CONCURRENCY = 2
+
 export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
   return defineChain({
     id: entry.chainId,
