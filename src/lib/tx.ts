@@ -222,7 +222,13 @@ export type ReceiptOutcome = {
 export async function waitForReceiptOutcome(
   chainSlug: string,
   txHash: string,
-  replacementHint?: { from: `0x${string}`; nonce: number }
+  replacementHint?: {
+    from: `0x${string}`
+    nonce: number
+    to: `0x${string}`
+    input: `0x${string}`
+    value: bigint
+  }
 ): Promise<ReceiptOutcome> {
   const replacementRef: {
     current: {

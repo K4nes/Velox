@@ -164,6 +164,8 @@ export async function runTransferPlan(input: {
       txHash: string
       from: `0x${string}`
       nonce: number
+      to: `0x${string}`
+      data: `0x${string}`
     }[] = []
 
     for (const transfer of planned.transfers) {
@@ -189,6 +191,8 @@ export async function runTransferPlan(input: {
           txHash: sent.txHash,
           from: sent.from,
           nonce: sent.nonce,
+          to: transfer.contract,
+          data: transfer.data,
         })
 
         const confirming = stateOf(transfer.id)
@@ -202,6 +206,8 @@ export async function runTransferPlan(input: {
             txHash: error.txHash,
             from: error.from,
             nonce: error.nonce,
+            to: transfer.contract,
+            data: transfer.data,
           })
           const confirming = stateOf(transfer.id)
           if (confirming) {
@@ -237,7 +243,13 @@ export async function runTransferPlan(input: {
       const outcome = await waitForReceiptOutcome(
         input.plan.chain,
         pending.txHash,
-        { from: pending.from, nonce: pending.nonce }
+        {
+          from: pending.from,
+          nonce: pending.nonce,
+          to: pending.to,
+          input: pending.data,
+          value: 0n,
+        }
       )
 
       if (outcome.status === 'success') {
