@@ -70,6 +70,10 @@ export function useBulkSellScan() {
     await scan.scan()
   }
 
+  function selectKeys(keys: readonly string[]) {
+    setSelectedKeys(keys)
+  }
+
   return {
     url: scan.url,
     selectedWallets: scan.selectedWallets,
@@ -89,5 +93,6 @@ export function useBulkSellScan() {
     toggleAll,
     deselect,
     scan: rescan,
+    selectKeys,
   }
 }

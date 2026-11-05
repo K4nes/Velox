@@ -24,14 +24,13 @@ import type {
 import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
 import { WALLET_CONCURRENCY } from '@/lib/tx'
+import {
+  abortRunSlot,
+  claimRunSlot,
+  releaseRunSlot,
+} from '@/lib/run-slot'
+import type { RunSlot } from '@/lib/run-slot'
 import { listWallets } from '@/lib/wallets'
-
-// A run keeps submitting after its page unmounts, so the guard lives outside the
-// hook. A second mount waits for a run that lost its page to settle before it
-// starts, because a submit already in flight still lands.
-type RunSlot = { aborted: boolean; done: Promise<void>; settle: () => void }
-
-let liveRun: RunSlot | null = null
 
 export function useListingRun(input: {
   selected: readonly ListingToken[]
@@ -51,7 +50,7 @@ export function useListingRun(input: {
     const epoch = epochRef.current
     return () => {
       if (epochRef.current === epoch) epochRef.current += 1
-      if (slotRef.current) slotRef.current.aborted = true
+      if (slotRef.current) abortRunSlot(slotRef.current)
     }
   }, [])
 
@@ -104,49 +103,45 @@ export function useListingRun(input: {
     // a slot nobody can abort.
     const entryEpoch = epochRef.current
 
-    if (liveRun) {
-      if (!liveRun.aborted) {
-        setError('A listing run is still in progress')
-        toast.error('A listing run is still in progress')
-        return
-      }
+    // The form locks while waiting for an abandoned run to settle so what the
+    // operator sees is what gets signed.
+    runningRef.current = true
+    setRunning(true)
 
-      // The abandoned run still has a submit in flight. Wait for it to settle
-      // so the same token cannot be listed twice, with the form locked for the
-      // duration so what the operator sees is what gets signed.
-      runningRef.current = true
-      setRunning(true)
-      setError('Waiting for the previous run to finish')
-      while (liveRun) {
-        if (!liveRun.aborted) {
-          runningRef.current = false
-          setRunning(false)
-          setError('A listing run is still in progress')
-          toast.error('A listing run is still in progress')
-          return
-        }
-        await liveRun.done
+    const claim = await claimRunSlot('listing', () => {
+      if (entryEpoch === epochRef.current) {
+        setError('Waiting for the previous run to finish')
       }
+    })
 
-      if (entryEpoch !== epochRef.current) return
+    if (claim.kind === 'busy') {
+      runningRef.current = false
+      if (entryEpoch === epochRef.current) {
+        const message =
+          claim.running === 'sale'
+            ? 'An instant sell run is still in progress'
+            : 'A bulk sell run is still in progress'
+        setRunning(false)
+        setError(message)
+        toast.error(message)
+      }
+      return
     }
 
+    if (entryEpoch !== epochRef.current) {
+      releaseRunSlot(claim.slot)
+      runningRef.current = false
+      return
+    }
+
+    const slot = claim.slot
+    slotRef.current = slot
     const epoch = epochRef.current
     const live = () => epoch === epochRef.current
     const publish = (next: ListingRunProgress) => {
       if (live()) setProgress(next)
     }
-    // The project's TS lib predates Promise.withResolvers.
-    let settle = () => {}
-    const done = new Promise<void>((resolve) => {
-      settle = resolve
-    })
-    const slot: RunSlot = { aborted: false, done, settle }
-    liveRun = slot
-    slotRef.current = slot
 
-    runningRef.current = true
-    setRunning(true)
     setError(null)
     setProgress(null)
 
@@ -229,10 +224,8 @@ export function useListingRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      slot.aborted = true
-      slot.settle()
-      slotRef.current = null
-      if (liveRun === slot) liveRun = null
+      releaseRunSlot(slot)
+      if (slotRef.current === slot) slotRef.current = null
       if (live()) {
         runningRef.current = false
         setRunning(false)

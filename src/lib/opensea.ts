@@ -1,7 +1,13 @@
 import { formatUnits } from 'viem'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
+import { offerEconomics } from '@/lib/instant-sell'
+import type { CollectionOffer } from '@/lib/instant-sell'
 import { readSecret } from '@/lib/secrets'
-import type { SeaportParameters } from '@/lib/seaport'
+import {
+  parseOrderComponents,
+  type OrderComponentsLeaf,
+  type SeaportParameters,
+} from '@/lib/seaport'
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000
@@ -99,6 +105,15 @@ export type MintTransaction = {
   to: string
   data: string
   value: string
+}
+
+export type OfferFulfillmentTransaction = {
+  chainId: number
+  to: `0x${string}`
+  value: string
+  functionName: string
+  inputData: Record<string, unknown>
+  calldataSuffix: `0x${string}` | null
 }
 
 type RequestOptions = {
@@ -781,5 +796,223 @@ export async function submitListingOrder(input: {
 
   return {
     orderHash: typeof body?.order_hash === 'string' ? body.order_hash : null,
+  }
+}
+
+const OFFER_PAGE_LIMIT = 200
+const OFFER_PAGE_CAP = 5
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
+const ORDER_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
+const CALLDATA_SUFFIX_PATTERN = /^0x([0-9a-fA-F]{2})+$/
+
+// The REST order serialises uint fields in shapes the signer's leaf parser does
+// not read: counter is an integer and salt can be hex. Normalise those two.
+function offerParameters(value: unknown): Record<string, unknown> | null {
+  const record = asRecord(value)
+  if (!record) return null
+
+  const counter = record.counter
+  const salt = record.salt
+  return {
+    ...record,
+    counter:
+      typeof counter === 'number'
+        ? String(counter)
+        : typeof counter === 'string' && /^0x[0-9a-fA-F]+$/.test(counter)
+          ? BigInt(counter).toString()
+          : counter,
+    salt:
+      typeof salt === 'string' && /^0x[0-9a-fA-F]+$/.test(salt)
+        ? BigInt(salt).toString()
+        : salt,
+  }
+}
+
+function toCollectionOffer(
+  raw: unknown,
+  chain: string
+): CollectionOffer | null {
+  const record = asRecord(raw)
+  if (!record || record.status !== 'ACTIVE' || record.chain !== chain) {
+    return null
+  }
+
+  const orderHash = record.order_hash
+  const protocolAddress = record.protocol_address
+  const remainingQuantity = record.remaining_quantity
+  if (
+    typeof orderHash !== 'string' ||
+    !ORDER_HASH_PATTERN.test(orderHash) ||
+    typeof protocolAddress !== 'string' ||
+    !ADDRESS_PATTERN.test(protocolAddress) ||
+    typeof remainingQuantity !== 'number' ||
+    !Number.isInteger(remainingQuantity) ||
+    remainingQuantity < 1
+  ) {
+    return null
+  }
+
+  // A null criteria is a single-item offer, not a bid against any token.
+  const criteria = asRecord(record.criteria)
+  if (!criteria) return null
+
+  for (const field of ['traits', 'numeric_traits']) {
+    const filter = criteria[field]
+    if (filter === null || filter === undefined) continue
+    if (!Array.isArray(filter) || filter.length > 0) return null
+  }
+  const encoded = criteria.encoded_token_ids
+  if (encoded !== null && encoded !== undefined && encoded !== '') {
+    return null
+  }
+
+  let leaf: OrderComponentsLeaf | null = null
+  try {
+    const parameters = offerParameters(
+      asRecord(record.protocol_data)?.parameters
+    )
+    if (parameters) {
+      leaf = parseOrderComponents(parameters)
+    }
+  } catch {
+    return null
+  }
+  if (!leaf) return null
+
+  const price =
+    asRecord(record.price_per_item) ?? asRecord(record.price)
+  const symbol = price?.currency
+  const decimals = price?.decimals
+  if (
+    typeof symbol !== 'string' ||
+    symbol === '' ||
+    typeof decimals !== 'number' ||
+    !Number.isInteger(decimals) ||
+    decimals < 0
+  ) {
+    return null
+  }
+
+  const economics = offerEconomics({
+    leaf,
+    remaining: remainingQuantity,
+    currency: { symbol, decimals },
+  })
+  if (!economics) return null
+
+  return {
+    id: orderHash.toLowerCase(),
+    chain,
+    protocolAddress: protocolAddress.toLowerCase() as `0x${string}`,
+    currency: economics.currency,
+    grossWei: economics.grossWei,
+    feeWei: economics.feeWei,
+    netWei: economics.netWei,
+    remaining: remainingQuantity,
+    expiresAtSec: economics.expiresAtSec,
+    parameters: leaf,
+  }
+}
+
+export async function getCollectionOffers(input: {
+  slug: string
+  chain: string
+}): Promise<{ offers: CollectionOffer[]; truncated: boolean }> {
+  const offers: CollectionOffer[] = []
+  let cursor: string | null = null
+  let pages = 0
+
+  do {
+    const params = new URLSearchParams({ limit: String(OFFER_PAGE_LIMIT) })
+    if (cursor) params.set('next', cursor)
+
+    const body = (await request(
+      `/offers/collection/${encodeURIComponent(input.slug)}?${params.toString()}`
+    )) as { offers?: unknown; next?: unknown } | null
+
+    const rawOffers = body?.offers
+    const next = body?.next
+    if (!Array.isArray(rawOffers)) {
+      throw unexpected('/offers/collection')
+    }
+
+    for (const raw of rawOffers) {
+      const offer = toCollectionOffer(raw, input.chain)
+      if (offer) offers.push(offer)
+    }
+
+    cursor = typeof next === 'string' && next !== '' ? next : null
+    pages += 1
+  } while (cursor && pages < OFFER_PAGE_CAP)
+
+  return { offers, truncated: cursor !== null }
+}
+
+export async function requestOfferFulfillment(input: {
+  offer: CollectionOffer
+  fulfiller: string
+  contract: string
+  tokenId: string
+}): Promise<OfferFulfillmentTransaction> {
+  const body = (await request('/offers/fulfillment_data', {
+    method: 'POST',
+    body: JSON.stringify({
+      offer: {
+        hash: input.offer.id,
+        chain: input.offer.chain,
+        protocol_address: input.offer.protocolAddress,
+      },
+      fulfiller: { address: input.fulfiller },
+      consideration: {
+        asset_contract_address: input.contract,
+        token_id: input.tokenId,
+      },
+      units_to_fill: '1',
+      include_optional_creator_fees: false,
+    }),
+  })) as { fulfillment_data?: unknown } | null
+
+  const transaction = asRecord(asRecord(body?.fulfillment_data)?.transaction)
+  if (!transaction) throw unexpected('/offers/fulfillment_data')
+
+  const chainId = transaction.chain
+  const to = transaction.to
+  const rawValue = transaction.value
+  const value =
+    typeof rawValue === 'string' && /^0x[0-9a-fA-F]+$/.test(rawValue)
+      ? BigInt(rawValue).toString()
+      : rawValue
+  const fn = transaction.function
+  const rawInputData = asRecord(transaction.input_data)
+  const inputData =
+    rawInputData && !Array.isArray(rawInputData) ? rawInputData : null
+  const suffix = transaction.calldata_suffix
+
+  if (
+    typeof chainId !== 'number' ||
+    !Number.isInteger(chainId) ||
+    typeof to !== 'string' ||
+    !ADDRESS_PATTERN.test(to) ||
+    typeof value !== 'string' ||
+    !/^\d+$/.test(value) ||
+    typeof fn !== 'string' ||
+    fn === '' ||
+    !inputData ||
+    (suffix !== null &&
+      suffix !== undefined &&
+      (typeof suffix !== 'string' || !CALLDATA_SUFFIX_PATTERN.test(suffix)))
+  ) {
+    throw unexpected('/offers/fulfillment_data')
+  }
+
+  const open = fn.indexOf('(')
+  return {
+    chainId,
+    to: to as `0x${string}`,
+    value,
+    functionName: open === -1 ? fn : fn.slice(0, open),
+    inputData,
+    calldataSuffix:
+      typeof suffix === 'string' ? (suffix as `0x${string}`) : null,
   }
 }
