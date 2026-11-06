@@ -1,4 +1,15 @@
-export type RunKind = 'listing' | 'sale'
+export type RunKind = 'listing' | 'sale' | 'swap'
+
+export function runKindLabel(kind: RunKind): string {
+  switch (kind) {
+    case 'listing':
+      return 'A bulk sell run is still in progress'
+    case 'sale':
+      return 'An instant sell run is still in progress'
+    case 'swap':
+      return 'A swap run is still in progress'
+  }
+}
 
 export type RunSlot = {
   kind: RunKind

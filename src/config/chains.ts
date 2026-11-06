@@ -8,7 +8,7 @@ export type ChainEntry = {
   wrappedNative: string
 }
 
-export const chains: ChainEntry[] = [
+export const chains = [
   {
     slug: 'ethereum',
     chainId: 1,
@@ -16,7 +16,7 @@ export const chains: ChainEntry[] = [
     currency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrl: 'https://ethereum-rpc.publicnode.com',
     explorerApi: '',
-    wrappedNative: '',
+    wrappedNative: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
   },
   {
     slug: 'robinhood',
@@ -34,7 +34,7 @@ export const chains: ChainEntry[] = [
     currency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     rpcUrl: 'https://mainnet.base.org',
     explorerApi: '',
-    wrappedNative: '',
+    wrappedNative: '0x4200000000000000000000000000000000000006',
   },
   {
     slug: 'ape_chain',
@@ -45,8 +45,15 @@ export const chains: ChainEntry[] = [
     explorerApi: '',
     wrappedNative: '',
   },
-]
+] as const satisfies readonly ChainEntry[]
+
+export type ChainSlug = (typeof chains)[number]['slug']
 
 export function chainBySlug(slug: string): ChainEntry | undefined {
   return chains.find((chain) => chain.slug === slug)
+}
+
+// Relay reports numeric ids in step calldata; this is the only way back to a slug.
+export function chainByChainId(chainId: number): ChainEntry | undefined {
+  return chains.find((chain) => chain.chainId === chainId)
 }

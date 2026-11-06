@@ -1,0 +1,221 @@
+import { formatUnits, parseUnits } from 'viem'
+
+import { chainBySlug } from '@/config/chains'
+import type { ChainSlug } from '@/config/chains'
+import {
+  assetByKey,
+  assetKey,
+  defaultAsset,
+} from '@/config/swap-assets'
+import type { SwapAssetOption } from '@/config/swap-assets'
+import type { SwapBatch } from '@/lib/swap-batch'
+
+export type SwapAmountInput =
+  | { readonly kind: 'fixed'; readonly text: string }
+  | { readonly kind: 'max' }
+
+export type SwapAmounts = Readonly<Record<string, SwapAmountInput>>
+
+const EMPTY_AMOUNT: SwapAmountInput = { kind: 'fixed', text: '' }
+
+export function amountFor(
+  amounts: SwapAmounts,
+  walletId: string
+): SwapAmountInput {
+  return amounts[walletId] ?? EMPTY_AMOUNT
+}
+
+export function amountKey(input: SwapAmountInput): string {
+  return input.kind === 'max' ? 'max' : `fixed:${input.text}`
+}
+
+export function withAmountText(
+  amounts: SwapAmounts,
+  walletId: string,
+  text: string
+): SwapAmounts {
+  return { ...amounts, [walletId]: { kind: 'fixed', text } }
+}
+
+export function withMaxAmount(
+  amounts: SwapAmounts,
+  walletId: string
+): SwapAmounts {
+  return { ...amounts, [walletId]: { kind: 'max' } }
+}
+
+export type SwapSpec = {
+  readonly from: SwapAssetOption
+  readonly to: SwapAssetOption
+  readonly slippageBps: number | null
+}
+
+export const SLIPPAGE_OPTIONS: readonly {
+  readonly label: string
+  readonly bps: number | null
+}[] = [
+  { label: 'Auto', bps: null },
+  { label: '0.1%', bps: 10 },
+  { label: '0.5%', bps: 50 },
+  { label: '1%', bps: 100 },
+]
+
+// NFT proceeds land as WETH, so Ethereum WETH → ETH is the case the page exists
+// for. It is only buildable because `wrappedNative` is filled for Ethereum.
+export function defaultSwapSpec(): SwapSpec {
+  const entry = chainBySlug('ethereum')
+  const from = entry
+    ? assetByKey('ethereum', entry.wrappedNative)
+    : undefined
+  const to = defaultAsset('ethereum')
+  if (!from || !to) {
+    throw new Error('Ethereum WETH and ETH are not configured')
+  }
+
+  return { from, to, slippageBps: null }
+}
+
+export function parseFixedAmount(
+  input: SwapAmountInput,
+  decimals: number
+): bigint | null {
+  if (input.kind === 'max') return null
+
+  const value = input.text.trim()
+  if (!/^\d*\.?\d*$/.test(value) || !/\d/.test(value)) return null
+
+  try {
+    const amount = parseUnits(value, decimals)
+    return amount > 0n ? amount : null
+  } catch {
+    return null
+  }
+}
+
+// Dust matters here: a balance too small for six decimals would otherwise
+// render as 0 and look like an empty wallet.
+export function formatSwapAmount(amount: bigint, decimals: number): string {
+  const [whole, fraction] = formatUnits(amount, decimals).split('.')
+  const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
+  if (trimmed) return `${whole}.${trimmed}`
+  return amount > 0n && whole === '0' ? '<0.000001' : whole
+}
+
+// Derived from values, never object identity, so a re-render that rebuilds
+// `spec` does not invalidate a resolved batch.
+export function specKey(
+  spec: SwapSpec,
+  walletIds: readonly string[]
+): string {
+  return [
+    `${spec.from.chain}:${assetKey(spec.from.ref)}`,
+    `${spec.to.chain}:${assetKey(spec.to.ref)}`,
+    spec.slippageBps === null ? 'auto' : String(spec.slippageBps),
+    walletIds.join(','),
+  ].join('|')
+}
+
+export function explainSwapBlockers(input: {
+  spec: SwapSpec
+  walletIds: readonly string[]
+  amounts: SwapAmounts
+  pending: boolean
+  batch: SwapBatch | null
+}): string | null {
+  const { spec } = input
+  if (input.walletIds.length === 0) return 'Select at least one wallet'
+
+  const drafts = input.walletIds.map((id) => amountFor(input.amounts, id))
+
+  if (
+    drafts.some(
+      (draft) =>
+        draft.kind === 'fixed' &&
+        draft.text.trim() !== '' &&
+        parseFixedAmount(draft, spec.from.decimals) === null
+    )
+  ) {
+    return `Enter a valid ${spec.from.symbol} amount`
+  }
+
+  if (
+    spec.from.ref.kind === 'native' &&
+    drafts.some((draft) => draft.kind === 'max')
+  ) {
+    return 'Max is not available for a native asset. Enter an amount instead'
+  }
+
+  if (
+    spec.from.chain === spec.to.chain &&
+    assetKey(spec.from.ref) === assetKey(spec.to.ref)
+  ) {
+    return 'Pick two different assets'
+  }
+
+  if (input.pending) return 'Reading balances…'
+  if (input.batch === null) return 'Reading balances…'
+  if (input.batch.jobs.length === 0) {
+    return 'No saved wallets match the selection'
+  }
+
+  if (input.batch.shortfall > 0) {
+    const count = input.batch.shortfall
+    return `${count} ${
+      count === 1 ? 'wallet holds' : 'wallets hold'
+    } less ${spec.from.symbol} than the amount`
+  }
+
+  if (input.batch.balanceUnreadable > 0) {
+    const count = input.batch.balanceUnreadable
+    return `${count} ${
+      count === 1 ? 'wallet could' : 'wallets could'
+    } not read the ${spec.from.symbol} balance`
+  }
+
+  if (input.batch.unresolved > 0) {
+    const count = input.batch.unresolved
+    return `${count} ${count === 1 ? 'wallet needs' : 'wallets need'} an amount`
+  }
+
+  return null
+}
+
+export function routeLabel(spec: SwapSpec): string {
+  const fromChain = chainBySlug(spec.from.chain)
+  const toChain = chainBySlug(spec.to.chain)
+  const fromName = fromChain?.name ?? spec.from.chain
+  const toName = toChain?.name ?? spec.to.chain
+
+  return spec.from.chain === spec.to.chain
+    ? `${spec.from.symbol} → ${spec.to.symbol}`
+    : `${spec.from.symbol} → ${spec.to.symbol} · ${fromName} → ${toName}`
+}
+
+// Changing a chain re-picks that chain's default asset so an address from the
+// previous chain cannot survive the change.
+export function withOriginChain(spec: SwapSpec, chain: ChainSlug): SwapSpec {
+  const from = defaultAsset(chain)
+  return from ? { ...spec, from } : spec
+}
+
+export function withOriginAsset(spec: SwapSpec, key: string): SwapSpec {
+  const from = assetByKey(spec.from.chain, key)
+  return from ? { ...spec, from } : spec
+}
+
+export function withDestinationChain(
+  spec: SwapSpec,
+  chain: ChainSlug
+): SwapSpec {
+  const to = defaultAsset(chain)
+  return to ? { ...spec, to } : spec
+}
+
+export function withDestinationAsset(spec: SwapSpec, key: string): SwapSpec {
+  const to = assetByKey(spec.to.chain, key)
+  return to ? { ...spec, to } : spec
+}
+
+export function withSlippage(spec: SwapSpec, bps: number | null): SwapSpec {
+  return { ...spec, slippageBps: bps }
+}
