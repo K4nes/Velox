@@ -4,7 +4,6 @@ import { seedPlan } from '@/lib/connection-model'
 export type StoreName =
   | 'folders'
   | 'wallets'
-  | 'secrets'
   | 'snapshots'
   | 'pnl-records'
   | 'connections'
@@ -137,7 +136,7 @@ export function openDb(): Promise<IDBDatabase> {
         const wallets = db.createObjectStore('wallets', { keyPath: 'id' })
         wallets.createIndex('folderId', 'folderId', { unique: false })
       }
-      if (!db.objectStoreNames.contains('secrets')) {
+      if (!db.objectStoreNames.contains('secrets') && event.oldVersion > 0) {
         db.createObjectStore('secrets', { keyPath: 'id' })
       }
       if (!db.objectStoreNames.contains('snapshots')) {
