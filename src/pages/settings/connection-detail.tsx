@@ -132,6 +132,7 @@ export function ConnectionDetail({
 
         {draft.kind === 'rpc' ? (
           <EndpointsSection
+            provider={draft.provider}
             endpoints={draft.endpoints}
             credentials={draft.credentials}
             busy={busy}

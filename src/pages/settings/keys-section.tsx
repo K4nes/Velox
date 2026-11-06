@@ -184,7 +184,7 @@ export function KeysSection({
                   }
                 }}
                 className={cn(
-                  'flex h-14 items-center gap-2 rounded-lg border px-2',
+                  'flex items-center gap-2',
                   draggingId === credential.id && 'opacity-60'
                 )}
               >
@@ -248,7 +248,7 @@ export function KeysSection({
                   spellCheck={false}
                   autoCapitalize="off"
                   autoCorrect="off"
-                  className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent"
+                  className="h-8 min-w-0 flex-1 font-mono text-xs"
                 />
 
                 {probe === undefined ? null : <ProbeBadge probe={probe} />}

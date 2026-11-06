@@ -6,6 +6,23 @@ import type { ChainSlug } from '@/config/chains'
 export type DataService = 'opensea' | 'coinmarketcap'
 export type RpcProvider = 'alchemy' | 'quicknode' | 'ankr' | 'custom'
 
+// Only providers with a stable public host pattern ship a template. QuickNode
+// serves per-account subdomains, so its new endpoints start empty. The template
+// stops at the host; the path stays with the user.
+const alchemyNetworks: Partial<Record<ChainSlug, string>> = {
+  ethereum: 'eth-mainnet',
+  base: 'base-mainnet',
+  robinhood: 'robinhood-mainnet',
+}
+
+export function endpointTemplate(
+  provider: RpcProvider,
+  chain: ChainSlug
+): string {
+  const network = provider === 'alchemy' ? alchemyNetworks[chain] : undefined
+  return network === undefined ? '' : `https://${network}.g.alchemy.com`
+}
+
 export type Credential = { id: string; value: string }
 
 export type EndpointProbe =

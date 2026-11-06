@@ -15,10 +15,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import type { Credential, Endpoint } from '@/lib/connections'
-import { hasUsableCredentials } from '@/lib/connections'
+import type { Credential, Endpoint, RpcProvider } from '@/lib/connections'
+import { endpointTemplate, hasUsableCredentials } from '@/lib/connections'
 
 type EndpointsSectionProps = {
+  provider: RpcProvider
   endpoints: Endpoint[]
   credentials: Credential[]
   busy: Set<string>
@@ -26,6 +27,7 @@ type EndpointsSectionProps = {
 }
 
 export function EndpointsSection({
+  provider,
   endpoints,
   credentials,
   busy,
@@ -39,7 +41,12 @@ export function EndpointsSection({
   function addEndpoint(chain: Endpoint['chain']) {
     onPatch((list) => [
       ...list,
-      { id: crypto.randomUUID(), chain, url: '', probe: null },
+      {
+        id: crypto.randomUUID(),
+        chain,
+        url: endpointTemplate(provider, chain),
+        probe: null,
+      },
     ])
     setOpen(false)
   }
