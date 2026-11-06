@@ -3,6 +3,7 @@ import {
   TimeoutError,
   createPublicClient,
   defineChain,
+  fallback,
   http,
   keccak256,
 } from 'viem'
@@ -10,7 +11,7 @@ import type { Chain } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import type { ChainEntry } from '@/config/chains'
-import { resolveRpcUrl } from '@/lib/secrets'
+import { resolveRpcUrls } from '@/lib/connections'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -58,10 +59,19 @@ export async function clientFor(chainSlug: string) {
     throw new Error(`Unsupported chain: ${chainSlug}`)
   }
 
-  const rpcUrl = await resolveRpcUrl(entry.slug)
+  const urls = await resolveRpcUrls(entry.slug)
   return createPublicClient({
-    chain: toViemChain(entry, rpcUrl),
-    transport: http(rpcUrl),
+    chain: toViemChain(entry, urls[0]),
+    // Rank off keeps the operator's priority order: viem's ranker would reorder
+    // the URLs by sampled latency and demote the connection they put first.
+    // A dead first URL must fail fast, or the next one waits on its retries.
+    transport:
+      urls.length > 1
+        ? fallback(
+            urls.map((url) => http(url, { timeout: 8_000, retryCount: 0 })),
+            { rank: false }
+          )
+        : http(urls[0]),
   })
 }
 

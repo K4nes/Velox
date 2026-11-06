@@ -1,12 +1,16 @@
+import { chains } from '@/config/chains'
+import { seedPlan } from '@/lib/connection-model'
+
 export type StoreName =
   | 'folders'
   | 'wallets'
   | 'secrets'
   | 'snapshots'
   | 'pnl-records'
+  | 'connections'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 4
+const DB_VERSION = 5
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
@@ -56,6 +60,64 @@ function migratePnlRecordIds(store: IDBObjectStore): void {
   }
 }
 
+// Version 5 replaces the `secrets` key/value store with the connections
+// registry. The read, the seeded rows, and the deletes share the versionchange
+// transaction, so a crash cannot leave a half-migrated profile that seeds twice.
+function seedConnections(transaction: IDBTransaction): void {
+  const connections = transaction.objectStore('connections')
+  const write = (rows: readonly { id: string; value: string }[]) => {
+    const plan = seedPlan(
+      rows,
+      Date.now(),
+      chains.map((chain) => chain.slug)
+    )
+    for (const connection of plan) {
+      connections.put(connection)
+    }
+  }
+
+  // A fresh profile has nothing to migrate, and the upgrade never creates the
+  // store for one.
+  if (!transaction.db.objectStoreNames.contains('secrets')) {
+    write([])
+    return
+  }
+
+  const secrets = transaction.objectStore('secrets')
+  const rows: { id: string; value: string }[] = []
+  const request = secrets.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      write(rows)
+      // Delete only what the plan read. An id it does not map, such as a chain
+      // dropped from config, stays in place instead of being destroyed.
+      for (const row of rows) {
+        if (isMigratedSecret(row.id)) {
+          secrets.delete(row.id)
+        }
+      }
+      return
+    }
+
+    const record = cursor.value as { id: string; value: string }
+    rows.push({ id: record.id, value: record.value })
+    cursor.continue()
+  }
+}
+
+function isMigratedSecret(id: string): boolean {
+  if (id === 'opensea-api-key') {
+    return true
+  }
+  if (!id.startsWith('rpc:')) {
+    return false
+  }
+  const slug = id.slice('rpc:'.length)
+  return chains.some((chain) => chain.slug === slug)
+}
+
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) {
     return dbPromise
@@ -84,8 +146,14 @@ export function openDb(): Promise<IDBDatabase> {
       if (!hasPnlRecords) {
         db.createObjectStore('pnl-records', { keyPath: 'id' })
       }
+      if (!db.objectStoreNames.contains('connections')) {
+        db.createObjectStore('connections', { keyPath: 'id' })
+      }
       if (event.oldVersion < 4 && hasPnlRecords && transaction !== null) {
         migratePnlRecordIds(transaction.objectStore('pnl-records'))
+      }
+      if (event.oldVersion < 5 && transaction !== null) {
+        seedConnections(transaction)
       }
     }
 
