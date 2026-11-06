@@ -5,6 +5,8 @@ export const PRICE_PATHS: readonly string[] = ['/api/price/eth-usdt']
 const CMC_URL =
   'https://pro-api.coinmarketcap.com/v2/tools/price-conversion?amount=1&id=1027&convert=USDT'
 const CACHE_MS = 60_000
+// A header line limit, not a provider rule: CMC keys are far shorter, and a
+// longer value is a paste accident that would break the request.
 const MAX_KEY_LENGTH = 128
 const MAX_CACHED_KEYS = 8
 
