@@ -117,6 +117,16 @@ export async function probeCmcKey(value: string): Promise<ProbeResult> {
     ) {
       return { ok: false, status: error.status, error: 'Key rejected' }
     }
+    // A rate limit answers nothing about the key itself, so it reads like the
+    // OpenSea warning instead of a rejection.
+    if (error instanceof PriceRequestError && error.status === 429) {
+      return {
+        ok: true,
+        latencyMs: Math.round(performance.now() - started),
+        warning: 'rate limited',
+        detail: 'CoinMarketCap rate limit reached',
+      }
+    }
     return {
       ok: false,
       status: error instanceof PriceRequestError ? error.status : null,
