@@ -1,8 +1,8 @@
 import { formatUnits } from 'viem'
+import { resolveKeys } from '@/lib/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
 import { offerEconomics } from '@/lib/instant-sell'
 import type { CollectionOffer } from '@/lib/instant-sell'
-import { readSecret } from '@/lib/secrets'
 import {
   parseOrderComponents,
   type OrderComponentsLeaf,
@@ -160,11 +160,10 @@ export function slugFromUrl(raw: string): string | null {
 
 async function request(
   path: string,
-  options: RequestOptions = {},
-  attempt = 0
+  options: RequestOptions = {}
 ): Promise<unknown> {
-  const apiKey = await readSecret('opensea-api-key')
-  if (!apiKey) {
+  const keys = await resolveKeys('opensea')
+  if (keys.length === 0) {
     throw new OpenSeaError(
       0,
       'no-api-key',
@@ -172,12 +171,25 @@ async function request(
     )
   }
 
+  return attempt(path, options, keys, 0, 0)
+}
+
+// A rejected key is worth retrying with the next one, but a rate limit is not a
+// rejection: the same key gets its Retry-After budget first, and only a spent
+// budget spends a rotation.
+async function attempt(
+  path: string,
+  options: RequestOptions,
+  keys: readonly string[],
+  attemptCount: number,
+  keyIndex: number
+): Promise<unknown> {
   const outcome = await httpExchange(`${OPENSEA_BASE_URL}${path}`, {
     method: options.method ?? 'GET',
     body: options.body,
     headers: {
       accept: 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': keys[keyIndex],
       ...(options.body ? { 'content-type': 'application/json' } : {}),
       ...options.headers,
     },
@@ -197,24 +209,41 @@ async function request(
     return outcome.body
   }
 
+  const nextKey = keyIndex + 1
+  const hasNextKey = nextKey < keys.length
+  // A signed-in request carries the wallet's bearer token, so its 401 is an
+  // expired session, not a rejected API key, and spending the pool on it hides
+  // the real fix.
+  const keyAuth = options.headers?.authorization === undefined
+
+  if (keyAuth && (outcome.status === 401 || outcome.status === 403)) {
+    if (hasNextKey) {
+      return attempt(path, options, keys, 0, nextKey)
+    }
+  }
+
   if (outcome.status === 429 || outcome.status === 503) {
     const wait = outcome.retryAfterMs
     const limit = outcome.status === 429
-    if (
-      attempt >= MAX_RETRY_ATTEMPTS ||
-      (wait !== null && wait > MAX_RETRY_WAIT_MS)
-    ) {
-      const delay = wait === null ? 'shortly' : `in ${Math.ceil(wait / 1000)}s`
-      throw new OpenSeaError(
-        outcome.status,
-        limit ? 'rate-limited' : 'unavailable',
-        limit
-          ? `OpenSea rate limit reached. Try again ${delay}.`
-          : `OpenSea is temporarily unavailable. Try again ${delay}.`
-      )
+    const delay = wait === null ? 'shortly' : `in ${Math.ceil(wait / 1000)}s`
+    const withinBudget =
+      attemptCount < MAX_RETRY_ATTEMPTS &&
+      (wait === null || wait <= MAX_RETRY_WAIT_MS)
+
+    if (withinBudget) {
+      await new Promise((resolve) => setTimeout(resolve, wait ?? 2000))
+      return attempt(path, options, keys, attemptCount + 1, keyIndex)
     }
-    await new Promise((resolve) => setTimeout(resolve, wait ?? 2000))
-    return request(path, options, attempt + 1)
+    if (limit && keyAuth && hasNextKey) {
+      return attempt(path, options, keys, 0, nextKey)
+    }
+    throw new OpenSeaError(
+      outcome.status,
+      limit ? 'rate-limited' : 'unavailable',
+      limit
+        ? `OpenSea rate limit reached. Try again ${delay}.`
+        : `OpenSea is temporarily unavailable. Try again ${delay}.`
+    )
   }
 
   const failure = readErrorBody(outcome.body)

@@ -1,12 +1,15 @@
+import { chains } from '@/config/chains'
+import { seedPlan } from '@/lib/connection-model'
+
 export type StoreName =
   | 'folders'
   | 'wallets'
-  | 'secrets'
   | 'snapshots'
   | 'pnl-records'
+  | 'connections'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 4
+const DB_VERSION = 6
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
@@ -56,6 +59,96 @@ function migratePnlRecordIds(store: IDBObjectStore): void {
   }
 }
 
+// Version 5 replaces the `secrets` key/value store with the connections
+// registry. The read, the seeded rows, and the deletes share the versionchange
+// transaction, so a crash cannot leave a half-migrated profile that seeds twice.
+function seedConnections(transaction: IDBTransaction): void {
+  const connections = transaction.objectStore('connections')
+  const write = (rows: readonly { id: string; value: string }[]) => {
+    const plan = seedPlan(
+      rows,
+      Date.now(),
+      chains.map((chain) => chain.slug)
+    )
+    for (const connection of plan) {
+      connections.put(connection)
+    }
+  }
+
+  // A fresh profile has nothing to migrate, and the upgrade never creates the
+  // store for one.
+  if (!transaction.db.objectStoreNames.contains('secrets')) {
+    write([])
+    return
+  }
+
+  const secrets = transaction.objectStore('secrets')
+  const rows: { id: string; value: string }[] = []
+  const request = secrets.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      write(rows)
+      // Delete only what the plan read. An id it does not map, such as a chain
+      // dropped from config, stays in place instead of being destroyed.
+      for (const row of rows) {
+        if (isMigratedSecret(row.id)) {
+          secrets.delete(row.id)
+        }
+      }
+      return
+    }
+
+    const record = cursor.value as { id: string; value: string }
+    rows.push({ id: record.id, value: record.value })
+    cursor.continue()
+  }
+}
+
+function isMigratedSecret(id: string): boolean {
+  if (id === 'opensea-api-key') {
+    return true
+  }
+  if (!id.startsWith('rpc:')) {
+    return false
+  }
+  const slug = id.slice('rpc:'.length)
+  return chains.some((chain) => chain.slug === slug)
+}
+
+// Version 6 retires the seeded QuickNode row: it is a paid provider with no URL
+// the app can build, so it is no longer seeded and its provider id no longer
+// exists. A row the user never touched is dropped; one carrying keys or
+// endpoints becomes a custom provider so those URLs keep working.
+function retireQuickNodeSeed(store: IDBObjectStore): void {
+  const request = store.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      return
+    }
+
+    const row = cursor.value as {
+      provider?: string
+      credentials?: unknown[]
+      endpoints?: unknown[]
+    }
+    if (row.provider === 'quicknode') {
+      const untouched =
+        (row.credentials?.length ?? 0) === 0 &&
+        (row.endpoints?.length ?? 0) === 0
+      if (untouched) {
+        cursor.delete()
+      } else {
+        cursor.update({ ...cursor.value, provider: 'custom' })
+      }
+    }
+    cursor.continue()
+  }
+}
+
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) {
     return dbPromise
@@ -75,7 +168,9 @@ export function openDb(): Promise<IDBDatabase> {
         const wallets = db.createObjectStore('wallets', { keyPath: 'id' })
         wallets.createIndex('folderId', 'folderId', { unique: false })
       }
-      if (!db.objectStoreNames.contains('secrets')) {
+      // A fresh profile never reads the legacy store, and nothing else deletes
+      // it, so creating it there would only orphan an empty store.
+      if (!db.objectStoreNames.contains('secrets') && event.oldVersion > 0) {
         db.createObjectStore('secrets', { keyPath: 'id' })
       }
       if (!db.objectStoreNames.contains('snapshots')) {
@@ -84,8 +179,21 @@ export function openDb(): Promise<IDBDatabase> {
       if (!hasPnlRecords) {
         db.createObjectStore('pnl-records', { keyPath: 'id' })
       }
+      if (!db.objectStoreNames.contains('connections')) {
+        db.createObjectStore('connections', { keyPath: 'id' })
+      }
       if (event.oldVersion < 4 && hasPnlRecords && transaction !== null) {
         migratePnlRecordIds(transaction.objectStore('pnl-records'))
+      }
+      if (event.oldVersion < 5 && transaction !== null) {
+        seedConnections(transaction)
+      }
+      if (
+        event.oldVersion >= 5 &&
+        event.oldVersion < 6 &&
+        transaction !== null
+      ) {
+        retireQuickNodeSeed(transaction.objectStore('connections'))
       }
     }
 
