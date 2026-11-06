@@ -16,7 +16,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { Credential, Endpoint, RpcProvider } from '@/lib/connections'
-import { endpointTemplate, hasUsableCredentials } from '@/lib/connections'
+import {
+  endpointAcceptsKey,
+  endpointTemplate,
+  hasUsableCredentials,
+} from '@/lib/connections'
 
 type EndpointsSectionProps = {
   provider: RpcProvider
@@ -66,7 +70,7 @@ export function EndpointsSection({
         <div className="divide-y rounded-lg border">
           {endpoints.map((endpoint) => {
             const label = chainBySlug(endpoint.chain)?.name ?? endpoint.chain
-            const needsKey = endpoint.url.includes('{key}') && !hasKey
+            const needsKey = endpointAcceptsKey(endpoint, provider) && !hasKey
 
             return (
               <div

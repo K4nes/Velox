@@ -12,7 +12,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import type { Connection, Credential, Issue } from '@/lib/connections'
-import { hasUsableCredentials } from '@/lib/connections'
+import { endpointAcceptsKey, hasUsableCredentials } from '@/lib/connections'
 import type { ProbeResult } from '@/lib/connection-probes'
 import { EndpointsSection } from './endpoints-section'
 import { KeysSection } from './keys-section'
@@ -112,7 +112,9 @@ export function ConnectionDetail({
         <KeysSection
           testable={
             draft.kind === 'data-api' ||
-            draft.endpoints.some((endpoint) => endpoint.url.includes('{key}'))
+            draft.endpoints.some((endpoint) =>
+              endpointAcceptsKey(endpoint, draft.provider)
+            )
           }
           connectionName={draft.name}
           credentials={draft.credentials}

@@ -12,6 +12,7 @@ import type { ProbeResult } from '@/lib/connection-probes'
 import {
   ConnectionError,
   deleteConnection,
+  endpointAcceptsKey,
   expandEndpoint,
   listConnections,
   saveConnection,
@@ -233,15 +234,15 @@ export function SettingsPage() {
       return
     }
 
-    // An RPC key is only exercised by a {key} endpoint, so the probe runs the
+    // An RPC key is only exercised by a keyed endpoint, so the probe runs the
     // first one that consumes it rather than calling the provider directly.
     const endpoint = connection.endpoints.find((entry) =>
-      entry.url.includes('{key}')
+      endpointAcceptsKey(entry, connection.provider)
     )
     const target =
       endpoint === undefined
         ? undefined
-        : expandEndpoint(endpoint, [credential], false)[0]
+        : expandEndpoint(endpoint, [credential], false, connection.provider)[0]
     if (target === undefined) {
       return
     }
@@ -281,7 +282,8 @@ export function SettingsPage() {
         const target = expandEndpoint(
           endpoint,
           connection.credentials,
-          false
+          false,
+          connection.provider
         )[0]
         if (endpoint.url.trim() === '' || target === undefined) {
           continue

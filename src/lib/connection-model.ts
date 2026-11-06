@@ -7,8 +7,8 @@ export type DataService = 'opensea' | 'coinmarketcap'
 export type RpcProvider = 'alchemy' | 'quicknode' | 'ankr' | 'custom'
 
 // Only providers with a stable public host pattern ship a template. QuickNode
-// serves per-account subdomains, so its new endpoints start empty. The template
-// stops at the host; the path stays with the user.
+// serves per-account subdomains, so its new endpoints start empty. The field
+// holds the host; the provider's fixed key path is added at request time.
 const alchemyNetworks: Partial<Record<ChainSlug, string>> = {
   ethereum: 'eth-mainnet',
   base: 'base-mainnet',
@@ -21,6 +21,48 @@ export function endpointTemplate(
 ): string {
   const network = provider === 'alchemy' ? alchemyNetworks[chain] : undefined
   return network === undefined ? '' : `https://${network}.g.alchemy.com`
+}
+
+function providerPath(provider: RpcProvider, chain: ChainSlug): string {
+  return provider === 'alchemy' && alchemyNetworks[chain] !== undefined
+    ? '/v2/{key}'
+    : ''
+}
+
+// The field shows the host, so the provider path is appended here. A URL the
+// user already gave a path to is used as typed, which keeps pasted endpoints.
+export function endpointUrlTemplate(
+  endpoint: Endpoint,
+  provider: RpcProvider
+): string {
+  if (endpoint.url.includes('{key}')) {
+    return endpoint.url
+  }
+  const path = providerPath(provider, endpoint.chain)
+  if (path === '') {
+    return endpoint.url
+  }
+
+  try {
+    const parsed = new URL(endpoint.url)
+    if (
+      (parsed.pathname !== '' && parsed.pathname !== '/') ||
+      parsed.search !== '' ||
+      parsed.hash !== ''
+    ) {
+      return endpoint.url
+    }
+    return parsed.origin + path
+  } catch {
+    return endpoint.url
+  }
+}
+
+export function endpointAcceptsKey(
+  endpoint: Endpoint,
+  provider: RpcProvider
+): boolean {
+  return endpointUrlTemplate(endpoint, provider).includes('{key}')
 }
 
 export type Credential = { id: string; value: string }
@@ -91,10 +133,12 @@ export function hasUsableCredentials(
 export function expandEndpoint(
   endpoint: Endpoint,
   credentials: readonly Credential[],
-  autoFallback: boolean
+  autoFallback: boolean,
+  provider: RpcProvider
 ): string[] {
-  if (!endpoint.url.includes('{key}')) {
-    return [endpoint.url]
+  const template = endpointUrlTemplate(endpoint, provider)
+  if (!template.includes('{key}')) {
+    return [template]
   }
 
   const keys = credentials
@@ -105,7 +149,7 @@ export function expandEndpoint(
   // The replacer function keeps a key containing `$` from being read as a
   // replacement pattern.
   return usable.map((key) =>
-    endpoint.url.replaceAll('{key}', () => encodeURIComponent(key))
+    template.replaceAll('{key}', () => encodeURIComponent(key))
   )
 }
 
@@ -121,7 +165,12 @@ export function pickRpcUrls(all: readonly Connection[], slug: string): string[] 
         continue
       }
       urls.push(
-        ...expandEndpoint(endpoint, connection.credentials, connection.autoFallback)
+        ...expandEndpoint(
+          endpoint,
+          connection.credentials,
+          connection.autoFallback,
+          connection.provider
+        )
       )
     }
   }
