@@ -13,7 +13,11 @@ import {
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Connection } from '@/lib/connections'
-import { hasUsableCredentials } from '@/lib/connections'
+import {
+  connectionSummary,
+  endpointAcceptsKey,
+  hasUsableCredentials,
+} from '@/lib/connections'
 import { ProviderMark } from './provider-mark'
 
 type ConnectionsListProps = {
@@ -58,7 +62,7 @@ export function ConnectionsList({
   ]
 
   return (
-    <Card className="flex h-[360px] min-h-0 w-full shrink-0 flex-col gap-0 overflow-hidden rounded-[10px] py-0 xl:h-auto xl:w-[336px]">
+    <Card className="flex h-[360px] min-h-0 w-full shrink-0 flex-col gap-0 overflow-hidden py-0 xl:h-auto xl:w-[336px]">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
         <h2 className="truncate text-[13px] font-semibold">Connections</h2>
         <Popover open={addOpen} onOpenChange={setAddOpen}>
@@ -167,7 +171,7 @@ function ConnectionRow({
           {draft?.name ?? connection.name}
         </span>
         <span className="truncate text-[11px] text-muted-foreground">
-          {subLine(draft ?? connection)}
+          {connectionSummary(draft ?? connection)}
         </span>
       </span>
       <span
@@ -195,42 +199,7 @@ function isConfigured(connection: Connection): boolean {
   return connection.endpoints.some(
     (endpoint) =>
       endpoint.url.trim() !== '' &&
-      (!endpoint.url.includes('{key}') || hasKey)
+      (!endpointAcceptsKey(endpoint, connection.provider) || hasKey)
   )
 }
 
-// The frame's sub-line counts what the row can act on, so a provider with only
-// plain URLs reads as endpoints and a key pool reads as keys plus coverage.
-function subLine(connection: Connection): string {
-  const keys = connection.credentials.filter(
-    (credential) => credential.value.trim() !== ''
-  ).length
-
-  if (connection.kind === 'data-api') {
-    if (keys === 0) {
-      return 'No keys'
-    }
-    const noun = `${keys} key${keys === 1 ? '' : 's'}`
-    const first = connection.credentials.find(
-      (credential) => credential.value.trim() !== ''
-    )
-    const last = first === undefined ? '' : last4(first.value)
-    return last === '' ? noun : `${noun} · ${last}`
-  }
-
-  const chains = new Set(connection.endpoints.map((endpoint) => endpoint.chain))
-    .size
-  const endpoints = connection.endpoints.length
-  if (endpoints === 0) {
-    return keys === 0 ? 'No endpoints' : `${keys} key${keys === 1 ? '' : 's'}`
-  }
-  if (keys === 0) {
-    return `${endpoints} endpoint${endpoints === 1 ? '' : 's'}`
-  }
-  return `${keys} key${keys === 1 ? '' : 's'} · ${chains} chain${chains === 1 ? '' : 's'}`
-}
-
-function last4(value: string): string {
-  const trimmed = value.trim()
-  return trimmed.length <= 4 ? trimmed : trimmed.slice(-4)
-}

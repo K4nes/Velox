@@ -147,7 +147,7 @@ export function KeysSection({
             const label = `Key ${index + 1}`
             const entry = probes[credential.id]
             const probe =
-              entry !== undefined && entry.value === credential.value
+              entry !== undefined && entry.value === credential.value.trim()
                 ? entry.result
                 : undefined
             const busyWithProbe = busy.has(`key:${credential.id}`)
@@ -222,7 +222,7 @@ export function KeysSection({
 
                 <div className="flex w-[104px] shrink-0 items-center gap-1.5">
                   <span className="text-xs font-medium">{label}</span>
-                  {index === 0 ? (
+                  {index === 0 && !autoFallback ? (
                     <Badge className="h-5 px-1.5 text-[11px]">Selected</Badge>
                   ) : null}
                 </div>

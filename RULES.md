@@ -123,8 +123,9 @@ body goes below 11px, and no display size is introduced above the stat tile's 18
 
 ### Page shell
 
-- Container: `flex flex-1 flex-col gap-4 p-6`. Two page kinds differ, both listed under
-  Deliberate exceptions: the `mint/tasks` workspace and the 404 page.
+- Container: `flex flex-1 flex-col gap-4 p-6`. Three page kinds differ, each listed under
+  Deliberate exceptions: the `mint/tasks` workspace, the 404 page and the `settings`
+  master/detail page.
 - The title lives on the route (`handle.title`) and renders once, in `app-header`.
   Never repeat it as an `h1` in the body.
 - Target is 1024px and up. Below that only the chrome collapses — the shell, the scan bar
@@ -224,8 +225,9 @@ secondary `text-[11px]`. Page-level tiles use this scale; the three-up strip ins
 Do not normalise these:
 
 - `settings`: the provider master/detail split keeps both panes scrollable, so it pins a
-  height only at `xl` (`xl:h-[calc(100svh-3rem)]`). Below `xl` the panes stack and the page
-  scrolls; the left list gets a fixed height so its own body still scrolls.
+  height only at `xl` (`xl:h-[calc(100svh-3rem)]`). Below `xl`, inside the 1024px target,
+  the panes stack on purpose and the page scrolls; the left list gets a fixed height so its
+  own body still scrolls.
 - `mint/tasks`: the task list, the collection bar and the inventory table have no header bar.
 - `mint/tasks`: the Mint Stage picker lists every stage in the drop, on purpose. OpenSea picks
   the stage server-side, so the picker is how the operator targets the stage they mean to mint

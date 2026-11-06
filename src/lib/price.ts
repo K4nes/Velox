@@ -19,11 +19,13 @@ export async function fetchEthUsdtPrice(): Promise<EthUsdtPrice> {
     try {
       return await requestPrice(key)
     } catch (failure) {
-      // Only a rejection is worth another key. A timeout or an outage would
-      // spend every key's request and still fail.
+      // A rejection or a spent rate limit is worth another key. A timeout or an
+      // outage would spend every key's request and still fail.
       if (
         !(failure instanceof PriceRequestError) ||
-        (failure.status !== 401 && failure.status !== 403)
+        (failure.status !== 401 &&
+          failure.status !== 403 &&
+          failure.status !== 429)
       ) {
         throw failure
       }

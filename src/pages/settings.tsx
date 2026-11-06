@@ -24,8 +24,8 @@ import type {
   Issue,
   RpcConnection,
 } from '@/lib/connections'
-import { ConnectionDetail } from './connection-detail'
-import { ConnectionsList } from './connections-list'
+import { ConnectionDetail } from './settings/connection-detail'
+import { ConnectionsList } from './settings/connections-list'
 
 export function SettingsPage() {
   const [connections, setConnections] = useState<Connection[]>([])
@@ -343,7 +343,7 @@ export function SettingsPage() {
           onAdd={(name) => void addProvider(name)}
         />
 
-        <Card className="flex min-h-[520px] min-w-0 flex-1 flex-col gap-0 overflow-hidden rounded-[10px] py-0 xl:min-h-0">
+        <Card className="flex min-h-[520px] min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0 xl:min-h-0">
           {loading ? (
             <div className="flex flex-col gap-3 p-4">
               <Skeleton className="h-11 w-48" />

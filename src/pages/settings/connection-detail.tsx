@@ -12,7 +12,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import type { Connection, Credential, Issue } from '@/lib/connections'
-import { endpointAcceptsKey, hasUsableCredentials } from '@/lib/connections'
+import {
+  connectionSummary,
+  endpointAcceptsKey,
+  hasUsableCredentials,
+} from '@/lib/connections'
 import type { ProbeResult } from '@/lib/connection-probes'
 import { EndpointsSection } from './endpoints-section'
 import { KeysSection } from './keys-section'
@@ -71,7 +75,7 @@ export function ConnectionDetail({
             </h2>
           )}
           <span className="truncate text-[11px] text-muted-foreground">
-            {subLine(draft)}
+            {connectionSummary(draft)}
           </span>
         </div>
 
@@ -174,7 +178,7 @@ function RemoveProvider({ name, onRemove }: RemoveProviderProps) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64">
         <PopoverHeader>
-          <PopoverTitle>Remove {name}?</PopoverTitle>
+          <PopoverTitle className="text-[13px] font-semibold">Remove {name}?</PopoverTitle>
           <PopoverDescription className="text-xs">
             Its keys and endpoints are deleted. Chains fall back to their
             default RPC.
@@ -200,16 +204,6 @@ function RemoveProvider({ name, onRemove }: RemoveProviderProps) {
   )
 }
 
-function subLine(connection: Connection): string {
-  const count =
-    connection.kind === 'rpc'
-      ? new Set(connection.endpoints.map((endpoint) => endpoint.chain)).size
-      : connection.credentials.length
-  const noun = connection.kind === 'rpc' ? 'chain' : 'key'
-
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
-}
-
 // A keyless test would spend a request to learn nothing, so the header action
 // stays off until at least one credential or endpoint can actually be checked.
 function canTest(connection: Connection): boolean {
@@ -221,6 +215,6 @@ function canTest(connection: Connection): boolean {
   return connection.endpoints.some(
     (endpoint) =>
       endpoint.url.trim() !== '' &&
-      (!endpoint.url.includes('{key}') || hasKey)
+      (!endpointAcceptsKey(endpoint, connection.provider) || hasKey)
   )
 }

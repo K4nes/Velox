@@ -53,21 +53,32 @@ export async function resolveKeys(service: DataService): Promise<string[]> {
 }
 
 export async function resolveRpcUrls(slug: string): Promise<string[]> {
-  const candidates = pickRpcUrls(await listConnections(), slug)
-  // A stored endpoint replaces the config default, as it did before the
-  // registry: falling back to a public node would route private traffic there
-  // without the operator asking.
+  const all = await listConnections()
+  const candidates = pickRpcUrls(all, slug)
+  // A stored endpoint owns the chain even when it cannot be expanded yet, so a
+  // keyless provider never reroutes traffic to a public node unasked.
+  const stored = all.some(
+    (entry) =>
+      entry.kind === 'rpc' &&
+      entry.endpoints.some((endpoint) => endpoint.chain === slug)
+  )
   const configured = chainBySlug(slug)?.rpcUrl
   const urls =
     candidates.length > 0
       ? candidates
-      : configured === undefined || configured === ''
+      : stored
         ? []
-        : [configured]
+        : configured === undefined || configured === ''
+          ? []
+          : [configured]
   const deduped = [...new Set(urls)]
 
   if (deduped.length === 0) {
-    throw new Error(`No RPC configured for ${slug}`)
+    throw new Error(
+      stored
+        ? `No usable RPC for ${slug}: add a key or fix the endpoint`
+        : `No RPC configured for ${slug}`
+    )
   }
   return deduped
 }

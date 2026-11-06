@@ -234,7 +234,7 @@ async function attempt(
       await new Promise((resolve) => setTimeout(resolve, wait ?? 2000))
       return attempt(path, options, keys, attemptCount + 1, keyIndex)
     }
-    if (keyAuth && hasNextKey) {
+    if (limit && keyAuth && hasNextKey) {
       return attempt(path, options, keys, 0, nextKey)
     }
     throw new OpenSeaError(

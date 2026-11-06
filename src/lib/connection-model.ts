@@ -130,6 +130,43 @@ export function hasUsableCredentials(
   return credentials.some((credential) => credential.value.trim() !== '')
 }
 
+// One summary for the list row and the detail header, so the two panes cannot
+// describe the same connection differently.
+export function connectionSummary(connection: Connection): string {
+  const keys = connection.credentials.filter(
+    (credential) => credential.value.trim() !== ''
+  ).length
+
+  if (connection.kind === 'data-api') {
+    if (keys === 0) {
+      return 'No keys'
+    }
+    const noun = `${keys} key${keys === 1 ? '' : 's'}`
+    const first = connection.credentials.find(
+      (credential) => credential.value.trim() !== ''
+    )
+    const last = first === undefined ? '' : last4(first.value)
+    return last === '' ? noun : `${noun} · ${last}`
+  }
+
+  const endpoints = connection.endpoints.length
+  if (endpoints === 0) {
+    return keys === 0 ? 'No endpoints' : `${keys} key${keys === 1 ? '' : 's'}`
+  }
+  if (keys === 0) {
+    return `${endpoints} endpoint${endpoints === 1 ? '' : 's'}`
+  }
+  const chains = new Set(
+    connection.endpoints.map((endpoint) => endpoint.chain)
+  ).size
+  return `${keys} key${keys === 1 ? '' : 's'} · ${chains} chain${chains === 1 ? '' : 's'}`
+}
+
+function last4(value: string): string {
+  const trimmed = value.trim()
+  return trimmed.length <= 4 ? '' : trimmed.slice(-4)
+}
+
 export function expandEndpoint(
   endpoint: Endpoint,
   credentials: readonly Credential[],
@@ -298,7 +335,7 @@ export function validateConnection(value: Connection): Issue[] {
   if (value.kind === 'rpc') {
     const covered = new Set<string>()
     value.endpoints.forEach((endpoint, index) => {
-      if (!isHttpUrl(endpoint.url)) {
+      if (!isHttpUrl(endpointUrlTemplate(endpoint, value.provider))) {
         issues.push({
           path: `endpoints.${index}.url`,
           message: 'Endpoint must be a valid URL, with https when it carries a key',

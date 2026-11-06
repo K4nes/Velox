@@ -64,6 +64,9 @@ export async function handlePrice(req: Request, envKey: string): Promise<Respons
   if (outcome.kind === 'status' && (outcome.status === 401 || outcome.status === 403)) {
     return json({ error: 'CoinMarketCap rejected the key' }, 401)
   }
+  if (outcome.kind === 'status' && outcome.status === 429) {
+    return json({ error: 'CoinMarketCap rate limit reached' }, 429)
+  }
 
   const quote = outcome.kind === 'ok' ? quoteFrom(outcome.body) : null
   if (quote === null) {
