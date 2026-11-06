@@ -9,7 +9,7 @@ export type StoreName =
   | 'connections'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 5
+const DB_VERSION = 6
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
@@ -117,6 +117,38 @@ function isMigratedSecret(id: string): boolean {
   return chains.some((chain) => chain.slug === slug)
 }
 
+// Version 6 retires the seeded QuickNode row: it is a paid provider with no URL
+// the app can build, so it is no longer seeded and its provider id no longer
+// exists. A row the user never touched is dropped; one carrying keys or
+// endpoints becomes a custom provider so those URLs keep working.
+function retireQuickNodeSeed(store: IDBObjectStore): void {
+  const request = store.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      return
+    }
+
+    const row = cursor.value as {
+      provider?: string
+      credentials?: unknown[]
+      endpoints?: unknown[]
+    }
+    if (row.provider === 'quicknode') {
+      const untouched =
+        (row.credentials?.length ?? 0) === 0 &&
+        (row.endpoints?.length ?? 0) === 0
+      if (untouched) {
+        cursor.delete()
+      } else {
+        cursor.update({ ...cursor.value, provider: 'custom' })
+      }
+    }
+    cursor.continue()
+  }
+}
+
 export function openDb(): Promise<IDBDatabase> {
   if (dbPromise) {
     return dbPromise
@@ -136,6 +168,8 @@ export function openDb(): Promise<IDBDatabase> {
         const wallets = db.createObjectStore('wallets', { keyPath: 'id' })
         wallets.createIndex('folderId', 'folderId', { unique: false })
       }
+      // A fresh profile never reads the legacy store, and nothing else deletes
+      // it, so creating it there would only orphan an empty store.
       if (!db.objectStoreNames.contains('secrets') && event.oldVersion > 0) {
         db.createObjectStore('secrets', { keyPath: 'id' })
       }
@@ -153,6 +187,13 @@ export function openDb(): Promise<IDBDatabase> {
       }
       if (event.oldVersion < 5 && transaction !== null) {
         seedConnections(transaction)
+      }
+      if (
+        event.oldVersion >= 5 &&
+        event.oldVersion < 6 &&
+        transaction !== null
+      ) {
+        retireQuickNodeSeed(transaction.objectStore('connections'))
       }
     }
 

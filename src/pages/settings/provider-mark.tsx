@@ -1,4 +1,4 @@
-import { Gauge, Server } from 'lucide-react'
+import { Server } from 'lucide-react'
 import { cn } from 'cn'
 
 // Iconify hosts the real provider marks; the lucide fallback keeps a custom or
@@ -20,18 +20,20 @@ const darkInvert: Record<string, true> = { 'rpc:alchemy': true }
 
 export function ProviderMark({ id, size = 'md' }: ProviderMarkProps) {
   const src = imageMarks[id]
-  const Icon = id === 'rpc:quicknode' ? Gauge : Server
   const iconClass = size === 'sm' ? 'size-3.5' : 'size-5'
 
   return (
     <span
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-md border bg-background',
+        'flex shrink-0 items-center justify-center rounded-md border bg-background dark:bg-transparent',
         size === 'sm' ? 'size-6' : 'size-[42px]'
       )}
     >
       {src === undefined ? (
-        <Icon className={cn('text-muted-foreground', iconClass)} aria-hidden />
+        <Server
+          className={cn('text-muted-foreground', iconClass)}
+          aria-hidden
+        />
       ) : (
         <img
           src={src}

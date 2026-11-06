@@ -4,33 +4,52 @@
 import type { ChainSlug } from '@/config/chains'
 
 export type DataService = 'opensea' | 'coinmarketcap'
-export type RpcProvider = 'alchemy' | 'quicknode' | 'ankr' | 'custom'
+export type RpcProvider = 'alchemy' | 'ankr' | 'custom'
 
-// Only providers with a stable public host pattern ship a template. QuickNode
-// serves per-account subdomains, so its new endpoints start empty. The field
-// holds the host; the provider's fixed key path is added at request time.
-const alchemyNetworks: Partial<Record<ChainSlug, string>> = {
-  ethereum: 'eth-mainnet',
-  base: 'base-mainnet',
-  robinhood: 'robinhood-mainnet',
+// Copied from each provider's own docs, which print the URL for a new project:
+// the chain host and the key segment are the same for every account. `{key}`
+// marks the segment a credential fills. A provider the docs do not pin down
+// ships no template and the user adds it as a custom provider, pasting the URL
+// it issued: a self-hosted node, or a paid host whose account subdomain is part
+// of the URL.
+const providerEndpoints: Record<
+  RpcProvider,
+  Partial<Record<ChainSlug, string>>
+> = {
+  alchemy: {
+    ethereum: 'https://eth-mainnet.g.alchemy.com/v2/{key}',
+    base: 'https://base-mainnet.g.alchemy.com/v2/{key}',
+    robinhood: 'https://robinhood-mainnet.g.alchemy.com/v2/{key}',
+    ape_chain: 'https://apechain-mainnet.g.alchemy.com/v2/{key}',
+  },
+  ankr: {
+    ethereum: 'https://rpc.ankr.com/eth/{key}',
+    base: 'https://rpc.ankr.com/base/{key}',
+    robinhood: 'https://rpc.ankr.com/robinhood_mainnet/{key}',
+  },
+  custom: {},
 }
 
 export function endpointTemplate(
   provider: RpcProvider,
   chain: ChainSlug
 ): string {
-  const network = provider === 'alchemy' ? alchemyNetworks[chain] : undefined
-  return network === undefined ? '' : `https://${network}.g.alchemy.com`
+  return (providerEndpoints[provider] ?? {})[chain] ?? ''
 }
 
-function providerPath(provider: RpcProvider, chain: ChainSlug): string {
-  return provider === 'alchemy' && alchemyNetworks[chain] !== undefined
-    ? '/v2/{key}'
-    : ''
+// The chains this provider serves on a URL the app can build. Empty means the
+// provider's endpoints only exist as URLs the user pastes.
+export function providerChains(provider: RpcProvider): Set<string> {
+  return new Set(Object.keys(providerEndpoints[provider] ?? {}))
 }
 
-// The field shows the host, so the provider path is appended here. A URL the
-// user already gave a path to is used as typed, which keeps pasted endpoints.
+// A URL carrying its own path is used as typed, which keeps a pasted endpoint.
+// A foreign host is left alone too: swapping in the provider's host would send
+// that row's key to a server the user never configured. Only a bare host the
+// provider itself hands out, or an empty row from an older build, takes the
+// template, so the chain still points somewhere real. The scheme is ignored
+// for the provider's own host: it serves https only, so the http form of that
+// host is the same host mistyped and the template is the one URL that works.
 export function endpointUrlTemplate(
   endpoint: Endpoint,
   provider: RpcProvider
@@ -38,9 +57,12 @@ export function endpointUrlTemplate(
   if (endpoint.url.includes('{key}')) {
     return endpoint.url
   }
-  const path = providerPath(provider, endpoint.chain)
-  if (path === '') {
+  const template = endpointTemplate(provider, endpoint.chain)
+  if (template === '') {
     return endpoint.url
+  }
+  if (endpoint.url.trim() === '') {
+    return template
   }
 
   try {
@@ -52,10 +74,23 @@ export function endpointUrlTemplate(
     ) {
       return endpoint.url
     }
-    return parsed.origin + path
+    const templateUrl = new URL(template)
+    const sameHost =
+      parsed.hostname === templateUrl.hostname &&
+      parsed.port === templateUrl.port
+    return sameHost ? template : endpoint.url
   } catch {
     return endpoint.url
   }
+}
+
+// Save and the probes share this answer, so a cleartext URL carrying a key
+// cannot slip past the rule by being tested instead of saved.
+export function endpointIsCallable(
+  endpoint: Endpoint,
+  provider: RpcProvider
+): boolean {
+  return isHttpUrl(endpointUrlTemplate(endpoint, provider))
 }
 
 export function endpointAcceptsKey(
@@ -130,6 +165,22 @@ export function hasUsableCredentials(
   return credentials.some((credential) => credential.value.trim() !== '')
 }
 
+// Both panes ask the same question, so they ask it here: a row counts once it
+// resolves to a callable URL and, when that URL carries a key, a credential
+// exists to fill it.
+export function connectionIsReady(connection: Connection): boolean {
+  if (connection.kind === 'data-api') {
+    return hasUsableCredentials(connection.credentials)
+  }
+
+  const hasKey = hasUsableCredentials(connection.credentials)
+  return connection.endpoints.some(
+    (endpoint) =>
+      endpointIsCallable(endpoint, connection.provider) &&
+      (!endpointAcceptsKey(endpoint, connection.provider) || hasKey)
+  )
+}
+
 // One summary for the list row and the detail header, so the two panes cannot
 // describe the same connection differently.
 export function connectionSummary(connection: Connection): string {
@@ -164,6 +215,7 @@ export function connectionSummary(connection: Connection): string {
 
 function last4(value: string): string {
   const trimmed = value.trim()
+  // Four characters or fewer are the whole secret, so there is nothing to show.
   return trimmed.length <= 4 ? '' : trimmed.slice(-4)
 }
 
@@ -198,7 +250,10 @@ export function pickRpcUrls(all: readonly Connection[], slug: string): string[] 
   const urls: string[] = []
   for (const connection of ordered) {
     for (const endpoint of connection.endpoints) {
-      if (endpoint.chain !== slug) {
+      if (
+        endpoint.chain !== slug ||
+        !endpointIsCallable(endpoint, connection.provider)
+      ) {
         continue
       }
       urls.push(
@@ -274,21 +329,10 @@ export function seedPlan(
     },
     {
       kind: 'rpc',
-      id: 'rpc:quicknode',
-      name: 'QuickNode',
-      provider: 'quicknode',
-      order: shift + 3,
-      autoFallback: true,
-      credentials: [],
-      endpoints: [],
-      updatedAt: at,
-    },
-    {
-      kind: 'rpc',
       id: 'rpc:ankr',
       name: 'Ankr',
       provider: 'ankr',
-      order: shift + 4,
+      order: shift + 3,
       autoFallback: true,
       credentials: [],
       endpoints: [],
@@ -335,7 +379,7 @@ export function validateConnection(value: Connection): Issue[] {
   if (value.kind === 'rpc') {
     const covered = new Set<string>()
     value.endpoints.forEach((endpoint, index) => {
-      if (!isHttpUrl(endpointUrlTemplate(endpoint, value.provider))) {
+      if (!endpointIsCallable(endpoint, value.provider)) {
         issues.push({
           path: `endpoints.${index}.url`,
           message: 'Endpoint must be a valid URL, with https when it carries a key',

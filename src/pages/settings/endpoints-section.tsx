@@ -19,7 +19,9 @@ import type { Credential, Endpoint, RpcProvider } from '@/lib/connections'
 import {
   endpointAcceptsKey,
   endpointTemplate,
+  endpointUrlTemplate,
   hasUsableCredentials,
+  providerChains,
 } from '@/lib/connections'
 
 type EndpointsSectionProps = {
@@ -39,7 +41,11 @@ export function EndpointsSection({
 }: EndpointsSectionProps) {
   const [open, setOpen] = useState(false)
   const covered = new Set(endpoints.map((endpoint) => endpoint.chain))
-  const uncovered = chains.filter((chain) => !covered.has(chain.slug))
+  const known = providerChains(provider)
+  const uncovered = chains.filter(
+    (chain) =>
+      !covered.has(chain.slug) && (known.size === 0 || known.has(chain.slug))
+  )
   const hasKey = hasUsableCredentials(credentials)
 
   function addEndpoint(chain: Endpoint['chain']) {
@@ -71,6 +77,12 @@ export function EndpointsSection({
           {endpoints.map((endpoint) => {
             const label = chainBySlug(endpoint.chain)?.name ?? endpoint.chain
             const needsKey = endpointAcceptsKey(endpoint, provider) && !hasKey
+            const template = endpointTemplate(provider, endpoint.chain)
+            // The provider's own URL wins whenever the row still points at it,
+            // so the user only supplies the key. A pasted URL keeps its input.
+            const derived =
+              template !== '' &&
+              endpointUrlTemplate(endpoint, provider) === template
 
             return (
               <div
@@ -80,24 +92,30 @@ export function EndpointsSection({
                 <span className="w-24 shrink-0 truncate text-[11px] font-medium">
                   {label}
                 </span>
-                <Input
-                  value={endpoint.url}
-                  onChange={(event) =>
-                    onPatch((list) =>
-                      list.map((entry) =>
-                        entry.id === endpoint.id
-                          ? { ...entry, url: event.target.value, probe: null }
-                          : entry
+                {derived ? (
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+                    {template.replace('{key}', '••••')}
+                  </span>
+                ) : (
+                  <Input
+                    value={endpoint.url}
+                    onChange={(event) =>
+                      onPatch((list) =>
+                        list.map((entry) =>
+                          entry.id === endpoint.id
+                            ? { ...entry, url: event.target.value, probe: null }
+                            : entry
+                        )
                       )
-                    )
-                  }
-                  aria-label={`${label} endpoint URL`}
-                  placeholder="https://"
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent"
-                />
+                    }
+                    aria-label={`${label} endpoint URL`}
+                    placeholder="https://"
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent"
+                  />
+                )}
                 <EndpointLatency
                   endpoint={endpoint}
                   needsKey={needsKey}
@@ -137,7 +155,7 @@ export function EndpointsSection({
         <PopoverContent align="start" className="w-56 p-1.5">
           {uncovered.length === 0 ? (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              Every chain already has an endpoint.
+              Every supported chain already has an endpoint.
             </p>
           ) : (
             <div className="flex flex-col">
