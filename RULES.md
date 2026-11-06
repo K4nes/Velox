@@ -115,6 +115,12 @@ just the one you named, and re-apply each edit.
 One component, one build. These values came out of a three-pass audit of the pages;
 a page that differs is a bug, not a variant.
 
+### Type scale
+
+Stay on the app scale. Meta, labels and counts are 11px, values and control text are
+`text-xs`, titles and panel headers are 13px, controls default to 14px. Nothing in a page
+body goes below 11px, and no display size is introduced above the stat tile's 18px.
+
 ### Page shell
 
 - Container: `flex flex-1 flex-col gap-4 p-6`. Two page kinds differ, both listed under

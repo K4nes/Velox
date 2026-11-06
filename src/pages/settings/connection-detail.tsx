@@ -50,9 +50,9 @@ export function ConnectionDetail({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 gap-y-2 border-b px-4 py-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <ProviderMark id={draft.id} />
-        <div className="flex min-w-[140px] flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {custom ? (
             <Input
               value={draft.name}
@@ -63,23 +63,19 @@ export function ConnectionDetail({
                 }))
               }
               aria-label="Provider name"
-              className="h-7 max-w-[280px] min-w-0 rounded-none border-0 bg-transparent px-0 text-[19px] font-semibold tracking-tight focus-visible:border-transparent focus-visible:ring-0 md:text-[19px] dark:bg-transparent"
+              className="h-7 max-w-[220px] min-w-0 rounded-none border-0 bg-transparent px-0 text-[13px] font-semibold focus-visible:border-transparent focus-visible:ring-0 md:text-[13px] dark:bg-transparent"
             />
           ) : (
-            <h2 className="truncate text-[19px] font-semibold tracking-tight">
+            <h2 className="truncate text-[13px] font-semibold">
               {draft.name}
             </h2>
           )}
-          <p className="truncate text-[10px] text-muted-foreground">
+          <span className="truncate text-[11px] text-muted-foreground">
             {subLine(draft)}
-          </p>
+          </span>
         </div>
 
-        {dirty ? (
-          <Badge variant="secondary" className="text-[10px]">
-            Unsaved
-          </Badge>
-        ) : null}
+        {dirty ? <Badge variant="secondary">Unsaved</Badge> : null}
         <Button
           variant="outline"
           onClick={actions.testAll}
@@ -103,7 +99,7 @@ export function ConnectionDetail({
             {issues.map((issue, index) => (
               <li key={`${issue.path}:${index}`}>
                 {issue.message}
-                <span className="ml-1.5 font-mono text-[10px] text-destructive/70">
+                <span className="ml-1.5 font-mono text-[11px] text-destructive/70">
                   {issue.path}
                 </span>
               </li>

@@ -107,7 +107,7 @@ export function ConnectionsList({
             group.rows.length === 0 ? null : (
               <div key={group.label}>
                 <p
-                  className="px-3 py-3 text-[9px] font-medium tracking-wider text-muted-foreground uppercase"
+                  className="px-3 py-3 text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
                   title={
                     group.label === 'RPC providers'
                       ? 'Tried in this order for each chain'
@@ -166,7 +166,7 @@ function ConnectionRow({
         <span className="truncate text-xs font-semibold">
           {draft?.name ?? connection.name}
         </span>
-        <span className="truncate font-mono text-[10px] text-muted-foreground">
+        <span className="truncate text-[11px] text-muted-foreground">
           {subLine(draft ?? connection)}
         </span>
       </span>

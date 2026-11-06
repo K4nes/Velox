@@ -216,14 +216,14 @@ export function KeysSection({
                   </TooltipContent>
                 </Tooltip>
 
-                <span className="w-5 shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                <span className="w-5 shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                   {String(index + 1).padStart(2, '0')}
                 </span>
 
                 <div className="flex w-[104px] shrink-0 items-center gap-1.5">
                   <span className="text-xs font-medium">{label}</span>
                   {index === 0 ? (
-                    <Badge className="h-4 px-1.5 text-[9px]">Selected</Badge>
+                    <Badge className="h-5 px-1.5 text-[11px]">Selected</Badge>
                   ) : null}
                 </div>
 
@@ -350,7 +350,7 @@ function ProbeBadge({ probe }: { probe: ProbeResult }) {
       <Badge
         variant="outline"
         title={probe.detail}
-        className="shrink-0 border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-400"
+        className="shrink-0 border-amber-500/40 bg-amber-500/10 text-[11px] text-amber-700 dark:text-amber-400"
       >
         Rate limited
       </Badge>
@@ -362,7 +362,7 @@ function ProbeBadge({ probe }: { probe: ProbeResult }) {
       <Badge
         variant="outline"
         title={probe.warning ?? probe.detail}
-        className="shrink-0 border-emerald-500/30 bg-emerald-500/10 font-mono text-[10px] text-emerald-600 dark:text-emerald-400"
+        className="shrink-0 border-emerald-500/30 bg-emerald-500/10 font-mono text-[11px] text-emerald-600 dark:text-emerald-400"
       >
         {probe.latencyMs} ms
       </Badge>
@@ -374,7 +374,7 @@ function ProbeBadge({ probe }: { probe: ProbeResult }) {
     <Badge
       variant="destructive"
       title={probe.error}
-      className="shrink-0 text-[10px]"
+      className="shrink-0 text-[11px]"
     >
       {rejected ? 'Rejected' : 'Failed'}
     </Badge>

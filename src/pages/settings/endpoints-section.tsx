@@ -85,7 +85,7 @@ export function EndpointsSection({
                   spellCheck={false}
                   autoCapitalize="off"
                   autoCorrect="off"
-                  className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-[11px] focus-visible:border-transparent focus-visible:ring-0 md:text-[11px] dark:bg-transparent"
+                  className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent"
                 />
                 <EndpointLatency
                   endpoint={endpoint}
@@ -158,7 +158,7 @@ type EndpointLatencyProps = {
 function EndpointLatency({ endpoint, needsKey, busy }: EndpointLatencyProps) {
   if (needsKey) {
     return (
-      <span className="w-20 shrink-0 text-right text-[10px] text-muted-foreground">
+      <span className="w-20 shrink-0 text-right text-[11px] text-muted-foreground">
         Needs a key
       </span>
     )
@@ -175,7 +175,7 @@ function EndpointLatency({ endpoint, needsKey, busy }: EndpointLatencyProps) {
   const probe = endpoint.probe
   if (probe === null) {
     return (
-      <span className="w-20 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
+      <span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
         —
       </span>
     )
@@ -185,7 +185,7 @@ function EndpointLatency({ endpoint, needsKey, busy }: EndpointLatencyProps) {
     return (
       <span
         title={`Checked ${new Date(probe.at).toLocaleString()}`}
-        className="w-20 shrink-0 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400"
+        className="w-20 shrink-0 text-right font-mono text-[11px] text-emerald-600 dark:text-emerald-400"
       >
         {probe.latencyMs} ms
       </span>
@@ -195,7 +195,7 @@ function EndpointLatency({ endpoint, needsKey, busy }: EndpointLatencyProps) {
   return (
     <span
       title={`${probe.error} (checked ${new Date(probe.at).toLocaleString()})`}
-      className="w-20 shrink-0 text-right font-mono text-[10px] text-destructive"
+      className="w-20 shrink-0 text-right font-mono text-[11px] text-destructive"
     >
       Failed
     </span>
