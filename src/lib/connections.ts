@@ -26,6 +26,15 @@ export class ConnectionError extends Error {
   }
 }
 
+// A chain whose stored endpoint cannot resolve never heals on its own, so
+// consumers that retry on a timer can tell it apart from a network hiccup.
+export class RpcConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RpcConfigError'
+  }
+}
+
 export async function listConnections(): Promise<Connection[]> {
   const all = await getAll<Connection>('connections')
   return [...all].sort((a, b) => a.order - b.order)
@@ -74,7 +83,7 @@ export async function resolveRpcUrls(slug: string): Promise<string[]> {
   const deduped = [...new Set(urls)]
 
   if (deduped.length === 0) {
-    throw new Error(
+    throw new RpcConfigError(
       stored
         ? `No usable RPC for ${slug}: add a key or fix the endpoint`
         : `No RPC configured for ${slug}`

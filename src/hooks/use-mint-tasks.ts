@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { RpcConfigError } from '@/lib/connections'
 import { checkWalletEligibility } from '@/lib/eligibility'
 import { mintForWallet } from '@/lib/mint'
 import { chainTime, waitForReceipt } from '@/lib/tx'
@@ -558,7 +559,14 @@ export function useMintTasks() {
           if (cancelled) return
           setBlockSample({ ms, at: Date.now() })
           if (ms >= arm.startMs) void openArmedRef.current(task.id, ms)
-        } catch {
+        } catch (error) {
+          // A chain with no usable RPC never recovers on its own, so disarming
+          // beats a countdown that can never fire.
+          if (error instanceof RpcConfigError) {
+            updateTask(task.id, { arm: null })
+            toast.error(error.message)
+            continue
+          }
           // An RPC hiccup must not disarm anything; the next poll retries.
         }
       }
