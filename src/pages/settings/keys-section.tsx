@@ -51,6 +51,8 @@ export function KeysSection({
 }: KeysSectionProps) {
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
   const [focusedId, setFocusedId] = useState<string | null>(null)
+  // Pressing the grip arms dragging and the drag handlers clear it, so a drag
+  // inside the key input still selects text.
   const [armedId, setArmedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [focusId, setFocusId] = useState<string | null>(null)
@@ -337,6 +339,10 @@ function maskValue(value: string): string {
   const trimmed = value.trim()
   if (trimmed === '') {
     return ''
+  }
+  // Four characters or fewer are the whole secret, so mask all of it.
+  if (trimmed.length <= 4) {
+    return '••••'
   }
   if (trimmed.length <= 10) {
     return `••••${trimmed.slice(-4)}`

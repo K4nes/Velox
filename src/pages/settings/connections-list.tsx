@@ -7,17 +7,14 @@ import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
+  PopoverDescription,
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Connection } from '@/lib/connections'
-import {
-  connectionSummary,
-  endpointAcceptsKey,
-  hasUsableCredentials,
-} from '@/lib/connections'
+import { connectionIsReady, connectionSummary } from '@/lib/connections'
 import { ProviderMark } from './provider-mark'
 
 type ConnectionsListProps = {
@@ -76,6 +73,9 @@ export function ConnectionsList({
               <PopoverTitle className="text-[13px] font-semibold">
                 Add provider
               </PopoverTitle>
+              <PopoverDescription className="text-xs text-muted-foreground">
+                Your own RPC provider. You paste its endpoint per chain.
+              </PopoverDescription>
             </PopoverHeader>
             <Input
               aria-label="Provider name"
@@ -151,7 +151,8 @@ function ConnectionRow({
   selected,
   onSelect,
 }: ConnectionRowProps) {
-  const configured = draft === undefined ? false : isConfigured(draft)
+  const configured =
+    draft === undefined ? false : connectionIsReady(draft)
 
   return (
     <button
@@ -187,19 +188,3 @@ function ConnectionRow({
     </button>
   )
 }
-
-// A row is live once it holds something a call could use: a key for a data API,
-// a usable endpoint for an RPC provider.
-function isConfigured(connection: Connection): boolean {
-  if (connection.kind === 'data-api') {
-    return hasUsableCredentials(connection.credentials)
-  }
-
-  const hasKey = hasUsableCredentials(connection.credentials)
-  return connection.endpoints.some(
-    (endpoint) =>
-      endpoint.url.trim() !== '' &&
-      (!endpointAcceptsKey(endpoint, connection.provider) || hasKey)
-  )
-}
-

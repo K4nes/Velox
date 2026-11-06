@@ -13,9 +13,10 @@ import {
 } from '@/components/ui/popover'
 import type { Connection, Credential, Issue } from '@/lib/connections'
 import {
+  connectionIsReady,
   connectionSummary,
   endpointAcceptsKey,
-  hasUsableCredentials,
+  endpointIsCallable,
 } from '@/lib/connections'
 import type { ProbeResult } from '@/lib/connection-probes'
 import { EndpointsSection } from './endpoints-section'
@@ -67,7 +68,7 @@ export function ConnectionDetail({
                 }))
               }
               aria-label="Provider name"
-              className="h-7 max-w-[220px] min-w-0 rounded-none border-0 bg-transparent px-0 text-[13px] font-semibold focus-visible:border-transparent focus-visible:ring-0 md:text-[13px] dark:bg-transparent"
+              className="h-7 w-auto max-w-[220px] min-w-[4ch] rounded-none border-0 bg-transparent px-0 text-[13px] font-semibold field-sizing-content focus-visible:border-transparent focus-visible:ring-0 md:text-[13px] dark:bg-transparent"
             />
           ) : (
             <h2 className="truncate text-[13px] font-semibold">
@@ -83,7 +84,7 @@ export function ConnectionDetail({
         <Button
           variant="outline"
           onClick={actions.testAll}
-          disabled={testing || !canTest(draft)}
+          disabled={testing || !connectionIsReady(draft)}
         >
           <RefreshCw className={testing ? 'animate-spin' : undefined} />
           {draft.kind === 'rpc' ? 'Test endpoints' : 'Test all keys'}
@@ -116,8 +117,10 @@ export function ConnectionDetail({
         <KeysSection
           testable={
             draft.kind === 'data-api' ||
-            draft.endpoints.some((endpoint) =>
-              endpointAcceptsKey(endpoint, draft.provider)
+            draft.endpoints.some(
+              (endpoint) =>
+                endpointAcceptsKey(endpoint, draft.provider) &&
+                endpointIsCallable(endpoint, draft.provider)
             )
           }
           connectionName={draft.name}
@@ -201,20 +204,5 @@ function RemoveProvider({ name, onRemove }: RemoveProviderProps) {
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-// A keyless test would spend a request to learn nothing, so the header action
-// stays off until at least one credential or endpoint can actually be checked.
-function canTest(connection: Connection): boolean {
-  const hasKey = hasUsableCredentials(connection.credentials)
-  if (connection.kind === 'data-api') {
-    return hasKey
-  }
-
-  return connection.endpoints.some(
-    (endpoint) =>
-      endpoint.url.trim() !== '' &&
-      (!endpointAcceptsKey(endpoint, connection.provider) || hasKey)
   )
 }

@@ -13,6 +13,7 @@ import {
   ConnectionError,
   deleteConnection,
   endpointAcceptsKey,
+  endpointIsCallable,
   expandEndpoint,
   listConnections,
   saveConnection,
@@ -236,8 +237,10 @@ export function SettingsPage() {
 
     // An RPC key is only exercised by a keyed endpoint, so the probe runs the
     // first one that consumes it rather than calling the provider directly.
-    const endpoint = connection.endpoints.find((entry) =>
-      endpointAcceptsKey(entry, connection.provider)
+    const endpoint = connection.endpoints.find(
+      (entry) =>
+        endpointAcceptsKey(entry, connection.provider) &&
+        endpointIsCallable(entry, connection.provider)
     )
     const target =
       endpoint === undefined
@@ -285,7 +288,10 @@ export function SettingsPage() {
           false,
           connection.provider
         )[0]
-        if (endpoint.url.trim() === '' || target === undefined) {
+        if (
+          target === undefined ||
+          !endpointIsCallable(endpoint, connection.provider)
+        ) {
           continue
         }
 
