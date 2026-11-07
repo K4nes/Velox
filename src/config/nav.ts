@@ -1,20 +1,5 @@
-import {
-  ArrowLeftRight,
-  BadgeCheck,
-  Briefcase,
-  CalendarDays,
-  CreditCard,
-  Gem,
-  Infinity,
-  ListChecks,
-  PackageMinus,
-  Settings,
-  TrendingUp,
-  Users,
-  Wallet,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { routeTable, type RouteBranch, type RouteLeaf } from '@/config/routes'
 
 export type NavItem = {
   title: string
@@ -22,7 +7,10 @@ export type NavItem = {
   to: string
 }
 
-export type NavItemWithChildren = NavItem & {
+export type NavItemWithChildren = {
+  title: string
+  icon: LucideIcon
+  prefix: string
   children: NavItem[]
 }
 
@@ -31,36 +19,36 @@ export type NavGroup = {
   items: (NavItem | NavItemWithChildren)[]
 }
 
-export const navGroups: NavGroup[] = [
-  {
-    label: 'Platform',
-    items: [
-      {
-        title: 'Mint',
-        icon: Gem,
-        to: '/mint',
-        children: [
-          { title: 'Tasks', icon: ListChecks, to: '/mint/tasks' },
-          { title: 'Eligibility', icon: BadgeCheck, to: '/mint/eligibility' },
-        ],
-      },
-      {
-        title: 'PnL',
-        icon: TrendingUp,
-        to: '/pnl',
-        children: [
-          { title: 'PnL Card', icon: CreditCard, to: '/pnl/card' },
-          { title: 'Monthly PnL', icon: CalendarDays, to: '/pnl/monthly' },
-          { title: 'Lifetime PnL', icon: Infinity, to: '/pnl/lifetime' },
-        ],
-      },
-      { title: 'Portfolio', icon: Briefcase, to: '/portfolio' },
-      { title: 'Bulk Sell', icon: PackageMinus, to: '/bulk-sell' },
-      { title: 'Instant Sell', icon: Zap, to: '/instant-sell' },
-      { title: 'Transfer', icon: ArrowLeftRight, to: '/transfer' },
-      { title: 'Swap', icon: Wallet, to: '/swap' },
-      { title: 'Wallet Profiles', icon: Users, to: '/wallet-profiles' },
-      { title: 'Settings', icon: Settings, to: '/settings' },
-    ],
-  },
-]
+// A group is open while the URL sits under one of its routes, so the prefix is
+// read off the child paths rather than written a second time.
+function sharedPrefix(paths: string[]): string {
+  const segments = paths.map((path) => path.split('/').filter(Boolean))
+  const shared: string[] = []
+  for (let index = 0; ; index += 1) {
+    const segment = segments[0][index]
+    if (segment === undefined) break
+    if (!segments.every((parts) => parts[index] === segment)) break
+    shared.push(segment)
+  }
+  return `/${shared.join('/')}`
+}
+
+const toNavItem = (leaf: RouteLeaf): NavItem => ({
+  title: leaf.title,
+  icon: leaf.icon,
+  to: leaf.path,
+})
+
+const toNavItemWithChildren = (branch: RouteBranch): NavItemWithChildren => ({
+  title: branch.title,
+  icon: branch.icon,
+  prefix: sharedPrefix(branch.children.map((child) => child.path)),
+  children: branch.children.map(toNavItem),
+})
+
+export const navGroups: NavGroup[] = routeTable.map((group) => ({
+  label: group.label,
+  items: group.items.map((item) =>
+    'children' in item ? toNavItemWithChildren(item) : toNavItem(item)
+  ),
+}))
