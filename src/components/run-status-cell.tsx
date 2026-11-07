@@ -27,7 +27,7 @@ export function RunStatusCell({
           <span className="text-muted-foreground font-normal">{note}</span>
         ) : null}
       </span>
-      {error ? (
+      {error !== undefined ? (
         <span
           className="text-muted-foreground truncate text-xs"
           title={error}

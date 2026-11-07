@@ -50,7 +50,7 @@ function StatusCell({ state }: { state: SwapWalletState | undefined }) {
       label={swapWalletLabel(state)}
       live={live}
       note={txHash ? `${txHash.slice(0, 8)}…` : undefined}
-      error={detail ?? undefined}
+      error={detail || undefined}
     />
   )
 }
