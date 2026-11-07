@@ -9,9 +9,8 @@ export function useLiveRead(): { open: () => LiveRead; abort: () => void } {
   const epoch = useRef(0)
 
   useEffect(() => {
-    const at = epoch.current
     return () => {
-      if (epoch.current === at) epoch.current += 1
+      epoch.current += 1
     }
   }, [])
 
