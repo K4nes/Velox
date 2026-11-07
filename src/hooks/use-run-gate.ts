@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { useLiveRead } from '@/hooks/use-live-read'
 import {
   abortRunSlot,
   claimRunSlot,
@@ -24,13 +25,11 @@ export function useRunGate(kind: RunKind): {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const runningRef = useRef(false)
-  const epochRef = useRef(0)
   const slotRef = useRef<RunSlot | null>(null)
+  const { open } = useLiveRead()
 
   useEffect(() => {
-    const epoch = epochRef.current
     return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
       if (slotRef.current) abortRunSlot(slotRef.current)
     }
   }, [])
@@ -41,15 +40,15 @@ export function useRunGate(kind: RunKind): {
     runningRef.current = true
     setRunning(true)
 
-    const entryEpoch = epochRef.current
+    const run = open()
     const claim = await claimRunSlot(
       kind,
       () => {
-        if (entryEpoch === epochRef.current) {
+        if (run.live()) {
           setError('Waiting for the previous run to finish')
         }
       },
-      () => entryEpoch !== epochRef.current
+      () => !run.live()
     )
 
     if (claim.kind === 'stale') {
@@ -59,7 +58,7 @@ export function useRunGate(kind: RunKind): {
 
     if (claim.kind === 'busy') {
       runningRef.current = false
-      if (entryEpoch === epochRef.current) {
+      if (run.live()) {
         const message = runKindLabel(claim.running)
         setRunning(false)
         setError(message)
@@ -70,17 +69,15 @@ export function useRunGate(kind: RunKind): {
 
     const slot = claim.slot
     slotRef.current = slot
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
     setError(null)
 
     return {
-      live,
+      live: run.live,
       shouldAbort: () => slot.aborted,
       end: () => {
         releaseRunSlot(slot)
         if (slotRef.current === slot) slotRef.current = null
-        if (live()) {
+        if (run.live()) {
           runningRef.current = false
           setRunning(false)
         }

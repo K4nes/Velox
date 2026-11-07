@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLiveRead } from '@/hooks/use-live-read'
 import { balanceKey, type BalanceKey, type BalanceMap } from '@/lib/balance-key'
 import { fetchBalances } from '@/lib/balances'
 
@@ -8,18 +9,17 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
   const [balances, setBalances] = useState<BalanceMap>(() => new Map())
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<BalanceErrors>({})
-  const balanceRun = useRef(0)
+  const { open: openRead } = useLiveRead()
   const attemptedRef = useRef(new Set<BalanceKey>())
 
   const runRefresh = useCallback(
     async (addresses: string[]) => {
-      const run = balanceRun.current + 1
-      balanceRun.current = run
+      const run = openRead()
       setLoading(true)
 
       try {
         const next = await fetchBalances(chainSlug, addresses)
-        if (balanceRun.current !== run) {
+        if (!run.live()) {
           return
         }
         // Only the addresses that came back are cached, so the refresh button
@@ -61,7 +61,7 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
           return state
         })
       } catch (failure) {
-        if (balanceRun.current !== run) {
+        if (!run.live()) {
           return
         }
         // Nothing came back, so every cached value for this run is stale.
@@ -87,12 +87,12 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
           }
         })
       } finally {
-        if (balanceRun.current === run) {
+        if (run.live()) {
           setLoading(false)
         }
       }
     },
-    [chainSlug]
+    [chainSlug, openRead]
   )
 
   useEffect(() => {

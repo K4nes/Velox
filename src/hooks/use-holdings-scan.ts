@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useLiveRead } from '@/hooks/use-live-read'
 import {
   resolveScanWallets,
   scanFailureMessage,
@@ -8,8 +9,7 @@ import {
 import type { HeldToken, WalletScan } from '@/lib/holdings'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
-import { listWallets } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { resolveScanTarget } from '@/lib/scan-target'
 
 export type HoldingsScanState =
   | { status: 'idle' }
@@ -25,16 +25,9 @@ export function useHoldingsScan() {
   const [query, setQuery] = useState('')
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
-  const epochRef = useRef(0)
-
   // A scan that resolves after the page unmounted has no state to write, and its
   // toasts would land on whatever page the operator moved to.
-  useEffect(() => {
-    const epoch = epochRef.current
-    return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
-    }
-  }, [])
+  const read = useLiveRead()
 
   function changeUrl(next: string) {
     if (runningRef.current) return
@@ -53,49 +46,27 @@ export function useHoldingsScan() {
   async function scan() {
     if (runningRef.current) return
 
-    const slug = slugFromUrl(url)
-    if (!slug) {
-      setState({ status: 'failed', message: 'Collection URL not recognised' })
-      return
-    }
-
     runningRef.current = true
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
+    const run = read.open()
     setRunning(true)
     setTokens([])
     setState({ status: 'scanning' })
 
     try {
-      let records: StoredWallet[]
-      try {
-        records = await listWallets()
-      } catch (failure) {
-        if (!live()) return
-        const message =
-          failure instanceof Error ? failure.message : String(failure)
-        setState({ status: 'failed', message })
+      const target = await resolveScanTarget(url, selectedWallets)
+      if (!run.live()) return
+      if (target.status === 'failed') {
+        setState({ status: 'failed', message: target.message })
         return
       }
 
-      if (!live()) return
-
-      const resolved = resolveScanWallets(
-        records.filter((wallet) => selectedWallets.includes(wallet.id))
-      )
-      if (resolved.wallets.length === 0) {
-        setState({
-          status: 'failed',
-          message: 'No saved wallet matches the selection',
-        })
-        return
-      }
+      const resolved = resolveScanWallets(target.wallets)
 
       let collection: CollectionInfo
       try {
-        collection = await getCollection(slug)
+        collection = await getCollection(target.slug)
       } catch (failure) {
-        if (!live()) return
+        if (!run.live()) return
         const message = scanFailureMessage(failure, 'collection')
         setState({ status: 'failed', message })
         toast.error(message)
@@ -108,7 +79,7 @@ export function useHoldingsScan() {
         wallets: resolved.wallets,
       })
 
-      if (!live()) return
+      if (!run.live()) return
 
       setTokens(result.tokens)
       setState({ status: 'ready', collection, scans: result.scans })
@@ -120,12 +91,14 @@ export function useHoldingsScan() {
         )
       }
     } catch (failure) {
-      if (!live()) return
+      if (!run.live()) return
       const message = failure instanceof Error ? failure.message : String(failure)
       setState({ status: 'failed', message })
     } finally {
-      runningRef.current = false
-      setRunning(false)
+      if (run.live()) {
+        runningRef.current = false
+        setRunning(false)
+      }
     }
   }
 
