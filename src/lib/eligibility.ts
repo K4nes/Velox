@@ -68,10 +68,11 @@ export async function getEligibilityToken(
 // One eligibility request per wallet, plus the sign-in calls the auth proxy makes
 // ahead of it. That request carries both the wallet's bearer token and the
 // configured API key, and opensea.ts derives its keyAuth flag from the absence of
-// an `authorization` header, so a 429 here cannot rotate to the next key: it
-// spends its retry budget and then fails that wallet's row. Pacing is the only
-// lever this loop has, and 250 ms is a guess at a limit this repo does not
-// record, not a published number.
+// an `authorization` header, so a 429 here cannot rotate to the next key. It
+// waits out its retry budget, or gives up at once when the server asks for a wait
+// longer than that budget allows, and either way that wallet's row fails. Pacing
+// is the only lever this loop has, and 250 ms is a guess at a limit this repo does
+// not record, not a published number.
 const ELIGIBILITY_WALLET_SPACING_MS = 250
 
 export async function checkWalletEligibility(
