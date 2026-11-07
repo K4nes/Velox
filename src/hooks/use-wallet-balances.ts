@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { balanceKey, type BalanceKey, type BalanceMap } from '@/lib/balance-key'
 import { fetchBalances } from '@/lib/balances'
 
 type BalanceErrors = Record<string, { message: string; addresses: string[] }>
 
 export function useWalletBalances(chainSlug: string, addressKey: string) {
-  const [balances, setBalances] = useState<Record<string, bigint>>({})
+  const [balances, setBalances] = useState<BalanceMap>(() => new Map())
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<BalanceErrors>({})
   const balanceRun = useRef(0)
-  const attemptedRef = useRef(new Set<string>())
+  const attemptedRef = useRef(new Set<BalanceKey>())
 
   const runRefresh = useCallback(
     async (addresses: string[]) => {
@@ -23,18 +24,18 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
         }
         // Only the addresses that came back are cached, so the refresh button
         // retries the rest instead of them staying blank for the session.
-        for (const address of Object.keys(next.balances)) {
-          attemptedRef.current.add(`${chainSlug}:${address}`)
+        for (const key of next.balances.keys()) {
+          attemptedRef.current.add(key)
         }
         setBalances((current) => {
-          const merged = { ...current }
-          for (const [address, value] of Object.entries(next.balances)) {
-            merged[`${chainSlug}:${address}`] = value
+          const merged = new Map(current)
+          for (const [key, value] of next.balances) {
+            merged.set(key, value)
           }
           // A failed address keeps no value: an old number rendered as current
           // reads as a fresh balance the run never read.
           for (const address of next.failed) {
-            delete merged[`${chainSlug}:${address.toLowerCase()}`]
+            merged.delete(balanceKey(chainSlug, address))
           }
           return merged
         })
@@ -65,9 +66,9 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
         }
         // Nothing came back, so every cached value for this run is stale.
         setBalances((current) => {
-          const merged = { ...current }
+          const merged = new Map(current)
           for (const address of addresses) {
-            delete merged[`${chainSlug}:${address.toLowerCase()}`]
+            merged.delete(balanceKey(chainSlug, address))
           }
           return merged
         })
@@ -129,8 +130,7 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
     const pending = addressKey
       .split(',')
       .filter(
-        (address) =>
-          !attemptedRef.current.has(`${chainSlug}:${address.toLowerCase()}`)
+        (address) => !attemptedRef.current.has(balanceKey(chainSlug, address))
       )
     if (pending.length === 0) {
       return

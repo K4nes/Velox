@@ -1,8 +1,7 @@
+import { balanceKey, type BalanceMap } from '@/lib/balance-key'
 import { clientFor } from '@/lib/tx'
 
 const CONCURRENCY = 5
-
-export type BalanceMap = Record<string, bigint>
 
 export type BalanceResult = {
   balances: BalanceMap
@@ -14,11 +13,11 @@ export async function fetchBalances(
   addresses: string[]
 ): Promise<BalanceResult> {
   if (addresses.length === 0) {
-    return { balances: {}, failed: [] }
+    return { balances: new Map(), failed: [] }
   }
 
   const client = await clientFor(chainSlug)
-  const balances: BalanceMap = {}
+  const balances: BalanceMap = new Map()
   const failed: string[] = []
   let failure: unknown = null
   let cursor = 0
@@ -28,9 +27,10 @@ export async function fetchBalances(
       const address = addresses[cursor]
       cursor += 1
       try {
-        balances[address.toLowerCase()] = await client.getBalance({
-          address: address as `0x${string}`,
-        })
+        balances.set(
+          balanceKey(chainSlug, address),
+          await client.getBalance({ address: address as `0x${string}` })
+        )
       } catch (error) {
         failed.push(address)
         if (failure === null) {
@@ -46,7 +46,7 @@ export async function fetchBalances(
 
   // One rejected call (a rate-limited public RPC) must not wipe the balances
   // that did resolve, so the error surfaces only when nothing came back.
-  if (Object.keys(balances).length === 0 && failure !== null) {
+  if (balances.size === 0 && failure !== null) {
     throw failure
   }
 

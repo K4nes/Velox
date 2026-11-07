@@ -1,5 +1,6 @@
 import { formatEther } from 'viem'
 import { chainBySlug } from '@/config/chains'
+import { balanceKey, type BalanceMap } from '@/lib/balance-key'
 import type { StoredWallet } from '@/lib/wallets'
 
 export type WalletProfile = {
@@ -79,7 +80,7 @@ export function persistChain(slug: string) {
 export function toFolders(
   folderRecords: FolderRecord[],
   walletRecords: StoredWallet[],
-  balances: Record<string, bigint>,
+  balances: BalanceMap,
   chainSlug: string
 ): Folder[] {
   return folderRecords.map((folder) => ({
@@ -91,7 +92,7 @@ export function toFolders(
         id: wallet.id,
         label: wallet.label,
         address: wallet.address,
-        balance: balances[`${chainSlug}:${wallet.address.toLowerCase()}`] ?? null,
+        balance: balances.get(balanceKey(chainSlug, wallet.address)) ?? null,
       })),
   }))
 }
