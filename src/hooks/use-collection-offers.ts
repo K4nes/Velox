@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toMessage } from '@/lib/error-message'
 import { assembleOfferBook } from '@/lib/instant-sell'
 import type { OfferBook, OfferLadder } from '@/lib/instant-sell'
 import { getCollectionOffers } from '@/lib/opensea'
@@ -60,7 +61,7 @@ export function useCollectionOffers(
       },
       (failure) => {
         if (cancelled) return
-        const message = failure instanceof Error ? failure.message : String(failure)
+        const message = toMessage(failure)
         setState((current): OffersState => {
           const book = current.status === 'idle' ? null : current.book
           return {

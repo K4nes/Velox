@@ -6,6 +6,7 @@ import {
   ensureOperatorApproved,
 } from '@/lib/approval'
 import { buildFulfillmentCall } from '@/lib/fulfillment'
+import { toMessage } from '@/lib/error-message'
 import type { SellTarget } from '@/lib/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea'
 import { stepById, withStep } from '@/lib/run-progress'
@@ -73,10 +74,6 @@ export const SELL_STEP_TONE: Record<SellStepStatus, string> = {
 }
 
 const WALLET_CONCURRENCY = 2
-
-function failureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 export async function runSellTargets(input: {
   targets: readonly SellTarget[]
@@ -157,7 +154,7 @@ export async function runSellTargets(input: {
         toPrivateKeyHex(record.privateKey)
       ).address.toLowerCase()
     } catch (error) {
-      failAll(targets, failureMessage(error))
+      failAll(targets, toMessage(error))
       return
     }
 
@@ -254,7 +251,7 @@ export async function runSellTargets(input: {
         if (input.shouldAbort?.()) return
         const failed = stepById(progress, target.key)
         if (failed) {
-          commit({ ...failed, status: 'failed', error: failureMessage(error) })
+          commit({ ...failed, status: 'failed', error: toMessage(error) })
         }
       }
     }

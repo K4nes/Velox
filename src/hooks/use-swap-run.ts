@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
+import { toMessage } from '@/lib/error-message'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
 import type {
@@ -91,7 +92,7 @@ export function useSwapRun(input: {
       }
     } catch (failure) {
       if (!live()) return
-      const message = failure instanceof Error ? failure.message : String(failure)
+      const message = toMessage(failure)
       setError(message)
       toast.error(message)
     } finally {

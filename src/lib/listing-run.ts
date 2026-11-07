@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
+import { toMessage } from '@/lib/error-message'
 import { submitListingOrder } from '@/lib/opensea'
 import { stepById, withStep } from '@/lib/run-progress'
 import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/tx'
@@ -69,10 +70,6 @@ export const RUN_STEP_TONE: Record<RunStepStatus, string> = {
   submitting: 'text-foreground',
   listed: 'text-primary',
   failed: 'text-destructive',
-}
-
-function failureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function isApproval(step: PlannedApproval | PlannedOrder): step is PlannedApproval {
@@ -159,7 +156,7 @@ export async function runListingPlan(input: {
       account = privateKeyToAccount(toPrivateKeyHex(record.privateKey))
     } catch (error) {
       // A stored key that no longer parses fails this wallet, not the whole run.
-      const message = failureMessage(error)
+      const message = toMessage(error)
       for (const step of planned.steps) {
         const current = stepById(progress, step.id)
         if (current) commit(failStep(current, message))
@@ -203,7 +200,7 @@ export async function runListingPlan(input: {
           throw new Error('Transaction reverted')
         }
       } catch (error) {
-        const message = failureMessage(error)
+        const message = toMessage(error)
         const failedApproval = stepById(progress, approval.id)
         if (failedApproval) {
           commit(failStep(failedApproval, message))
@@ -256,7 +253,7 @@ export async function runListingPlan(input: {
       } catch (error) {
         const currentOrder = stepById(progress, order.id)
         if (currentOrder) {
-          commit(failStep(currentOrder, failureMessage(error)))
+          commit(failStep(currentOrder, toMessage(error)))
         }
       }
     }

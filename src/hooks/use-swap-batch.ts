@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
+import { toMessage } from '@/lib/error-message'
 import { resolveSwapBatch } from '@/lib/swap-batch'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { amountFor, amountKey, specKey } from '@/lib/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
-import { redactUrls } from '@/lib/utils'
 import { listWallets } from '@/lib/wallets'
 
 const DEBOUNCE_MS = 300
@@ -68,11 +68,7 @@ export function useSwapBatch(
         .catch((failure) => {
           if (cancelled) return
           setResolved(null)
-          setError(
-            redactUrls(
-              failure instanceof Error ? failure.message : String(failure)
-            )
-          )
+          setError(toMessage(failure))
         })
         .finally(() => {
           if (!cancelled) setPending(false)

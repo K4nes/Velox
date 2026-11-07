@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toMessage } from '@/lib/error-message'
 
 type Loaded<T> = {
   version: number
   value: T[]
-}
-
-function message(failure: unknown): string {
-  return failure instanceof Error ? failure.message : String(failure)
 }
 
 export function useStore<T>(read: () => Promise<T[]>): {
@@ -37,7 +34,7 @@ export function useStore<T>(read: () => Promise<T[]>): {
       .catch((failure: unknown) => {
         if (!cancelled) {
           setLoaded({ version, value: [] })
-          setError(message(failure))
+          setError(toMessage(failure))
         }
       })
 
@@ -51,7 +48,7 @@ export function useStore<T>(read: () => Promise<T[]>): {
   }, [])
 
   const fail = useCallback((failure: unknown) => {
-    setError(message(failure))
+    setError(toMessage(failure))
   }, [])
 
   return {

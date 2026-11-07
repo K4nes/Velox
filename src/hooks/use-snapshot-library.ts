@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { useSnapshots } from '@/hooks/use-snapshots'
 import { get } from '@/lib/db'
 import { checkEligibility } from '@/lib/eligibility'
+import { toMessage } from '@/lib/error-message'
 import {
   buildSnapshotPayload,
   deleteSnapshot,
@@ -46,7 +47,7 @@ export function useSnapshotLibrary() {
       })
       reload()
     } catch (failure) {
-      setSaveError(failure instanceof Error ? failure.message : String(failure))
+      setSaveError(toMessage(failure))
     } finally {
       setSaving(false)
     }
@@ -69,7 +70,7 @@ export function useSnapshotLibrary() {
       reload()
     } catch (failure) {
       deletedRef.current.delete(snapshotId)
-      setDeleteError(failure instanceof Error ? failure.message : String(failure))
+      setDeleteError(toMessage(failure))
     } finally {
       deletingRef.current = false
       setDeletingId(null)
@@ -137,7 +138,7 @@ export function useSnapshotLibrary() {
     } catch (failure) {
       setRefreshError({
         id: snapshot.id,
-        message: failure instanceof Error ? failure.message : String(failure),
+        message: toMessage(failure),
       })
     } finally {
       refreshingRef.current = false

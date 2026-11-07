@@ -1,6 +1,5 @@
 import { formatEther } from 'viem'
 import type { EligibilityRow } from '@/lib/eligibility'
-import { OpenSeaError } from '@/lib/opensea'
 import type { DropInfo, DropStage } from '@/lib/opensea'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
@@ -185,28 +184,6 @@ export function countdownLabel(ms: number): string {
   return hours > 0
     ? `${hours}:${pad(minutes)}:${pad(seconds)}`
     : `${minutes}:${pad(seconds)}`
-}
-
-export function failureMessage(
-  error: unknown,
-  step: 'collection' | 'drop' | 'eligibility'
-): string {
-  if (error instanceof OpenSeaError) {
-    if (error.status === 0) {
-      return 'OpenSea API key is not set. Add one in Settings.'
-    }
-    if (error.status === 401) {
-      return 'OpenSea API key rejected. Update it in Settings.'
-    }
-    if (error.status === 404) {
-      if (step === 'collection') return 'Collection not found'
-      if (step === 'drop') return 'No drop found for this collection'
-      return 'Eligibility check failed'
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  return `Check failed — ${message}`
 }
 
 export function createTask(): Task {

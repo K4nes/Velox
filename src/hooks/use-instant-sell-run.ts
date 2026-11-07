@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
+import { toMessage } from '@/lib/error-message'
 import type { SellTarget } from '@/lib/instant-sell'
 import {
   runSellTargets,
@@ -82,7 +83,7 @@ export function useInstantSellRun(input: {
       }
     } catch (failure) {
       if (!live()) return
-      const message = failure instanceof Error ? failure.message : String(failure)
+      const message = toMessage(failure)
       setError(message)
       toast.error(message)
     } finally {

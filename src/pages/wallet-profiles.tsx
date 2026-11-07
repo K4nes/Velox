@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { chainBySlug, chains } from '@/config/chains'
 import { useWalletBalances } from '@/hooks/use-wallet-balances'
 import { getAll, put, remove } from '@/lib/db'
+import { toMessage } from '@/lib/error-message'
 import {
   importWallets,
   listWallets,
@@ -75,7 +76,7 @@ export function WalletProfilesPage() {
   }
 
   const reportStorage = (failure: unknown) => {
-    setStorageError(failure instanceof Error ? failure.message : String(failure))
+    setStorageError(toMessage(failure))
   }
 
   const reload = async () => {

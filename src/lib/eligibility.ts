@@ -1,4 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts'
+import { toMessage } from '@/lib/error-message'
 import { getCollection, getDrop, getEligibility } from '@/lib/opensea'
 import type { DropInfo } from '@/lib/opensea'
 import { toPrivateKeyHex } from '@/lib/wallets'
@@ -137,7 +138,7 @@ export async function checkWalletEligibility(
         label: wallet.label,
         address: wallet.address,
         stages: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: toMessage(error),
       })
     }
   }

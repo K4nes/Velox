@@ -12,6 +12,7 @@ import { chainBySlug } from '@/config/chains'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { exportCard as saveCard } from '@/lib/card-export'
 import { persistImages, readImageFile } from '@/lib/card-images'
+import { toMessage } from '@/lib/error-message'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
 import { backfillQuote, upsertPnlRecord } from '@/lib/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl-trades'
@@ -76,7 +77,7 @@ export function PnlCardPage() {
       })
       .catch((failure) => {
         if (!cancelled) {
-          toast.error(failure instanceof Error ? failure.message : String(failure))
+          toast.error(toMessage(failure))
         }
       })
 
@@ -155,7 +156,7 @@ export function PnlCardPage() {
       })
       .catch((failure) => {
         if (cancelled) return
-        const message = failure instanceof Error ? failure.message : String(failure)
+        const message = toMessage(failure)
         pnlCard.setRead({
           key: requestKey,
           version,
@@ -200,7 +201,7 @@ export function PnlCardPage() {
           pnlCard.markSaved(freshRead.at, quote.price)
         })
         .catch((failure: unknown) => {
-          toast.error(failure instanceof Error ? failure.message : String(failure))
+          toast.error(toMessage(failure))
         })
       return
     }
@@ -228,7 +229,7 @@ export function PnlCardPage() {
         // The read has been handled, so a remount must not try it again and
         // recreate a row the monthly page deleted. A re-check retries the save.
         pnlCard.markFailed(freshRead.at)
-        toast.error(failure instanceof Error ? failure.message : String(failure))
+        toast.error(toMessage(failure))
       })
   }, [freshRead, collection, addresses, quote.price, save])
 
@@ -280,7 +281,7 @@ export function PnlCardPage() {
       }
       pnlCard.bumpVersion()
     } catch (failure) {
-      toast.error(failure instanceof Error ? failure.message : String(failure))
+      toast.error(toMessage(failure))
     } finally {
       setRunning(false)
     }
@@ -329,7 +330,7 @@ export function PnlCardPage() {
         toast.success('Card saved to your Downloads folder')
       }
     } catch (failure) {
-      toast.error(failure instanceof Error ? failure.message : String(failure))
+      toast.error(toMessage(failure))
     } finally {
       setExporting(false)
     }
