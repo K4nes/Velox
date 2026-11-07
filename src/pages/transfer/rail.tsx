@@ -10,18 +10,13 @@ import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import type { TransferSelectionGroup } from '@/hooks/use-transfer-scan'
+import { shortAddress } from '@/lib/format'
 import type { TransferRunSummary } from '@/lib/transfer-run'
 import { destinationLabel } from '@/lib/transfer-plan'
 import type {
   DestinationResolution,
   TransferSelection,
 } from '@/lib/transfer-plan'
-
-function shortContract(contract: string): string {
-  return contract.length > 12
-    ? `${contract.slice(0, 6)}…${contract.slice(-4)}`
-    : contract
-}
 
 export function TransferRail({
   groups,
@@ -154,7 +149,7 @@ export function TransferRail({
                     {group.name}
                   </span>
                   <span className="text-muted-foreground truncate font-mono text-[11px]">
-                    {shortContract(group.contract)}
+                    {shortAddress(group.contract)}
                   </span>
                 </div>
                 <Badge variant="secondary">

@@ -1,6 +1,7 @@
 import { PackageOpen, Search } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 
+import { BodyMessage } from '@/components/body-message'
+import { RunStatusCell } from '@/components/run-status-cell'
 import { TokenImage } from '@/components/token-image'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -16,40 +17,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
+import { shortAddress } from '@/lib/format'
 import type { HeldToken } from '@/lib/holdings'
 import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listing-run'
 import type { RunStepState } from '@/lib/listing-run'
-import { cn } from '@/lib/utils'
-
-function shortAddress(address: string): string {
-  return address.length > 12
-    ? `${address.slice(0, 6)}…${address.slice(-4)}`
-    : address
-}
-
-function BodyMessage({
-  icon: Icon,
-  title,
-  description,
-  tone,
-}: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  tone?: string
-}) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <div className="flex flex-col items-center gap-1.5 p-8 text-center">
-        <Icon aria-hidden className={cn('size-6', tone ?? 'text-muted-foreground')} />
-        <p className="text-sm">{title}</p>
-        {description ? (
-          <p className="text-muted-foreground max-w-sm text-xs">{description}</p>
-        ) : null}
-      </div>
-    </div>
-  )
-}
 
 function StatusCell({ step }: { step: RunStepState | undefined }) {
   if (!step) {
@@ -62,30 +33,17 @@ function StatusCell({ step }: { step: RunStepState | undefined }) {
     step.status === 'submitting'
 
   return (
-    <div className="flex max-w-[240px] flex-col gap-0.5">
-      <span
-        className={cn(
-          'flex items-center gap-1.5 text-xs font-medium',
-          RUN_STEP_TONE[step.status]
-        )}
-      >
-        {live ? <Spinner aria-hidden className="size-3" /> : null}
-        {RUN_STEP_LABEL[step.status]}
-        {step.status === 'listed' && step.orderHash ? (
-          <span className="text-muted-foreground font-normal">
-            {`${step.orderHash.slice(0, 8)}…`}
-          </span>
-        ) : null}
-      </span>
-      {step.status === 'failed' ? (
-        <span
-          className="text-muted-foreground truncate text-xs"
-          title={step.error}
-        >
-          {step.error}
-        </span>
-      ) : null}
-    </div>
+    <RunStatusCell
+      tone={RUN_STEP_TONE[step.status]}
+      label={RUN_STEP_LABEL[step.status]}
+      live={live}
+      note={
+        step.status === 'listed' && step.orderHash
+          ? `${step.orderHash.slice(0, 8)}…`
+          : undefined
+      }
+      error={step.status === 'failed' ? step.error : undefined}
+    />
   )
 }
 

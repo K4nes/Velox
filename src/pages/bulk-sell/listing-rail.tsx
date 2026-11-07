@@ -1,5 +1,3 @@
-import { formatUnits } from 'viem'
-
 import { SummaryRow } from '@/components/summary-row'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,15 +11,10 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
+import { formatAmount } from '@/lib/format'
 import { listingDurationOptions } from '@/lib/listing-plan'
 import type { PlanFeeTotals } from '@/lib/listing-plan'
 import type { RunSummary } from '@/lib/listing-run'
-
-function formatAmount(amount: bigint, decimals: number): string {
-  const [whole, fraction] = formatUnits(amount, decimals).split('.')
-  const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
-  return trimmed ? `${whole}.${trimmed}` : whole
-}
 
 export function ListingRail({
   price,

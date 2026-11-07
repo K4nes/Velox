@@ -1,4 +1,3 @@
-import { formatUnits } from 'viem'
 import { Gavel, RefreshCw } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
@@ -8,26 +7,13 @@ import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import type { OffersState } from '@/hooks/use-collection-offers'
+import { formatAmount, formatExpiry } from '@/lib/format'
 import type {
   OfferLadder,
   SalesPlan,
 } from '@/lib/instant-sell'
 import type { SellRunSummary } from '@/lib/sell-run'
 import { cn } from '@/lib/utils'
-
-function formatAmount(amount: bigint, decimals: number): string {
-  const [whole, fraction] = formatUnits(amount, decimals).split('.')
-  const trimmed = (fraction ?? '').slice(0, 6).replace(/0+$/, '')
-  return trimmed ? `${whole}.${trimmed}` : whole
-}
-
-function formatExpiry(sec: number, now: number): string {
-  const diff = sec - now
-  if (diff <= 0) return 'expired'
-  if (diff >= 86_400) return `${Math.floor(diff / 86_400)}d`
-  if (diff >= 3_600) return `${Math.floor(diff / 3_600)}h`
-  return `${Math.max(1, Math.floor(diff / 60))}m`
-}
 
 function formatAge(sec: number, now: number): string {
   const diff = Math.max(0, now - sec)

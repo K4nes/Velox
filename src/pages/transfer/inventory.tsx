@@ -1,6 +1,7 @@
 import { PackageOpen, Search } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 
+import { BodyMessage } from '@/components/body-message'
+import { RunStatusCell } from '@/components/run-status-cell'
 import { TokenImage } from '@/components/token-image'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -17,39 +18,9 @@ import {
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import type { TransferScanRow } from '@/hooks/use-transfer-scan'
+import { shortAddress } from '@/lib/format'
 import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer-run'
 import type { TransferStepState } from '@/lib/transfer-run'
-import { cn } from '@/lib/utils'
-
-function shortAddress(address: string): string {
-  return address.length > 12
-    ? `${address.slice(0, 6)}…${address.slice(-4)}`
-    : address
-}
-
-function BodyMessage({
-  icon: Icon,
-  title,
-  description,
-  tone,
-}: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  tone?: string
-}) {
-  return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <div className="flex flex-col items-center gap-1.5 p-8 text-center">
-        <Icon aria-hidden className={cn('size-6', tone ?? 'text-muted-foreground')} />
-        <p className="text-sm">{title}</p>
-        {description ? (
-          <p className="text-muted-foreground max-w-sm text-xs">{description}</p>
-        ) : null}
-      </div>
-    </div>
-  )
-}
 
 function StatusCell({
   step,
@@ -70,30 +41,18 @@ function StatusCell({
   const txHash = 'txHash' in step ? step.txHash : null
 
   return (
-    <div className="flex max-w-[220px] flex-col gap-0.5">
-      <span
-        className={cn(
-          'flex items-center gap-1.5 text-xs font-medium',
-          TRANSFER_STEP_TONE[step.status]
-        )}
-      >
-        {live ? <Spinner aria-hidden className="size-3" /> : null}
-        {TRANSFER_STEP_LABEL[step.status]}
-        {txHash ? (
-          <span className="text-muted-foreground font-normal">
-            {`${txHash.slice(0, 8)}…`}
-          </span>
-        ) : null}
-      </span>
-      {step.status === 'failed' || step.status === 'unknown' ? (
-        <span
-          className="text-muted-foreground truncate text-xs"
-          title={step.error}
-        >
-          {step.error}
-        </span>
-      ) : null}
-    </div>
+    <RunStatusCell
+      className="max-w-[220px]"
+      tone={TRANSFER_STEP_TONE[step.status]}
+      label={TRANSFER_STEP_LABEL[step.status]}
+      live={live}
+      note={txHash ? `${txHash.slice(0, 8)}…` : undefined}
+      error={
+        step.status === 'failed' || step.status === 'unknown'
+          ? step.error
+          : undefined
+      }
+    />
   )
 }
 
