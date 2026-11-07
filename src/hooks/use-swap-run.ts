@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
 import type { SwapBatch } from '@/lib/swap-batch'
-import { specKey } from '@/lib/swap-spec'
 import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
 import type {
   SwapRunProgress,
@@ -19,6 +18,7 @@ export function useSwapRun(input: {
   running: boolean
   error: string | null
   summary: SwapRunSummary | null
+  receivedTo: SwapRunProgress['to'] | null
   states: Map<string, SwapWalletState>
   start: () => Promise<void>
 } {
@@ -26,23 +26,12 @@ export function useSwapRun(input: {
   const { setError } = gate
   const [progress, setProgress] = useState<SwapRunProgress | null>(null)
 
-  const batchKey = input.batch
-    ? specKey(
-        input.batch.spec,
-        input.batch.jobs.map((job) => job.walletId)
-      )
-    : null
-
-  useEffect(() => {
-    setProgress(null)
-    setError(null)
-  }, [batchKey, setError])
-
   const summary = useMemo(
     () => (progress ? summarizeSwapRun(progress) : null),
     [progress]
   )
   const states = useMemo(() => walletStates(progress), [progress])
+  const receivedTo = progress?.to ?? null
 
   async function start() {
     const batch = input.batch
@@ -51,7 +40,7 @@ export function useSwapRun(input: {
     const session = await gate.begin()
     if (!session) return
 
-    const { slot, live } = session
+    const { live, shouldAbort } = session
     const publish = (next: SwapRunProgress) => {
       if (live()) setProgress(next)
     }
@@ -64,7 +53,7 @@ export function useSwapRun(input: {
         batch,
         wallets,
         onProgress: publish,
-        shouldAbort: () => slot.aborted,
+        shouldAbort,
       })
 
       if (!live()) return
@@ -116,6 +105,7 @@ export function useSwapRun(input: {
     running: gate.running,
     error: gate.error,
     summary,
+    receivedTo,
     states,
     start,
   }

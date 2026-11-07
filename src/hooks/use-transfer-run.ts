@@ -155,7 +155,7 @@ export function useTransferRun(input: {
     const session = await gate.begin()
     if (!session) return
 
-    const { slot, live } = session
+    const { live, shouldAbort } = session
     const publish = (next: TransferRunProgress) => {
       if (!live()) return
       setProgress(next)
@@ -192,7 +192,7 @@ export function useTransferRun(input: {
         plan,
         wallets: records,
         onProgress: publish,
-        shouldAbort: () => slot.aborted,
+        shouldAbort,
       })
 
       if (!live()) return

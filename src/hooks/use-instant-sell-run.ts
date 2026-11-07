@@ -45,7 +45,7 @@ export function useInstantSellRun(input: {
     const session = await gate.begin()
     if (!session) return
 
-    const { slot, live } = session
+    const { live, shouldAbort } = session
     const publish = (next: SellRunProgress) => {
       if (live()) setProgress(next)
     }
@@ -58,7 +58,7 @@ export function useInstantSellRun(input: {
         targets,
         wallets,
         onProgress: publish,
-        shouldAbort: () => slot.aborted,
+        shouldAbort,
       })
 
       if (!live()) return

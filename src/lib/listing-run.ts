@@ -2,6 +2,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
 import { submitListingOrder } from '@/lib/opensea'
+import { stepById, withStep } from '@/lib/run-progress'
 import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/tx'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
@@ -137,16 +138,8 @@ export async function runListingPlan(input: {
     }
   }
 
-  const stateOf = (id: string): RunStepState | null =>
-    progress.steps.find((step) => step.id === id) ?? null
-
   function commit(step: RunStepState) {
-    progress = {
-      ...progress,
-      steps: progress.steps.map((current) =>
-        current.id === step.id ? step : current
-      ),
-    }
+    progress = withStep(progress, step)
     input.onProgress?.(progress)
   }
 
@@ -168,7 +161,7 @@ export async function runListingPlan(input: {
       // A stored key that no longer parses fails this wallet, not the whole run.
       const message = failureMessage(error)
       for (const step of planned.steps) {
-        const current = stateOf(step.id)
+        const current = stepById(progress, step.id)
         if (current) commit(failStep(current, message))
       }
       return
@@ -180,7 +173,7 @@ export async function runListingPlan(input: {
     if (account.address.toLowerCase() !== planned.address) {
       const message = `Stored key signs as ${account.address}, not ${planned.address}`
       for (const step of planned.steps) {
-        const current = stateOf(step.id)
+        const current = stepById(progress, step.id)
         if (current) commit(failStep(current, message))
       }
       return
@@ -189,7 +182,7 @@ export async function runListingPlan(input: {
     for (const approval of approvals) {
       if (input.shouldAbort?.()) return
 
-      const current = stateOf(approval.id)
+      const current = stepById(progress, approval.id)
       if (!current || current.kind !== 'approval') continue
       commit({ ...current, status: 'approving' })
 
@@ -211,13 +204,13 @@ export async function runListingPlan(input: {
         }
       } catch (error) {
         const message = failureMessage(error)
-        const failedApproval = stateOf(approval.id)
+        const failedApproval = stepById(progress, approval.id)
         if (failedApproval) {
           commit(failStep(failedApproval, message))
         }
 
         for (const order of orders) {
-          const orderStep = stateOf(order.id)
+          const orderStep = stepById(progress, order.id)
           if (orderStep) {
             commit(failStep(orderStep, `Approval failed — ${message}`))
           }
@@ -226,7 +219,7 @@ export async function runListingPlan(input: {
       }
 
       // The approval is done; its orders still have to be signed.
-      const approved = stateOf(approval.id)
+      const approved = stepById(progress, approval.id)
       if (approved?.kind === 'approval') {
         commit({ ...approved, status: 'approved' })
       }
@@ -235,7 +228,7 @@ export async function runListingPlan(input: {
     for (const order of orders) {
       if (input.shouldAbort?.()) return
 
-      const signing = stateOf(order.id)
+      const signing = stepById(progress, order.id)
       if (!signing || signing.kind !== 'order') continue
       commit({ ...signing, status: 'signing' })
 
@@ -244,7 +237,7 @@ export async function runListingPlan(input: {
 
         if (input.shouldAbort?.()) return
 
-        const submitting = stateOf(order.id)
+        const submitting = stepById(progress, order.id)
         if (submitting?.kind === 'order') {
           commit({ ...submitting, status: 'submitting' })
         }
@@ -256,12 +249,12 @@ export async function runListingPlan(input: {
           signature,
         })
 
-        const done = stateOf(order.id)
+        const done = stepById(progress, order.id)
         if (done?.kind === 'order') {
           commit({ ...done, status: 'listed', orderHash })
         }
       } catch (error) {
-        const currentOrder = stateOf(order.id)
+        const currentOrder = stepById(progress, order.id)
         if (currentOrder) {
           commit(failStep(currentOrder, failureMessage(error)))
         }

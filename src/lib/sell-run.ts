@@ -8,6 +8,7 @@ import {
 import { buildFulfillmentCall } from '@/lib/fulfillment'
 import type { SellTarget } from '@/lib/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea'
+import { stepById, withStep } from '@/lib/run-progress'
 import { sendTransaction, waitForReceipt } from '@/lib/tx'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
@@ -123,22 +124,14 @@ export async function runSellTargets(input: {
     }
   }
 
-  const stateOf = (key: string): SellStepState | null =>
-    progress.steps.find((step) => step.id === key) ?? null
-
   function commit(step: SellStepState) {
-    progress = {
-      ...progress,
-      steps: progress.steps.map((current) =>
-        current.id === step.id ? step : current
-      ),
-    }
+    progress = withStep(progress, step)
     input.onProgress?.(progress)
   }
 
   function failAll(targets: readonly SellTarget[], message: string) {
     for (const target of targets) {
-      const current = stateOf(target.key)
+      const current = stepById(progress, target.key)
       if (current) commit({ ...current, status: 'failed', error: message })
     }
   }
@@ -180,7 +173,7 @@ export async function runSellTargets(input: {
       if (input.shouldAbort?.()) return
 
       if (target.offer.expiresAtSec <= Math.floor(Date.now() / 1000)) {
-        const expired = stateOf(target.key)
+        const expired = stepById(progress, target.key)
         if (expired) {
           commit({
             ...expired,
@@ -191,7 +184,7 @@ export async function runSellTargets(input: {
         continue
       }
 
-      const preparing = stateOf(target.key)
+      const preparing = stepById(progress, target.key)
       if (!preparing) continue
       commit({ ...preparing, status: 'preparing' })
 
@@ -224,7 +217,7 @@ export async function runSellTargets(input: {
           fulfillerConduitKey: call.fulfillerConduitKey,
           cache,
           onApproving: () => {
-            const approving = stateOf(target.key)
+            const approving = stepById(progress, target.key)
             if (approving) commit({ ...approving, status: 'approving' })
           },
           shouldAbort: input.shouldAbort,
@@ -232,7 +225,7 @@ export async function runSellTargets(input: {
 
         if (input.shouldAbort?.()) return
 
-        const sending = stateOf(target.key)
+        const sending = stepById(progress, target.key)
         if (!sending) return
         commit({ ...sending, status: 'sending' })
 
@@ -245,7 +238,7 @@ export async function runSellTargets(input: {
           shouldAbort: input.shouldAbort,
         })
 
-        const confirming = stateOf(target.key)
+        const confirming = stepById(progress, target.key)
         if (confirming) {
           commit({ ...confirming, status: 'confirming', txHash: sent.txHash })
         }
@@ -255,11 +248,11 @@ export async function runSellTargets(input: {
           throw new Error('Transaction reverted')
         }
 
-        const sold = stateOf(target.key)
+        const sold = stepById(progress, target.key)
         if (sold) commit({ ...sold, status: 'sold', txHash: sent.txHash })
       } catch (error) {
         if (input.shouldAbort?.()) return
-        const failed = stateOf(target.key)
+        const failed = stepById(progress, target.key)
         if (failed) {
           commit({ ...failed, status: 'failed', error: failureMessage(error) })
         }

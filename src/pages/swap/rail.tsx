@@ -31,6 +31,7 @@ export function SwapRail({
   batch,
   preview,
   summary,
+  receivedTo,
   error,
   blockedReason,
   running,
@@ -41,6 +42,7 @@ export function SwapRail({
   batch: SwapBatch | null
   preview: SwapPreview | null
   summary: SwapRunSummary | null
+  receivedTo: SwapSpec['to'] | null
   error: string | null
   blockedReason: string | null
   running: boolean
@@ -102,9 +104,9 @@ export function SwapRail({
                   {counters.join(' · ')}
                 </p>
               ) : null}
-              {summary.received > 0n ? (
+              {receivedTo && summary.received > 0n ? (
                 <p className="text-muted-foreground text-xs tabular-nums">
-                  {`≈ ${formatSwapAmount(summary.received, spec.to.decimals)} ${spec.to.symbol} quoted`}
+                  {`≈ ${formatSwapAmount(summary.received, receivedTo.decimals)} ${receivedTo.symbol} quoted`}
                 </p>
               ) : null}
             </div>
