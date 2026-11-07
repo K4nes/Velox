@@ -1,3 +1,4 @@
+import { chainBySlug } from '@/config/chains'
 import type {
   ConsiderationItem,
   OrderComponentsLeaf,
@@ -191,6 +192,26 @@ export function assembleOfferBook(input: {
   }
 }
 
+// An offer is live until its expiry second passes. The plan and the page's clock
+// both read this predicate, so they cannot disagree about which offers are live.
+function liveOffers(
+  ladder: OfferLadder | null,
+  nowSec: number
+): readonly CollectionOffer[] {
+  return ladder?.offers.filter((offer) => offer.expiresAtSec > nowSec) ?? []
+}
+
+export function nextOfferExpirySec(
+  ladder: OfferLadder | null,
+  nowSec: number
+): number | null {
+  let next: number | null = null
+  for (const offer of liveOffers(ladder, nowSec)) {
+    if (next === null || offer.expiresAtSec < next) next = offer.expiresAtSec
+  }
+  return next
+}
+
 export function planSales(input: {
   selected: readonly ListingToken[]
   ladder: OfferLadder | null
@@ -199,9 +220,7 @@ export function planSales(input: {
   const selected = [...input.selected].sort((a, b) =>
     a.key < b.key ? -1 : a.key > b.key ? 1 : 0
   )
-  const offers =
-    input.ladder?.offers.filter((offer) => offer.expiresAtSec > input.nowSec) ??
-    []
+  const offers = liveOffers(input.ladder, input.nowSec)
 
   if (offers.length === 0) {
     const uncovered = new Map<string, UncoveredReason>()
@@ -265,4 +284,32 @@ export function planSales(input: {
         ? Math.min(...targets.map((target) => target.offer.expiresAtSec))
         : null,
   }
+}
+
+export function explainSalesBlockers(input: {
+  collection: { chain: string } | null
+  offers: {
+    status: 'idle' | 'loading' | 'ready' | 'failed'
+    book: OfferBook | null
+  }
+  ladder: OfferLadder | null
+  selected: readonly ListingToken[]
+  plan: SalesPlan
+}): string | null {
+  if (input.collection === null) return 'Scan a collection to load bids'
+  if (chainBySlug(input.collection.chain) === undefined) {
+    return 'Chain not supported'
+  }
+  if (input.offers.status === 'loading' && input.offers.book === null) {
+    return 'Loading offers…'
+  }
+  if (input.offers.status === 'failed' && input.offers.book === null) {
+    return 'Offers could not be loaded — refresh'
+  }
+  if (input.ladder === null) return 'No active collection offers'
+  if (input.selected.length === 0) return 'Select at least one token'
+  if (input.plan.targets.length === 0) {
+    return 'None of the selected tokens has a bid'
+  }
+  return null
 }

@@ -89,6 +89,15 @@ export function PnlCardPage() {
     void pnlCard.loadQuote()
   }, [])
 
+  // The card renders no USD figure when the price read failed, so the reason has
+  // to reach the operator; the data having no value looks identical otherwise.
+  useEffect(() => {
+    if (quote.error === null) return
+    toast.error(`The card has no USD figure: ${quote.error}`, {
+      id: 'pnl-price-error',
+    })
+  }, [quote.error])
+
   // A re-check of the same collection keeps the same request key, so the version
   // is what makes the chain read happen again. A remount finds the answer still
   // in the store and skips the read entirely.

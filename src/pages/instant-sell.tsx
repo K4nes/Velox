@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Scan } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -6,12 +6,15 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
-import { chainBySlug } from '@/config/chains'
 import { useBulkSellScan } from '@/hooks/use-bulk-sell-scan'
 import { useCollectionOffers } from '@/hooks/use-collection-offers'
 import { useInstantSellRun } from '@/hooks/use-instant-sell-run'
 import { useWalletGroups } from '@/hooks/use-wallets'
-import { planSales } from '@/lib/instant-sell'
+import {
+  explainSalesBlockers,
+  nextOfferExpirySec,
+  planSales,
+} from '@/lib/instant-sell'
 import type { SellStepState } from '@/lib/sell-run'
 import { sellStepsByToken } from '@/lib/sell-run'
 import { Inventory } from '@/pages/instant-sell/inventory'
@@ -19,6 +22,13 @@ import type { InventoryRow } from '@/pages/instant-sell/inventory'
 import { SellRail } from '@/pages/instant-sell/sell-rail'
 
 const NO_STEPS = new Map<string, SellStepState>()
+
+// setTimeout saturates above 2^31-1 ms and would then fire at once.
+const MAX_TIMER_MS = 2_147_000_000
+
+function currentSecond(): number {
+  return Math.floor(Date.now() / 1000)
+}
 
 export function InstantSellPage() {
   const scan = useBulkSellScan()
@@ -29,14 +39,30 @@ export function InstantSellPage() {
   })
   const { groups } = useWalletGroups()
 
+  // One clock for the plan, advanced only when an offer stops being live: the
+  // plan cannot then count an offer the rail has run out by. A periodic tick
+  // would re-render the table through the minutes in between for nothing.
+  const [nowSec, setNowSec] = useState(currentSecond)
+  const nextExpirySec = nextOfferExpirySec(offers.ladder, nowSec)
+
+  useEffect(() => {
+    if (nextExpirySec === null) return
+    const delay = Math.min(nextExpirySec * 1000 - Date.now(), MAX_TIMER_MS)
+    const timer = window.setTimeout(
+      () => setNowSec(currentSecond()),
+      Math.max(delay, 0)
+    )
+    return () => window.clearTimeout(timer)
+  }, [nextExpirySec])
+
   const plan = useMemo(
     () =>
       planSales({
         selected: scan.selection,
         ladder: offers.ladder,
-        nowSec: Math.floor(Date.now() / 1000),
+        nowSec,
       }),
-    [scan.selection, offers.ladder]
+    [scan.selection, offers.ladder, nowSec]
   )
 
   const statuses = useMemo(
@@ -112,25 +138,16 @@ export function InstantSellPage() {
     )
   }
 
-  const chainSupported = scan.collection
-    ? chainBySlug(scan.collection.chain) !== undefined
-    : true
-
-  const blockedReason = !scan.collection
-    ? 'Scan a collection to load bids'
-    : !chainSupported
-      ? 'Chain not supported'
-      : offersState.status === 'loading' && offersState.book === null
-        ? 'Loading offers…'
-        : offersState.status === 'failed' && offersState.book === null
-          ? 'Offers could not be loaded — refresh'
-          : !offers.ladder
-            ? 'No active collection offers'
-            : scan.selection.length === 0
-              ? 'Select at least one token'
-              : plan.targets.length === 0
-                ? 'None of the selected tokens has a bid'
-                : null
+  const blockedReason = explainSalesBlockers({
+    collection: scan.collection,
+    offers: {
+      status: offersState.status,
+      book: offersState.status === 'idle' ? null : offersState.book,
+    },
+    ladder: offers.ladder,
+    selected: scan.selection,
+    plan,
+  })
 
   function check() {
     run.reset()
