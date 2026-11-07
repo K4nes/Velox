@@ -57,6 +57,8 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
 
     runningRef.current = true
     const run = read.open()
+    setRunning(true)
+    setError(null)
 
     try {
       const target = await resolveScanTarget(url, selectedWallets)
@@ -66,8 +68,6 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
         return
       }
 
-      setRunning(true)
-      setError(null)
       const result = await checkEligibility(target.slug, target.wallets)
       if (!run.live()) return
       setChecked(buildSnapshotPayload(result, target.slug, marketplace))
