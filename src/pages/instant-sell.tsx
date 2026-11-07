@@ -39,9 +39,10 @@ export function InstantSellPage() {
   })
   const { groups } = useWalletGroups()
 
-  // One clock for the plan, advanced only when an offer stops being live: the
-  // plan cannot then count an offer the rail has run out by. A periodic tick
-  // would re-render the table through the minutes in between for nothing.
+  // One clock for the plan, advanced when an offer stops being live: a periodic
+  // tick would re-render the table through the minutes in between for nothing.
+  // The clock is a dependency too, because a fire under the timer's cap leaves
+  // the next expiry unchanged and still has to arm the rest of the wait.
   const [nowSec, setNowSec] = useState(currentSecond)
   const nextExpirySec = nextOfferExpirySec(offers.ladder, nowSec)
 
@@ -53,7 +54,7 @@ export function InstantSellPage() {
       Math.max(delay, 0)
     )
     return () => window.clearTimeout(timer)
-  }, [nextExpirySec])
+  }, [nextExpirySec, nowSec])
 
   const plan = useMemo(
     () =>
