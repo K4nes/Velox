@@ -65,9 +65,11 @@ export async function getEligibilityToken(
   })
 }
 
-// One OpenSea call per wallet, and the loop is already serial because each
-// wallet awaits its own. The pause spaces consecutive eligibility calls so a
-// long wallet list does not fire them back to back.
+// Every wallet signs in and then calls OpenSea, and all of those calls spend the
+// same key pool that opensea.ts rotates when one is rate limited. 250 ms is a
+// conservative floor, not a published number: the provider's per-key limit is
+// not recorded anywhere in this repo, so the spacing only has to stop a long
+// wallet list from firing provider calls back to back.
 const ELIGIBILITY_WALLET_SPACING_MS = 250
 
 export async function checkWalletEligibility(

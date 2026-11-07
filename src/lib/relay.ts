@@ -65,7 +65,6 @@ const INDEX_PATH = '/transactions/index'
 const POLL_INTERVAL_MS = 4_000
 const POLL_BUDGET_MS = 150_000
 const INDEX_ATTEMPTS = 2
-const INDEX_RETRY_WAIT_MS = 1_000
 
 function unexpected(message: string): RelayError {
   return new RelayError(message, { code: 'unexpected-response' })
@@ -409,9 +408,7 @@ export async function notifyIndexer(input: {
     } catch (error) {
       lastError = error
       if (attempt + 1 < INDEX_ATTEMPTS) {
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, INDEX_RETRY_WAIT_MS)
-        )
+        await new Promise<void>((resolve) => setTimeout(resolve, 1_000))
       }
     }
   }
