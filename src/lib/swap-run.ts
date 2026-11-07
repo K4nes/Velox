@@ -12,6 +12,7 @@ import type {
   SwapTxStep,
 } from '@/lib/relay'
 import type { SwapBatch, SwapBatchJob } from '@/lib/swap-batch'
+import { withStep } from '@/lib/run-progress'
 import {
   BroadcastError,
   WALLET_CONCURRENCY,
@@ -37,7 +38,7 @@ export type SwapWalletStatus =
   | 'skipped'
 
 export type SwapWalletState = {
-  readonly walletId: string
+  readonly id: string
   readonly label: string
   readonly address: `0x${string}`
   readonly amount: bigint | null
@@ -78,7 +79,7 @@ export type SwapWalletState = {
   | { readonly status: 'skipped'; readonly reason: string }
 )
 
-export type SwapRunProgress = { readonly states: readonly SwapWalletState[] }
+export type SwapRunProgress = { readonly steps: readonly SwapWalletState[] }
 
 export type SwapRunOutcome = {
   readonly progress: SwapRunProgress
@@ -141,7 +142,6 @@ async function broadcastStep(input: {
 
 type SettleEntry = {
   job: SwapBatchJob
-  index: number
   sent: Broadcast
   quote: SwapQuote
   step: SwapTxStep
@@ -156,16 +156,16 @@ export async function runSwapPlan(input: {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.id, wallet] as const)
   )
-  const entries = input.batch.jobs.map((job, index) => ({ job, index }))
 
-  let states: readonly SwapWalletState[] = input.batch.jobs.map((job) => ({
-    walletId: job.walletId,
-    label: job.label,
-    address: job.address,
-    amount: job.amount,
-    status: 'queued' as const,
-  }))
-  let progress: SwapRunProgress = { states }
+  let progress: SwapRunProgress = {
+    steps: input.batch.jobs.map((job) => ({
+      id: job.walletId,
+      label: job.label,
+      address: job.address,
+      amount: job.amount,
+      status: 'queued' as const,
+    })),
+  }
   const emit = () => input.onProgress?.(progress)
 
   emit()
@@ -185,23 +185,20 @@ export async function runSwapPlan(input: {
   const symbol = input.batch.spec.from.symbol
 
   const base = (job: SwapBatchJob) => ({
-    walletId: job.walletId,
+    id: job.walletId,
     label: job.label,
     address: job.address,
     amount: job.amount,
   })
 
-  const commit = (index: number, state: SwapWalletState) => {
-    states = states.map((current, position) =>
-      position === index ? state : current
-    )
-    progress = { states }
+  const commit = (state: SwapWalletState) => {
+    progress = withStep(progress, state)
     emit()
   }
 
   const settle: SettleEntry[] = []
 
-  async function runJob(job: SwapBatchJob, index: number): Promise<void> {
+  async function runJob(job: SwapBatchJob): Promise<void> {
     const record = records.get(job.walletId)
     if (!record) return
 
@@ -209,7 +206,7 @@ export async function runSwapPlan(input: {
     try {
       account = privateKeyToAccount(toPrivateKeyHex(record.privateKey))
     } catch (error) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: failureMessage(error),
@@ -219,7 +216,7 @@ export async function runSwapPlan(input: {
     }
 
     if (account.address.toLowerCase() !== job.address.toLowerCase()) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: `Stored key signs as ${account.address}, not ${job.address}`,
@@ -229,7 +226,7 @@ export async function runSwapPlan(input: {
     }
 
     if (job.amount === null) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: `Balance of ${symbol} could not be read`,
@@ -238,7 +235,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (job.amount === 0n) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'skipped',
         reason: 'Amount is zero',
@@ -246,7 +243,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (job.available !== null && job.amount > job.available) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'skipped',
         reason: `Insufficient ${symbol}`,
@@ -255,7 +252,7 @@ export async function runSwapPlan(input: {
     }
     if (input.shouldAbort?.()) return
 
-    commit(index, { ...base(job), status: 'quoting' })
+    commit({ ...base(job), status: 'quoting' })
 
     let quote: SwapQuote
     try {
@@ -265,7 +262,7 @@ export async function runSwapPlan(input: {
         amount: job.amount,
       })
     } catch (error) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: failureMessage(error),
@@ -277,7 +274,7 @@ export async function runSwapPlan(input: {
     for (const step of quote.steps) {
       if (step.purpose !== 'approve') continue
 
-      commit(index, { ...base(job), status: 'signing', step: step.label })
+      commit({ ...base(job), status: 'signing', step: step.label })
 
       let sent: Broadcast
       try {
@@ -288,9 +285,9 @@ export async function runSwapPlan(input: {
         })
       } catch (error) {
         if (input.shouldAbort?.()) {
-          commit(index, { ...base(job), status: 'queued' })
+          commit({ ...base(job), status: 'queued' })
         } else {
-          commit(index, {
+          commit({
             ...base(job),
             status: 'failed',
             error: failureMessage(error),
@@ -300,7 +297,7 @@ export async function runSwapPlan(input: {
         return
       }
 
-      commit(index, {
+      commit({
         ...base(job),
         status: 'confirming',
         step: step.label,
@@ -321,7 +318,7 @@ export async function runSwapPlan(input: {
 
       if (outcome.status === 'success') continue
       if (outcome.status === 'reverted') {
-        commit(index, {
+        commit({
           ...base(job),
           status: 'failed',
           error: 'Approval reverted',
@@ -331,7 +328,7 @@ export async function runSwapPlan(input: {
       }
 
       // Without a confirmed allowance the swap can only revert and burn gas.
-      commit(index, {
+      commit({
         ...base(job),
         status: 'unconfirmed',
         tx: sent.ref,
@@ -342,7 +339,7 @@ export async function runSwapPlan(input: {
 
     const execute = quote.steps.find((step) => step.purpose === 'execute')
     if (!execute) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: 'Relay quote has no transaction to send',
@@ -351,7 +348,7 @@ export async function runSwapPlan(input: {
       return
     }
 
-    commit(index, { ...base(job), status: 'signing', step: execute.label })
+    commit({ ...base(job), status: 'signing', step: execute.label })
 
     let sent: Broadcast
     try {
@@ -362,9 +359,9 @@ export async function runSwapPlan(input: {
       })
     } catch (error) {
       if (input.shouldAbort?.()) {
-        commit(index, { ...base(job), status: 'queued' })
+        commit({ ...base(job), status: 'queued' })
       } else {
-        commit(index, {
+        commit({
           ...base(job),
           status: 'failed',
           error: failureMessage(error),
@@ -374,24 +371,24 @@ export async function runSwapPlan(input: {
       return
     }
 
-    commit(index, {
+    commit({
       ...base(job),
       status: 'confirming',
       step: execute.label,
       tx: sent.ref,
     })
 
-    settle.push({ job, index, sent, quote, step: execute })
+    settle.push({ job, sent, quote, step: execute })
   }
 
-  await mapLimit(entries, WALLET_CONCURRENCY, async (entry) => {
+  await mapLimit(input.batch.jobs, WALLET_CONCURRENCY, async (job) => {
     if (input.shouldAbort?.()) return
-    await runJob(entry.job, entry.index)
+    await runJob(job)
   })
 
   // Abort stops future sends only. Every hash the network has seen is awaited.
   await mapLimit(settle, SETTLE_CONCURRENCY, async (entry) => {
-    const { job, index, sent, quote, step } = entry
+    const { job, sent, quote, step } = entry
 
     const outcome = await waitForReceiptOutcome(
       step.tx.chain,
@@ -406,7 +403,7 @@ export async function runSwapPlan(input: {
     )
 
     if (outcome.status === 'reverted') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: 'Transaction reverted',
@@ -415,7 +412,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (outcome.status === 'replaced') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'unconfirmed',
         tx: sent.ref,
@@ -425,7 +422,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (outcome.status === 'unresolved') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'unconfirmed',
         tx: sent.ref,
@@ -453,7 +450,7 @@ export async function runSwapPlan(input: {
     }
 
     if (!step.awaitsStatus) {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'done',
         tx: sent.ref,
@@ -466,7 +463,7 @@ export async function runSwapPlan(input: {
       ? `Indexer notification failed: ${indexError}`
       : null
 
-    commit(index, {
+    commit({
       ...base(job),
       status: 'waiting',
       tx: sent.ref,
@@ -479,7 +476,7 @@ export async function runSwapPlan(input: {
     })
 
     if (status.kind === 'success') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'done',
         tx: sent.ref,
@@ -488,7 +485,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (status.kind === 'refund') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'refunded',
         tx: sent.ref,
@@ -497,7 +494,7 @@ export async function runSwapPlan(input: {
       return
     }
     if (status.kind === 'stuck') {
-      commit(index, {
+      commit({
         ...base(job),
         status: 'failed',
         error: `Refund will not be automatic: ${status.reason}`,
@@ -507,7 +504,7 @@ export async function runSwapPlan(input: {
     }
     if (status.kind === 'timeout') {
       const unsettled = 'Relay has not settled this request yet'
-      commit(index, {
+      commit({
         ...base(job),
         status: 'waiting',
         tx: sent.ref,
@@ -516,7 +513,7 @@ export async function runSwapPlan(input: {
     }
     if (status.kind === 'pending') {
       const unwatched = 'Settlement not watched after the run stopped'
-      commit(index, {
+      commit({
         ...base(job),
         status: 'waiting',
         tx: sent.ref,
@@ -570,7 +567,7 @@ export function walletStates(
   progress: SwapRunProgress | null
 ): Map<string, SwapWalletState> {
   return new Map(
-    (progress?.states ?? []).map((state) => [state.walletId, state] as const)
+    (progress?.steps ?? []).map((state) => [state.id, state] as const)
   )
 }
 
@@ -586,7 +583,7 @@ export function summarizeSwapRun(progress: SwapRunProgress): SwapRunSummary {
     received: 0n,
   }
 
-  for (const state of progress.states) {
+  for (const state of progress.steps) {
     summary.total += 1
     switch (state.status) {
       case 'queued':

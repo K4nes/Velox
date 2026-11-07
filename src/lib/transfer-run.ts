@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
+import { stepById, withStep } from '@/lib/run-progress'
 import {
   BroadcastError,
   WALLET_CONCURRENCY,
@@ -116,21 +117,14 @@ export async function runTransferPlan(input: {
     return { progress, error: `Chain not supported: ${input.plan.chain}` }
   }
 
-  const stateOf = (id: string): TransferStepState | null =>
-    progress.steps.find((step) => step.id === id) ?? null
-
   function commit(step: TransferStepState) {
-    progress = {
-      steps: progress.steps.map((current) =>
-        current.id === step.id ? step : current
-      ),
-    }
+    progress = withStep(progress, step)
     input.onProgress?.(progress)
   }
 
   function failWallet(planned: PlannedTransferWallet, message: string) {
     for (const transfer of planned.transfers) {
-      const current = stateOf(transfer.id)
+      const current = stepById(progress, transfer.id)
       if (current) {
         commit({ ...current, status: 'failed', error: message, txHash: null })
       }
@@ -171,7 +165,7 @@ export async function runTransferPlan(input: {
     for (const transfer of planned.transfers) {
       if (input.shouldAbort?.()) break
 
-      const signing = stateOf(transfer.id)
+      const signing = stepById(progress, transfer.id)
       if (!signing) continue
       commit({ ...signing, status: 'signing' })
 
@@ -195,7 +189,7 @@ export async function runTransferPlan(input: {
           data: transfer.data,
         })
 
-        const confirming = stateOf(transfer.id)
+        const confirming = stepById(progress, transfer.id)
         if (confirming) {
           commit({ ...confirming, status: 'confirming', txHash: sent.txHash })
         }
@@ -209,14 +203,14 @@ export async function runTransferPlan(input: {
             to: transfer.contract,
             data: transfer.data,
           })
-          const confirming = stateOf(transfer.id)
+          const confirming = stepById(progress, transfer.id)
           if (confirming) {
             commit({ ...confirming, status: 'confirming', txHash: error.txHash })
           }
           continue
         }
 
-        const current = stateOf(transfer.id)
+        const current = stepById(progress, transfer.id)
         // The abort check inside `sendTransaction` runs before broadcast, so a
         // row stopped there never left the queue.
         if (input.shouldAbort?.()) {
@@ -237,7 +231,7 @@ export async function runTransferPlan(input: {
     // Every hash already broadcast is awaited to its receipt: the run aborts
     // future sends, never a transaction the network has seen.
     await mapLimit(broadcast, RECEIPT_CONCURRENCY, async (pending) => {
-      const current = stateOf(pending.id)
+      const current = stepById(progress, pending.id)
       if (!current || current.status !== 'confirming') return
 
       const outcome = await waitForReceiptOutcome(

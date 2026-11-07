@@ -86,7 +86,7 @@ export function useListingRun(input: {
     const session = await gate.begin()
     if (!session) return
 
-    const { slot, live } = session
+    const { live, shouldAbort } = session
     const publish = (next: ListingRunProgress) => {
       if (live()) setProgress(next)
     }
@@ -153,7 +153,7 @@ export function useListingRun(input: {
         plan,
         wallets,
         onProgress: publish,
-        shouldAbort: () => slot.aborted,
+        shouldAbort,
       })
 
       if (!live()) return

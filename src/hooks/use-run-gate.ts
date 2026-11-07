@@ -10,8 +10,8 @@ import {
 import type { RunKind, RunSlot } from '@/lib/run-slot'
 
 export type RunSession = {
-  slot: RunSlot
   live: () => boolean
+  shouldAbort: () => boolean
   end: () => void
 }
 
@@ -75,8 +75,8 @@ export function useRunGate(kind: RunKind): {
     setError(null)
 
     return {
-      slot,
       live,
+      shouldAbort: () => slot.aborted,
       end: () => {
         releaseRunSlot(slot)
         if (slotRef.current === slot) slotRef.current = null
