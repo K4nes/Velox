@@ -53,13 +53,13 @@ export function AppSidebar() {
                     <Collapsible
                       key={item.title}
                       asChild
-                      defaultOpen={pathname.startsWith(item.to)}
+                      defaultOpen={pathname.startsWith(item.prefix)}
                       className="group/collapsible"
                     >
                       <SidebarMenuItem>
                         <CollapsibleTrigger asChild>
                           <SidebarMenuButton
-                            isActive={pathname.startsWith(item.to)}
+                            isActive={pathname.startsWith(item.prefix)}
                             tooltip={item.title}
                           >
                             <item.icon />
@@ -73,7 +73,7 @@ export function AppSidebar() {
                               <SidebarMenuSubItem key={child.title}>
                                 <SidebarMenuSubButton
                                   asChild
-                                  isActive={pathname === child.to}
+                                  isActive={pathname.startsWith(child.to)}
                                 >
                                   <NavLink to={child.to}>
                                     <child.icon />
@@ -90,7 +90,7 @@ export function AppSidebar() {
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         asChild
-                        isActive={pathname === item.to}
+                        isActive={pathname.startsWith(item.to)}
                         tooltip={item.title}
                       >
                         <NavLink to={item.to}>
