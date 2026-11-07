@@ -10,10 +10,10 @@ export function stepById<S extends { id: string }>(
   return progress.steps.find((step) => step.id === id) ?? null
 }
 
-export function withStep<S extends { id: string }, P extends RunSteps<S>>(
-  progress: P,
-  step: S
-): P {
+export function withStep<
+  P extends RunSteps<{ id: string }>,
+  S extends P['steps'][number],
+>(progress: P, step: S): P {
   const steps = progress.steps.map((current) =>
     current.id === step.id ? step : current
   )
