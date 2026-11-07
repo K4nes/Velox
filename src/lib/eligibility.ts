@@ -65,11 +65,12 @@ export async function getEligibilityToken(
   })
 }
 
-// Every wallet signs in and then calls OpenSea, and all of those calls spend the
-// same key pool that opensea.ts rotates when one is rate limited. 250 ms is a
-// conservative floor, not a published number: the provider's per-key limit is
-// not recorded anywhere in this repo, so the spacing only has to stop a long
-// wallet list from firing provider calls back to back.
+// One OpenSea call per wallet. These calls authenticate with the wallet's
+// bearer token, not an API key, so the 429 handling in opensea.ts cannot rotate
+// to another key for them: it spends its retry budget and then fails that
+// wallet's row. The spacing keeps a long wallet list from finding that limit the
+// hard way. 250 ms is a conservative floor, not a published number, because the
+// provider's per-key limit is not recorded anywhere in this repo.
 const ELIGIBILITY_WALLET_SPACING_MS = 250
 
 export async function checkWalletEligibility(
