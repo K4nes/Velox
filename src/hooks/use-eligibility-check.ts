@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { toMessage } from '@/lib/error-message'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { checkEligibility } from '@/lib/eligibility'
 import type { EligibilityTableState } from '@/lib/eligibility'
@@ -73,7 +74,7 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
       setChecked(buildSnapshotPayload(result, target.slug, marketplace))
     } catch (failure) {
       if (!run.live()) return
-      setError(failure instanceof Error ? failure.message : String(failure))
+      setError(toMessage(failure))
     } finally {
       if (run.live()) {
         runningRef.current = false

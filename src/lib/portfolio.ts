@@ -6,7 +6,8 @@ import {
 } from '@/lib/opensea'
 import type { CollectionInfo, CollectionStats } from '@/lib/opensea'
 import { mapLimit } from '@/lib/async'
-import { scanFailureMessage, scanHeldTokens } from '@/lib/holdings'
+import { scanFailureMessage } from '@/lib/error-message'
+import { scanHeldTokens } from '@/lib/holdings'
 import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/holdings'
 import { fetchEthUsdtPrice } from '@/lib/price'
 

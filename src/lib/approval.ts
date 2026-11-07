@@ -1,4 +1,5 @@
 import { encodeFunctionData } from 'viem'
+import { toMessage } from '@/lib/error-message'
 import { clientFor, sendTransaction, waitForReceipt } from '@/lib/tx'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -172,7 +173,7 @@ export async function ensureOperatorApproved(input: {
 
     input.cache.approved.add(approvedKey)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = toMessage(error)
     input.cache.failed.set(approvedKey, message)
     throw error
   }

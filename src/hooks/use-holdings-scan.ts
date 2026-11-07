@@ -1,11 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
-import {
-  resolveScanWallets,
-  scanFailureMessage,
-  scanHeldTokens,
-} from '@/lib/holdings'
+import { resolveScanWallets, scanHeldTokens } from '@/lib/holdings'
+import { scanFailureMessage, toMessage } from '@/lib/error-message'
 import type { HeldToken, WalletScan } from '@/lib/holdings'
 import { getCollection, slugFromUrl } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
@@ -92,7 +89,7 @@ export function useHoldingsScan() {
       }
     } catch (failure) {
       if (!run.live()) return
-      const message = failure instanceof Error ? failure.message : String(failure)
+      const message = toMessage(failure)
       setState({ status: 'failed', message })
     } finally {
       if (run.live()) {

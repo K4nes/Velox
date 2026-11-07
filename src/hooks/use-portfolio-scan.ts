@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
-import { resolveScanWallets, scanFailureMessage } from '@/lib/holdings'
+import { resolveScanWallets } from '@/lib/holdings'
+import { scanFailureMessage } from '@/lib/error-message'
 import { scanPortfolio } from '@/lib/portfolio'
 import type {
   PortfolioScanResult,

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
+import { toMessage } from '@/lib/error-message'
 import { useRunGate } from '@/hooks/use-run-gate'
 import {
   buildListingPlan,
@@ -168,7 +169,7 @@ export function useListingRun(input: {
       if (keys.length > 0) input.onListed?.(keys)
     } catch (failure) {
       if (!live()) return
-      const message = failure instanceof Error ? failure.message : String(failure)
+      const message = toMessage(failure)
       setError(message)
       toast.error(message)
     } finally {

@@ -1,5 +1,6 @@
-import { getAccountNfts, OpenSeaError } from '@/lib/opensea'
 import { mapLimit } from '@/lib/async'
+import { scanFailureMessage } from '@/lib/error-message'
+import { getAccountNfts } from '@/lib/opensea'
 
 export type ScanWallet = { id: string; label: string; address: string }
 export type CollapsedWallet = { address: string; labels: string[] }
@@ -54,22 +55,6 @@ export function resolveScanWallets(
     wallets: [...wallets.values()],
     collapsed: [...dropped].map(([address, labels]) => ({ address, labels })),
   }
-}
-
-export function scanFailureMessage(
-  error: unknown,
-  step: 'collection' | 'wallet' | 'rarity'
-): string {
-  if (error instanceof OpenSeaError) {
-    if (error.status === 0) return error.message
-    if (error.status === 401) return 'OpenSea API key rejected'
-    if (error.status === 404 && step === 'collection') {
-      return 'Collection not found'
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  return step === 'collection' ? `Collection failed — ${message}` : message
 }
 
 export async function scanHeldTokens(input: {

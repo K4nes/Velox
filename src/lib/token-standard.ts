@@ -8,6 +8,7 @@ import {
   isAddress,
 } from 'viem'
 import { mapLimit } from '@/lib/async'
+import { toMessage } from '@/lib/error-message'
 import { clientFor } from '@/lib/tx'
 
 export type TokenStandard = 'erc721' | 'erc1155'
@@ -155,7 +156,7 @@ async function probeUncached(input: {
   } catch (error) {
     return {
       status: 'unreadable',
-      error: error instanceof Error ? error.message : String(error),
+      error: toMessage(error),
     }
   }
 }

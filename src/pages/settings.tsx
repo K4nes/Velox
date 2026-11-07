@@ -25,6 +25,7 @@ import type {
   Issue,
   RpcConnection,
 } from '@/lib/connections'
+import { toMessage } from '@/lib/error-message'
 import { ConnectionDetail } from './settings/connection-detail'
 import { ConnectionsList } from './settings/connections-list'
 
@@ -68,9 +69,7 @@ export function SettingsPage() {
       } catch (failure) {
         if (!cancelled) {
           setLoadFailed(true)
-          setLoadError(
-            failure instanceof Error ? failure.message : String(failure)
-          )
+          setLoadError(toMessage(failure))
         }
       } finally {
         if (!cancelled) {
@@ -136,8 +135,7 @@ export function SettingsPage() {
       return
     }
 
-    const message =
-      failure instanceof Error ? failure.message : String(failure)
+    const message = toMessage(failure)
     setLoadError(message)
     toast.error(message)
   }

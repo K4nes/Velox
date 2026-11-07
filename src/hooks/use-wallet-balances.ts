@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { balanceKey, type BalanceKey, type BalanceMap } from '@/lib/balance-key'
 import { fetchBalances } from '@/lib/balances'
+import { toMessage } from '@/lib/error-message'
 
 type BalanceErrors = Record<string, { message: string; addresses: string[] }>
 
@@ -81,7 +82,7 @@ export function useWalletBalances(chainSlug: string, addressKey: string) {
             ...current,
             [chainSlug]: {
               message:
-                failure instanceof Error ? failure.message : String(failure),
+                toMessage(failure),
               addresses: [...failed],
             },
           }

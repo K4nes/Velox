@@ -1,4 +1,5 @@
 import { slugFromUrl } from '@/lib/opensea'
+import { toMessage } from '@/lib/error-message'
 import { listWallets } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -23,7 +24,7 @@ export async function resolveScanTarget(
   } catch (failure) {
     return {
       status: 'failed',
-      message: failure instanceof Error ? failure.message : String(failure),
+      message: toMessage(failure),
     }
   }
 

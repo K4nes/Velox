@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
+import { toMessage } from '@/lib/error-message'
 import { stepById, withStep } from '@/lib/run-progress'
 import {
   BroadcastError,
@@ -12,7 +13,6 @@ import type {
   TransferPlan,
   PlannedTransferWallet,
 } from '@/lib/transfer-plan'
-import { redactUrls } from '@/lib/utils'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -76,10 +76,6 @@ export const TRANSFER_STEP_TONE: Record<TransferStepStatus, string> = {
 
 const RECEIPT_CONCURRENCY = 4
 
-function failureMessage(error: unknown): string {
-  return redactUrls(error instanceof Error ? error.message : String(error))
-}
-
 export async function runTransferPlan(input: {
   plan: TransferPlan
   wallets: readonly StoredWallet[]
@@ -139,7 +135,7 @@ export async function runTransferPlan(input: {
     try {
       account = privateKeyToAccount(toPrivateKeyHex(record.privateKey))
     } catch (error) {
-      failWallet(planned, failureMessage(error))
+      failWallet(planned, toMessage(error))
       return
     }
 
@@ -221,7 +217,7 @@ export async function runTransferPlan(input: {
           commit({
             ...current,
             status: 'failed',
-            error: failureMessage(error),
+            error: toMessage(error),
             txHash: null,
           })
         }

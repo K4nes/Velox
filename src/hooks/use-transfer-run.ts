@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useRunGate } from '@/hooks/use-run-gate'
 import { resolveEnsAddress } from '@/lib/ens'
+import { toMessage } from '@/lib/error-message'
 import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer-run'
 import type {
   TransferRunProgress,
@@ -18,7 +19,6 @@ import type {
   TransferSelection,
 } from '@/lib/transfer-plan'
 import { listWallets } from '@/lib/wallets'
-import { redactUrls } from '@/lib/utils'
 
 const RESOLVE_DEBOUNCE_MS = 400
 
@@ -60,9 +60,7 @@ export function useTransferRun(input: {
           setResolved({
             name,
             address: null,
-            error: redactUrls(
-              failure instanceof Error ? failure.message : String(failure)
-            ),
+            error: toMessage(failure),
           })
         })
     }, RESOLVE_DEBOUNCE_MS)
@@ -243,7 +241,7 @@ export function useTransferRun(input: {
       if (result.sent > 0) toast.success(summary)
     } catch (failure) {
       if (!live()) return
-      const message = failure instanceof Error ? failure.message : String(failure)
+      const message = toMessage(failure)
       setError(message)
       toast.error(message)
     } finally {

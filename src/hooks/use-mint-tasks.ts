@@ -3,11 +3,11 @@ import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { RpcConfigError } from '@/lib/connections'
 import { checkWalletEligibility } from '@/lib/eligibility'
+import { mintFailureMessage, toMessage } from '@/lib/error-message'
 import { mintForWallet } from '@/lib/mint'
 import { chainTime, waitForReceipt } from '@/lib/tx'
 import {
   createTask,
-  failureMessage,
   gweiToWei,
   initialQuantity,
   landed,
@@ -291,7 +291,7 @@ export function useMintTasks() {
         checked: false,
         drop: null,
       })
-      toast.error(failureMessage(error, step))
+      toast.error(mintFailureMessage(error, step))
       return null
     }
   }
@@ -442,7 +442,7 @@ export function useMintTasks() {
           if (stopped()) break
           updateRun(wallet.id, () => ({
             status: 'failed',
-            error: error instanceof Error ? error.message : String(error),
+            error: toMessage(error),
           }))
         }
       }
@@ -458,12 +458,12 @@ export function useMintTasks() {
           )
         } catch (error) {
           updateRun(entry.walletId, () => ({
-            error: error instanceof Error ? error.message : String(error),
+            error: toMessage(error),
           }))
         }
       }
     } catch (error) {
-      const message = `Mint failed — ${error instanceof Error ? error.message : String(error)}`
+      const message = `Mint failed — ${toMessage(error)}`
       updateTask(id, { status: 'failed' })
       toast.error(message)
     } finally {
@@ -517,7 +517,7 @@ export function useMintTasks() {
       if (!prepared) return
       await startMint(latest, prepared)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error))
+      toast.error(toMessage(error))
     } finally {
       firingRef.current.delete(taskId)
     }

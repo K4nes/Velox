@@ -5,6 +5,7 @@ import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import type { SwapAssetOption } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/async'
+import { toMessage } from '@/lib/error-message'
 import { notifyIndexer, pollSwapIntent, quoteSwap } from '@/lib/relay'
 import type {
   SwapIntentStatus,
@@ -20,7 +21,6 @@ import {
   sendTransaction,
   waitForReceiptOutcome,
 } from '@/lib/tx'
-import { redactUrls } from '@/lib/utils'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -102,10 +102,6 @@ export type SwapRunSummary = {
 }
 
 const SETTLE_CONCURRENCY = 4
-
-function failureMessage(error: unknown): string {
-  return redactUrls(error instanceof Error ? error.message : String(error))
-}
 
 type Broadcast = {
   ref: SwapTxRef
@@ -214,7 +210,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'failed',
-        error: failureMessage(error),
+        error: toMessage(error),
         tx: null,
       })
       return
@@ -270,7 +266,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'failed',
-        error: failureMessage(error),
+        error: toMessage(error),
         tx: null,
       })
       return
@@ -295,7 +291,7 @@ export async function runSwapPlan(input: {
           commit({
             ...base(job),
             status: 'failed',
-            error: failureMessage(error),
+            error: toMessage(error),
             tx: null,
           })
         }
@@ -369,7 +365,7 @@ export async function runSwapPlan(input: {
         commit({
           ...base(job),
           status: 'failed',
-          error: failureMessage(error),
+          error: toMessage(error),
           tx: null,
         })
       }
@@ -450,7 +446,7 @@ export async function runSwapPlan(input: {
       } catch (error) {
         // A relay that cannot index the transaction may still settle it, so
         // keep polling and report the indexing failure on the waiting row.
-        indexError = failureMessage(error)
+        indexError = toMessage(error)
       }
     }
 
