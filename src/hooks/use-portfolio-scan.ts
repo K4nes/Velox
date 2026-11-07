@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { slugFromUrl } from '@/lib/opensea'
+import { useLiveRead } from '@/hooks/use-live-read'
 import { resolveScanWallets, scanFailureMessage } from '@/lib/holdings'
 import { scanPortfolio } from '@/lib/portfolio'
 import type {
@@ -8,8 +8,7 @@ import type {
   PortfolioScanState,
   PortfolioTableState,
 } from '@/lib/portfolio'
-import { listWallets } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { resolveScanTarget } from '@/lib/scan-target'
 
 export function describeTable(
   state: PortfolioScanState,
@@ -78,17 +77,11 @@ export function usePortfolioScan() {
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
   const [state, setState] = useState<PortfolioScanState>({ status: 'idle' })
   const [starting, setStarting] = useState(false)
-  const runRef = useRef(0)
   const runningRef = useRef(false)
-
-  useEffect(() => {
-    return () => {
-      runRef.current += 1
-    }
-  }, [])
+  const read = useLiveRead()
 
   function reset() {
-    runRef.current += 1
+    read.abort()
     setState({ status: 'idle' })
   }
 
@@ -107,70 +100,39 @@ export function usePortfolioScan() {
 
     runningRef.current = true
     setStarting(true)
-    const run = runRef.current + 1
-    runRef.current = run
-    const current = () => runRef.current === run
+    const run = read.open()
 
     try {
-      const slug = slugFromUrl(url)
-      if (!slug) {
-        if (current()) {
-          setState({
-            status: 'failed',
-            message: 'Collection URL not recognised',
-          })
-        }
+      const target = await resolveScanTarget(url, selectedWallets)
+      if (!run.live()) return
+      if (target.status === 'failed') {
+        setState({ status: 'failed', message: target.message })
         return
       }
 
-      let records: StoredWallet[]
-      try {
-        records = await listWallets()
-      } catch (failure) {
-        if (current()) {
-          setState({
-            status: 'failed',
-            message: failure instanceof Error ? failure.message : String(failure),
-          })
-        }
-        return
-      }
-
-      if (!current()) return
-
-      const resolved = resolveScanWallets(
-        records.filter((wallet) => selectedWallets.includes(wallet.id))
-      )
-      if (resolved.wallets.length === 0) {
-        setState({
-          status: 'failed',
-          message: 'No saved wallet matches the selection',
-        })
-        return
-      }
+      const resolved = resolveScanWallets(target.wallets)
 
       let result: PortfolioScanResult
       try {
         result = await scanPortfolio({
-          slug,
+          slug: target.slug,
           wallets: resolved.wallets,
           collapsed: resolved.collapsed,
           onSnapshot: (snapshot) => {
-            if (!current()) return
+            if (!run.live()) return
             setState({ status: 'scanning', snapshot })
           },
         })
       } catch (failure) {
-        if (current()) {
-          setState({
-            status: 'failed',
-            message: scanFailureMessage(failure, 'collection'),
-          })
-        }
+        if (!run.live()) return
+        setState({
+          status: 'failed',
+          message: scanFailureMessage(failure, 'collection'),
+        })
         return
       }
 
-      if (!current()) return
+      if (!run.live()) return
       setState({ status: 'ready', result })
       toastResult(result)
     } finally {
