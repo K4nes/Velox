@@ -3,6 +3,7 @@ import { readStoredImages, type CardImage } from '@/lib/card-images'
 import type { CollectionInfo } from '@/lib/opensea'
 import type { PnlStats } from '@/lib/pnl-trades'
 import { fetchEthUsdtPrice } from '@/lib/price'
+import { QUOTE_WINDOW_MS } from '@/lib/price-window'
 import type { Format, ImagePosition } from './card-preview'
 
 export const MAX_IMAGES = 3
@@ -28,7 +29,12 @@ type State = {
   version: number
   read: PnlRead | null
   save: { at: number; price: number | null; failed: boolean } | null
-  quote: { price: number | null; loading: boolean; at: number }
+  quote: {
+    price: number | null
+    loading: boolean
+    at: number
+    error: string | null
+  }
 }
 
 let state: State = {
@@ -42,7 +48,7 @@ let state: State = {
   version: 0,
   read: null,
   save: null,
-  quote: { price: null, loading: false, at: 0 },
+  quote: { price: null, loading: false, at: 0, error: null },
 }
 
 const listeners = new Set<() => void>()
@@ -98,14 +104,33 @@ export const pnlCard = {
   async loadQuote(force = false) {
     const { quote } = state
     if (quote.loading) return
-    if (!force && quote.price !== null && Date.now() - quote.at < 60_000) return
+    if (
+      !force &&
+      quote.price !== null &&
+      Date.now() - quote.at < QUOTE_WINDOW_MS
+    ) {
+      return
+    }
 
     set({ quote: { ...quote, loading: true } })
     try {
       const next = await fetchEthUsdtPrice()
-      set({ quote: { price: next.price, loading: false, at: Date.now() } })
-    } catch {
-      set({ quote: { ...state.quote, loading: false } })
+      set({
+        quote: {
+          price: next.price,
+          loading: false,
+          at: Date.now(),
+          error: null,
+        },
+      })
+    } catch (failure) {
+      set({
+        quote: {
+          ...state.quote,
+          loading: false,
+          error: failure instanceof Error ? failure.message : String(failure),
+        },
+      })
     }
   },
 }
