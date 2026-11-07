@@ -89,14 +89,15 @@ export function PnlCardPage() {
     void pnlCard.loadQuote()
   }, [])
 
-  // The card renders no USD figure when the price read failed, so the reason has
-  // to reach the operator; the data having no value looks identical otherwise.
+  // The card renders no USD figure only when the read failed and left none, so
+  // that reason has to reach the operator; the data having no value looks
+  // identical otherwise.
   useEffect(() => {
-    if (quote.error === null) return
+    if (quote.error === null || quote.price !== null) return
     toast.error(`The card has no USD figure: ${quote.error}`, {
       id: 'pnl-price-error',
     })
-  }, [quote.error])
+  }, [quote.error, quote.price])
 
   // A re-check of the same collection keeps the same request key, so the version
   // is what makes the chain read happen again. A remount finds the answer still
