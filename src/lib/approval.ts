@@ -120,17 +120,18 @@ export async function ensureOperatorApproved(input: {
 }): Promise<void> {
   const owner = input.wallet.address.toLowerCase()
   const contract = input.contract.toLowerCase()
-  const failureKey = `${owner}:${contract}`
-  const failure = input.cache.failed.get(failureKey)
+
+  const operator = await resolveOperator({
+    chainSlug: input.chainSlug,
+    protocolAddress: input.protocolAddress,
+    fulfillerConduitKey: input.fulfillerConduitKey,
+  })
+
+  const approvedKey = `${owner}:${contract}:${operator.toLowerCase()}`
+  const failure = input.cache.failed.get(approvedKey)
   if (failure) throw new Error(failure)
 
   try {
-    const operator = await resolveOperator({
-      chainSlug: input.chainSlug,
-      protocolAddress: input.protocolAddress,
-      fulfillerConduitKey: input.fulfillerConduitKey,
-    })
-    const approvedKey = `${owner}:${contract}:${operator.toLowerCase()}`
     if (input.cache.approved.has(approvedKey)) return
 
     const client = await clientFor(input.chainSlug)
@@ -172,7 +173,7 @@ export async function ensureOperatorApproved(input: {
     input.cache.approved.add(approvedKey)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    input.cache.failed.set(failureKey, message)
+    input.cache.failed.set(approvedKey, message)
     throw error
   }
 }

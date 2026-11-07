@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/async'
+import { useRunGate } from '@/hooks/use-run-gate'
 import {
   buildListingPlan,
   estimateFeeTotals,
@@ -24,13 +25,6 @@ import type {
 import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
 import { WALLET_CONCURRENCY } from '@/lib/tx'
-import {
-  abortRunSlot,
-  claimRunSlot,
-  releaseRunSlot,
-  runKindLabel,
-} from '@/lib/run-slot'
-import type { RunSlot } from '@/lib/run-slot'
 import { listWallets } from '@/lib/wallets'
 
 export function useListingRun(input: {
@@ -38,22 +32,11 @@ export function useListingRun(input: {
   collection: CollectionInfo | null
   onListed?: (keys: string[]) => void
 }) {
+  const gate = useRunGate('listing')
+  const { setError } = gate
   const [price, setPrice] = useState('')
   const [durationDays, setDurationDays] = useState(30)
   const [progress, setProgress] = useState<ListingRunProgress | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const runningRef = useRef(false)
-  const epochRef = useRef(0)
-  const slotRef = useRef<RunSlot | null>(null)
-
-  useEffect(() => {
-    const epoch = epochRef.current
-    return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
-      if (slotRef.current) abortRunSlot(slotRef.current)
-    }
-  }, [])
 
   const decimals = input.collection?.listingCurrency.decimals ?? 18
   const priceAmount = parsePrice(price, decimals)
@@ -88,8 +71,6 @@ export function useListingRun(input: {
   }
 
   async function start() {
-    if (runningRef.current) return
-
     const collection = input.collection
     if (!collection || input.selected.length === 0 || priceAmount === null) return
 
@@ -100,47 +81,16 @@ export function useListingRun(input: {
       return
     }
 
-    // Captured before any wait so a start that outlives its page cannot install
-    // a slot nobody can abort.
-    const entryEpoch = epochRef.current
-
     // The form locks while waiting for an abandoned run to settle so what the
     // operator sees is what gets signed.
-    runningRef.current = true
-    setRunning(true)
+    const session = await gate.begin()
+    if (!session) return
 
-    const claim = await claimRunSlot('listing', () => {
-      if (entryEpoch === epochRef.current) {
-        setError('Waiting for the previous run to finish')
-      }
-    })
-
-    if (claim.kind === 'busy') {
-      runningRef.current = false
-      if (entryEpoch === epochRef.current) {
-        const message = runKindLabel(claim.running)
-        setRunning(false)
-        setError(message)
-        toast.error(message)
-      }
-      return
-    }
-
-    if (entryEpoch !== epochRef.current) {
-      releaseRunSlot(claim.slot)
-      runningRef.current = false
-      return
-    }
-
-    const slot = claim.slot
-    slotRef.current = slot
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
+    const { slot, live } = session
     const publish = (next: ListingRunProgress) => {
       if (live()) setProgress(next)
     }
 
-    setError(null)
     setProgress(null)
 
     try {
@@ -222,12 +172,7 @@ export function useListingRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      releaseRunSlot(slot)
-      if (slotRef.current === slot) slotRef.current = null
-      if (live()) {
-        runningRef.current = false
-        setRunning(false)
-      }
+      session.end()
     }
   }
 
@@ -236,9 +181,9 @@ export function useListingRun(input: {
     setPrice,
     durationDays,
     setDuration: setDurationDays,
-    running,
+    running: gate.running,
     progress,
-    error,
+    error: gate.error,
     tokenStates: steps,
     summary,
     blockedReason,

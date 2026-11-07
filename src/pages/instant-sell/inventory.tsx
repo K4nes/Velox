@@ -159,11 +159,7 @@ function StatusCell({ step }: { step: SellStepState | undefined }) {
     step.status === 'sending' ||
     step.status === 'confirming'
   const hash =
-    step.status === 'sending' ||
-    step.status === 'confirming' ||
-    step.status === 'sold'
-      ? step.txHash
-      : null
+    step.status === 'confirming' || step.status === 'sold' ? step.txHash : null
 
   return (
     <div className="flex max-w-[240px] flex-col gap-0.5">

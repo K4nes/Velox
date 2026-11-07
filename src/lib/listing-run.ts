@@ -23,17 +23,16 @@ export type RunStepStatus =
 
 export type RunStepState = {
   id: string
-  kind: 'approval' | 'order'
   address: string
   label: string
   tokenKey: string | null
   tokenId: string | null
 } & (
-  | { status: 'queued' }
-  | { status: 'approving' | 'signing' | 'submitting' }
-  | { status: 'approved' }
-  | { status: 'listed'; orderHash: string | null }
-  | { status: 'failed'; error: string }
+  | { kind: 'approval'; status: 'queued' | 'approving' | 'approved' }
+  | { kind: 'approval'; status: 'failed'; error: string }
+  | { kind: 'order'; status: 'queued' | 'signing' | 'submitting' }
+  | { kind: 'order'; status: 'listed'; orderHash: string | null }
+  | { kind: 'order'; status: 'failed'; error: string }
 )
 
 export type ListingRunProgress = {
@@ -151,6 +150,10 @@ export async function runListingPlan(input: {
     input.onProgress?.(progress)
   }
 
+  function failStep(step: RunStepState, error: string): RunStepState {
+    return { ...step, status: 'failed', error }
+  }
+
   async function runWallet(
     planned: PlannedWallet,
     record: StoredWallet
@@ -166,7 +169,7 @@ export async function runListingPlan(input: {
       const message = failureMessage(error)
       for (const step of planned.steps) {
         const current = stateOf(step.id)
-        if (current) commit({ ...current, status: 'failed', error: message })
+        if (current) commit(failStep(current, message))
       }
       return
     }
@@ -178,7 +181,7 @@ export async function runListingPlan(input: {
       const message = `Stored key signs as ${account.address}, not ${planned.address}`
       for (const step of planned.steps) {
         const current = stateOf(step.id)
-        if (current) commit({ ...current, status: 'failed', error: message })
+        if (current) commit(failStep(current, message))
       }
       return
     }
@@ -187,7 +190,7 @@ export async function runListingPlan(input: {
       if (input.shouldAbort?.()) return
 
       const current = stateOf(approval.id)
-      if (!current) continue
+      if (!current || current.kind !== 'approval') continue
       commit({ ...current, status: 'approving' })
 
       try {
@@ -210,17 +213,13 @@ export async function runListingPlan(input: {
         const message = failureMessage(error)
         const failedApproval = stateOf(approval.id)
         if (failedApproval) {
-          commit({ ...failedApproval, status: 'failed', error: message })
+          commit(failStep(failedApproval, message))
         }
 
         for (const order of orders) {
           const orderStep = stateOf(order.id)
           if (orderStep) {
-            commit({
-              ...orderStep,
-              status: 'failed',
-              error: `Approval failed — ${message}`,
-            })
+            commit(failStep(orderStep, `Approval failed — ${message}`))
           }
         }
         return
@@ -228,14 +227,16 @@ export async function runListingPlan(input: {
 
       // The approval is done; its orders still have to be signed.
       const approved = stateOf(approval.id)
-      if (approved) commit({ ...approved, status: 'approved' })
+      if (approved?.kind === 'approval') {
+        commit({ ...approved, status: 'approved' })
+      }
     }
 
     for (const order of orders) {
       if (input.shouldAbort?.()) return
 
       const signing = stateOf(order.id)
-      if (!signing) continue
+      if (!signing || signing.kind !== 'order') continue
       commit({ ...signing, status: 'signing' })
 
       try {
@@ -244,7 +245,9 @@ export async function runListingPlan(input: {
         if (input.shouldAbort?.()) return
 
         const submitting = stateOf(order.id)
-        if (submitting) commit({ ...submitting, status: 'submitting' })
+        if (submitting?.kind === 'order') {
+          commit({ ...submitting, status: 'submitting' })
+        }
 
         const { orderHash } = await submitListingOrder({
           chain: order.chain,
@@ -254,15 +257,13 @@ export async function runListingPlan(input: {
         })
 
         const done = stateOf(order.id)
-        if (done) commit({ ...done, status: 'listed', orderHash })
+        if (done?.kind === 'order') {
+          commit({ ...done, status: 'listed', orderHash })
+        }
       } catch (error) {
         const currentOrder = stateOf(order.id)
         if (currentOrder) {
-          commit({
-            ...currentOrder,
-            status: 'failed',
-            error: failureMessage(error),
-          })
+          commit(failStep(currentOrder, failureMessage(error)))
         }
       }
     }

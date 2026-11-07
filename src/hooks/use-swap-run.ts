@@ -1,13 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import {
-  abortRunSlot,
-  claimRunSlot,
-  releaseRunSlot,
-  runKindLabel,
-} from '@/lib/run-slot'
-import type { RunSlot } from '@/lib/run-slot'
+import { useRunGate } from '@/hooks/use-run-gate'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { specKey } from '@/lib/swap-spec'
 import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
@@ -28,20 +22,9 @@ export function useSwapRun(input: {
   states: Map<string, SwapWalletState>
   start: () => Promise<void>
 } {
-  const [running, setRunning] = useState(false)
+  const gate = useRunGate('swap')
+  const { setError } = gate
   const [progress, setProgress] = useState<SwapRunProgress | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const runningRef = useRef(false)
-  const epochRef = useRef(0)
-  const slotRef = useRef<RunSlot | null>(null)
-
-  useEffect(() => {
-    const epoch = epochRef.current
-    return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
-      if (slotRef.current) abortRunSlot(slotRef.current)
-    }
-  }, [])
 
   const batchKey = input.batch
     ? specKey(
@@ -53,7 +36,7 @@ export function useSwapRun(input: {
   useEffect(() => {
     setProgress(null)
     setError(null)
-  }, [batchKey])
+  }, [batchKey, setError])
 
   const summary = useMemo(
     () => (progress ? summarizeSwapRun(progress) : null),
@@ -63,47 +46,16 @@ export function useSwapRun(input: {
 
   async function start() {
     const batch = input.batch
-    if (runningRef.current || batch === null || batch.jobs.length === 0) return
+    if (batch === null || batch.jobs.length === 0) return
 
-    // Captured before any wait so a start that outlives its page cannot install
-    // a slot nobody can abort.
-    const entryEpoch = epochRef.current
+    const session = await gate.begin()
+    if (!session) return
 
-    runningRef.current = true
-    setRunning(true)
-
-    const claim = await claimRunSlot('swap', () => {
-      if (entryEpoch === epochRef.current) {
-        setError('Waiting for the previous run to finish')
-      }
-    })
-
-    if (claim.kind === 'busy') {
-      runningRef.current = false
-      if (entryEpoch === epochRef.current) {
-        const message = runKindLabel(claim.running)
-        setRunning(false)
-        setError(message)
-        toast.error(message)
-      }
-      return
-    }
-
-    if (entryEpoch !== epochRef.current) {
-      releaseRunSlot(claim.slot)
-      runningRef.current = false
-      return
-    }
-
-    const slot = claim.slot
-    slotRef.current = slot
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
+    const { slot, live } = session
     const publish = (next: SwapRunProgress) => {
       if (live()) setProgress(next)
     }
 
-    setError(null)
     setProgress(null)
 
     try {
@@ -154,15 +106,17 @@ export function useSwapRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      releaseRunSlot(slot)
-      if (slotRef.current === slot) slotRef.current = null
-      if (live()) {
-        runningRef.current = false
-        setRunning(false)
-        input.onSettled?.()
-      }
+      const alive = live()
+      session.end()
+      if (alive) input.onSettled?.()
     }
   }
 
-  return { running, error, summary, states, start }
+  return {
+    running: gate.running,
+    error: gate.error,
+    summary,
+    states,
+    start,
+  }
 }

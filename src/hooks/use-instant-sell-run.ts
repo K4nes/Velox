@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
+
+import { useRunGate } from '@/hooks/use-run-gate'
 import type { SellTarget } from '@/lib/instant-sell'
-import {
-  abortRunSlot,
-  claimRunSlot,
-  releaseRunSlot,
-  runKindLabel,
-} from '@/lib/run-slot'
-import type { RunSlot } from '@/lib/run-slot'
 import {
   runSellTargets,
   soldKeys,
@@ -30,20 +25,9 @@ export function useInstantSellRun(input: {
   start: (targets: readonly SellTarget[]) => Promise<void>
   reset: () => void
 } {
-  const [running, setRunning] = useState(false)
+  const gate = useRunGate('sale')
+  const { setError } = gate
   const [progress, setProgress] = useState<SellRunProgress | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const runningRef = useRef(false)
-  const epochRef = useRef(0)
-  const slotRef = useRef<RunSlot | null>(null)
-
-  useEffect(() => {
-    const epoch = epochRef.current
-    return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
-      if (slotRef.current) abortRunSlot(slotRef.current)
-    }
-  }, [])
 
   const summary = useMemo(
     () => (progress ? summarizeSell(progress) : null),
@@ -56,47 +40,16 @@ export function useInstantSellRun(input: {
   }
 
   async function start(targets: readonly SellTarget[]) {
-    if (runningRef.current || targets.length === 0) return
+    if (targets.length === 0) return
 
-    // Captured before any wait so a start that outlives its page cannot install
-    // a slot nobody can abort.
-    const entryEpoch = epochRef.current
+    const session = await gate.begin()
+    if (!session) return
 
-    runningRef.current = true
-    setRunning(true)
-
-    const claim = await claimRunSlot('sale', () => {
-      if (entryEpoch === epochRef.current) {
-        setError('Waiting for the previous run to finish')
-      }
-    })
-
-    if (claim.kind === 'busy') {
-      runningRef.current = false
-      if (entryEpoch === epochRef.current) {
-        const message = runKindLabel(claim.running)
-        setRunning(false)
-        setError(message)
-        toast.error(message)
-      }
-      return
-    }
-
-    if (entryEpoch !== epochRef.current) {
-      releaseRunSlot(claim.slot)
-      runningRef.current = false
-      return
-    }
-
-    const slot = claim.slot
-    slotRef.current = slot
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
+    const { slot, live } = session
     const publish = (next: SellRunProgress) => {
       if (live()) setProgress(next)
     }
 
-    setError(null)
     setProgress(null)
 
     try {
@@ -133,15 +86,18 @@ export function useInstantSellRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      releaseRunSlot(slot)
-      if (slotRef.current === slot) slotRef.current = null
-      if (live()) {
-        runningRef.current = false
-        setRunning(false)
-        input.onSettled?.()
-      }
+      const alive = live()
+      session.end()
+      if (alive) input.onSettled?.()
     }
   }
 
-  return { running, progress, error, summary, start, reset }
+  return {
+    running: gate.running,
+    progress,
+    error: gate.error,
+    summary,
+    start,
+    reset,
+  }
 }

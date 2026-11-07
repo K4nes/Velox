@@ -1,4 +1,4 @@
-export type RunKind = 'listing' | 'sale' | 'swap'
+export type RunKind = 'listing' | 'sale' | 'swap' | 'transfer'
 
 export function runKindLabel(kind: RunKind): string {
   switch (kind) {
@@ -8,6 +8,8 @@ export function runKindLabel(kind: RunKind): string {
       return 'An instant sell run is still in progress'
     case 'swap':
       return 'A swap run is still in progress'
+    case 'transfer':
+      return 'A transfer run is still in progress'
   }
 }
 
@@ -21,6 +23,7 @@ export type RunSlot = {
 export type SlotClaim =
   | { kind: 'acquired'; slot: RunSlot }
   | { kind: 'busy'; running: RunKind }
+  | { kind: 'stale' }
 
 // A run keeps submitting after its page unmounts, so the guard lives outside
 // every hook that claims it. A second flow waits for an abandoned run to settle
@@ -29,11 +32,15 @@ let active: RunSlot | null = null
 
 export async function claimRunSlot(
   kind: RunKind,
-  onWait?: () => void
+  onWait?: () => void,
+  isStale?: () => boolean
 ): Promise<SlotClaim> {
   let notified = false
 
-  while (active) {
+  while (true) {
+    if (isStale?.()) return { kind: 'stale' }
+    if (!active) break
+
     if (!active.aborted) {
       return { kind: 'busy', running: active.kind }
     }

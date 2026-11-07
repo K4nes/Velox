@@ -13,6 +13,7 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const runningRef = useRef(false)
+  const runRef = useRef(0)
 
   const tableState: EligibilityTableState = error
     ? { status: 'error', message: error }
@@ -22,11 +23,19 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
         ? { status: 'ready', rows: checked.rows }
         : { status: 'empty', message: 'No data yet' }
 
+  // An input edit abandons the request that read the old value.
+  function invalidateRun() {
+    runRef.current += 1
+    runningRef.current = false
+    setRunning(false)
+  }
+
   function changeUrl(next: string) {
     setUrl(next)
     setChecked(null)
     setError(null)
     onResetSaveError()
+    invalidateRun()
   }
 
   function changeWallets(ids: string[]) {
@@ -34,6 +43,7 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
     setChecked(null)
     setError(null)
     onResetSaveError()
+    invalidateRun()
   }
 
   async function check() {
@@ -51,6 +61,8 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
       return
     }
 
+    const run = runRef.current + 1
+    runRef.current = run
     runningRef.current = true
     setRunning(true)
     setError(null)
@@ -59,17 +71,22 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
       const wallets = (await listWallets()).filter((wallet) =>
         selectedWallets.includes(wallet.id)
       )
+      if (runRef.current !== run) return
       if (wallets.length === 0) {
         setError('No saved wallet matches the selection')
         return
       }
       const result = await checkEligibility(slug, wallets)
+      if (runRef.current !== run) return
       setChecked(buildSnapshotPayload(result, slug, marketplace))
     } catch (failure) {
+      if (runRef.current !== run) return
       setError(failure instanceof Error ? failure.message : String(failure))
     } finally {
-      runningRef.current = false
-      setRunning(false)
+      if (runRef.current === run) {
+        runningRef.current = false
+        setRunning(false)
+      }
     }
   }
 

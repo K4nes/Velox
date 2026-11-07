@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useRunGate } from '@/hooks/use-run-gate'
 import { resolveEnsAddress } from '@/lib/ens'
 import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer-run'
 import type {
@@ -21,13 +22,6 @@ import { redactUrls } from '@/lib/utils'
 
 const RESOLVE_DEBOUNCE_MS = 400
 
-// A run keeps sending after its page unmounts, so the guard lives outside the
-// hook. A second mount waits for a run that lost its page to settle before it
-// starts, because a transaction already in flight still lands.
-type RunSlot = { aborted: boolean; done: Promise<void>; settle: () => void }
-
-let liveTransfer: RunSlot | null = null
-
 export function useTransferRun(input: {
   wallets: readonly { id: string; label: string; address: string }[]
   selections: readonly TransferSelection[]
@@ -35,6 +29,8 @@ export function useTransferRun(input: {
   onSpent: (spent: Map<string, number>) => void
   onDeselect: (keys: string[]) => void
 }) {
+  const gate = useRunGate('transfer')
+  const { setError } = gate
   const [destinationText, setDestinationText] = useState('')
   const [resolved, setResolved] = useState<{
     name: string
@@ -45,19 +41,6 @@ export function useTransferRun(input: {
   const [history, setHistory] = useState<Map<string, TransferStepState>>(
     new Map()
   )
-  const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const runningRef = useRef(false)
-  const epochRef = useRef(0)
-  const slotRef = useRef<RunSlot | null>(null)
-
-  useEffect(() => {
-    const epoch = epochRef.current
-    return () => {
-      if (epochRef.current === epoch) epochRef.current += 1
-      if (slotRef.current) slotRef.current.aborted = true
-    }
-  }, [])
 
   const parsed = useMemo(() => parseDestination(destinationText), [destinationText])
 
@@ -65,16 +48,15 @@ export function useTransferRun(input: {
     if (parsed.kind !== 'ens') return
 
     const name = parsed.name
-    const epoch = epochRef.current
     let active = true
     const timer = window.setTimeout(() => {
       resolveEnsAddress(name)
         .then((address) => {
-          if (!active || epoch !== epochRef.current) return
+          if (!active) return
           setResolved({ name, address, error: null })
         })
         .catch((failure: unknown) => {
-          if (!active || epoch !== epochRef.current) return
+          if (!active) return
           setResolved({
             name,
             address: null,
@@ -168,41 +150,12 @@ export function useTransferRun(input: {
     const chain = input.chain
     const selections = input.selections
 
-    if (runningRef.current) return
     if (target === null || chain === null || selections.length === 0) return
 
-    // Captured before any wait so a start that outlives its page cannot install
-    // a slot nobody can abort.
-    const entryEpoch = epochRef.current
+    const session = await gate.begin()
+    if (!session) return
 
-    if (liveTransfer) {
-      if (!liveTransfer.aborted) {
-        setError('A transfer run is still in progress')
-        toast.error('A transfer run is still in progress')
-        return
-      }
-
-      // The abandoned run still has a transaction in flight. Wait for it to
-      // settle so the form cannot start a second send against the same token.
-      runningRef.current = true
-      setRunning(true)
-      setError('Waiting for the previous run to finish')
-      while (liveTransfer) {
-        if (!liveTransfer.aborted) {
-          runningRef.current = false
-          setRunning(false)
-          setError('A transfer run is still in progress')
-          toast.error('A transfer run is still in progress')
-          return
-        }
-        await liveTransfer.done
-      }
-
-      if (entryEpoch !== epochRef.current) return
-    }
-
-    const epoch = epochRef.current
-    const live = () => epoch === epochRef.current
+    const { slot, live } = session
     const publish = (next: TransferRunProgress) => {
       if (!live()) return
       setProgress(next)
@@ -225,18 +178,6 @@ export function useTransferRun(input: {
         return changed ? merged : previous
       })
     }
-    // The project's TS lib predates Promise.withResolvers.
-    let settle = () => {}
-    const done = new Promise<void>((resolve) => {
-      settle = resolve
-    })
-    const slot: RunSlot = { aborted: false, done, settle }
-    liveTransfer = slot
-    slotRef.current = slot
-
-    runningRef.current = true
-    setRunning(true)
-    setError(null)
     setProgress(null)
 
     try {
@@ -306,14 +247,7 @@ export function useTransferRun(input: {
       setError(message)
       toast.error(message)
     } finally {
-      slot.aborted = true
-      slot.settle()
-      slotRef.current = null
-      if (liveTransfer === slot) liveTransfer = null
-      if (live()) {
-        runningRef.current = false
-        setRunning(false)
-      }
+      session.end()
     }
   }
 
@@ -326,8 +260,8 @@ export function useTransferRun(input: {
     blockedReason,
     start,
     reset,
-    running,
-    error,
+    running: gate.running,
+    error: gate.error,
     summary,
     tokenStates: steps,
   }

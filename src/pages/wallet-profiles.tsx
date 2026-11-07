@@ -257,7 +257,7 @@ export function WalletProfilesPage() {
   }
 
   const deleteFolder = async () => {
-    if (!activeFolder || deleting) {
+    if (!activeFolder || deleting || importing) {
       return
     }
     setDeleting(true)

@@ -32,7 +32,8 @@ export type SellStepState = {
   decimals: number
 } & (
   | { status: 'queued' | 'preparing' | 'approving' }
-  | { status: 'sending' | 'confirming'; txHash: string | null }
+  | { status: 'sending' }
+  | { status: 'confirming'; txHash: string }
   | { status: 'sold'; txHash: string }
   | { status: 'failed'; error: string }
 )
@@ -233,7 +234,7 @@ export async function runSellTargets(input: {
 
         const sending = stateOf(target.key)
         if (!sending) return
-        commit({ ...sending, status: 'sending', txHash: null })
+        commit({ ...sending, status: 'sending' })
 
         const sent = await sendTransaction({
           wallet: record,
