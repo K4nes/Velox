@@ -11,6 +11,12 @@ import {
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000
+// http.ts reports a wait only from `Retry-After` or `X-RateLimit-Reset`; when
+// neither gives one the retry waits blind. http.ts notes a fixed wait can retry
+// into the same empty bucket, and MAX_RETRY_ATTEMPTS bounds how often. Both the
+// 429 and the 503 branch fall back to it: a 429 waits out a rate-limit bucket,
+// while a 503 is a transient failure with no bucket to wait for.
+const NO_HEADER_RETRY_WAIT_MS = 2_000
 
 export class OpenSeaError extends Error {
   readonly status: number
@@ -231,7 +237,9 @@ async function attempt(
       (wait === null || wait <= MAX_RETRY_WAIT_MS)
 
     if (withinBudget) {
-      await new Promise((resolve) => setTimeout(resolve, wait ?? 2000))
+      await new Promise((resolve) =>
+        setTimeout(resolve, wait ?? NO_HEADER_RETRY_WAIT_MS)
+      )
       return attempt(path, options, keys, attemptCount + 1, keyIndex)
     }
     if (limit && keyAuth && hasNextKey) {
