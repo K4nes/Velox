@@ -43,7 +43,7 @@ two small server-side routes for the calls a browser cannot make alone.
 ## Installation
 
 ```bash
-git clone https://github.com/K4nes/velox2.git
+git clone https://github.com/K4nes/velox.git
 cd velox2
 npm install
 ```

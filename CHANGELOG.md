@@ -63,15 +63,15 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/velox2/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/K4nes/velox2/releases/tag/v0.1.0
-[#20]: https://github.com/K4nes/velox2/pull/20
-[#21]: https://github.com/K4nes/velox2/pull/21
-[#22]: https://github.com/K4nes/velox2/pull/22
-[#23]: https://github.com/K4nes/velox2/pull/23
-[#24]: https://github.com/K4nes/velox2/pull/24
-[#25]: https://github.com/K4nes/velox2/pull/25
-[#26]: https://github.com/K4nes/velox2/pull/26
-[#27]: https://github.com/K4nes/velox2/pull/27
-[#28]: https://github.com/K4nes/velox2/pull/28
-[#29]: https://github.com/K4nes/velox2/pull/29
+[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/K4nes/velox/releases/tag/v0.1.0
+[#20]: https://github.com/K4nes/velox/pull/20
+[#21]: https://github.com/K4nes/velox/pull/21
+[#22]: https://github.com/K4nes/velox/pull/22
+[#23]: https://github.com/K4nes/velox/pull/23
+[#24]: https://github.com/K4nes/velox/pull/24
+[#25]: https://github.com/K4nes/velox/pull/25
+[#26]: https://github.com/K4nes/velox/pull/26
+[#27]: https://github.com/K4nes/velox/pull/27
+[#28]: https://github.com/K4nes/velox/pull/28
+[#29]: https://github.com/K4nes/velox/pull/29
