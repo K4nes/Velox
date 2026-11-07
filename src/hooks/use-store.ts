@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Loaded<T> = {
   version: number
@@ -19,13 +19,15 @@ export function useStore<T>(read: () => Promise<T[]>): {
   const [version, setVersion] = useState(0)
   const [loaded, setLoaded] = useState<Loaded<T> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const readRef = useRef(read)
+  useEffect(() => {
+    readRef.current = read
+  })
 
-  // `read` is a dependency, so it has to be stable: a module-level function or
-  // a useCallback, never an inline arrow.
   useEffect(() => {
     let cancelled = false
 
-    read()
+    readRef.current()
       .then((value) => {
         if (!cancelled) {
           setLoaded({ version, value })
@@ -42,7 +44,7 @@ export function useStore<T>(read: () => Promise<T[]>): {
     return () => {
       cancelled = true
     }
-  }, [read, version])
+  }, [version])
 
   const reload = useCallback(() => {
     setVersion((current) => current + 1)
