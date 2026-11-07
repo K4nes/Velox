@@ -11,9 +11,9 @@ import {
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000
-// http.ts reads `Retry-After` and `X-RateLimit-Reset`; this is the branch where
-// neither arrived, so there is no reset time to honour and the retry falls back
-// to a fixed floor.
+// http.ts reports a wait only from `Retry-After` or `X-RateLimit-Reset`; when
+// neither gives one the retry waits blind. http.ts notes a fixed wait can retry
+// into the same empty bucket, and MAX_RETRY_ATTEMPTS bounds how often.
 const NO_HEADER_RETRY_WAIT_MS = 2_000
 
 export class OpenSeaError extends Error {

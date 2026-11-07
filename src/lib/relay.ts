@@ -65,8 +65,6 @@ const INDEX_PATH = '/transactions/index'
 const POLL_INTERVAL_MS = 4_000
 const POLL_BUDGET_MS = 150_000
 const INDEX_ATTEMPTS = 2
-// The notify posts at most twice, so this is the only wait it adds, and it keeps
-// the second attempt from firing in the same instant as the first.
 const INDEX_RETRY_WAIT_MS = 1_000
 
 function unexpected(message: string): RelayError {

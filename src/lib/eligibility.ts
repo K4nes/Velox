@@ -65,9 +65,9 @@ export async function getEligibilityToken(
   })
 }
 
-// Each wallet is three OpenSea calls back to back against one rate limit bucket,
-// so a wallet starts only after the previous one finished. The pause keeps the
-// loop sequential and adds no request.
+// One OpenSea call per wallet, and the loop is already serial because each
+// wallet awaits its own. The pause spaces consecutive eligibility calls so a
+// long wallet list does not fire them back to back.
 const ELIGIBILITY_WALLET_SPACING_MS = 250
 
 export async function checkWalletEligibility(
