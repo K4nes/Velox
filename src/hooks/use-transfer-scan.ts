@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useHoldingsScan } from '@/hooks/use-holdings-scan'
+import { useSelection } from '@/hooks/use-selection'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { shortAddress } from '@/lib/format'
 import type { HeldToken } from '@/lib/holdings'
 import { probeStandards } from '@/lib/token-standard'
 import type { StandardProbe } from '@/lib/token-standard'
@@ -24,12 +26,6 @@ export type TransferSelectionGroup = {
 
 const NO_PROBES: ReadonlyMap<string, StandardProbe> = new Map()
 
-function shortContract(contract: string): string {
-  return contract.length > 12
-    ? `${contract.slice(0, 6)}…${contract.slice(-4)}`
-    : contract
-}
-
 export function useTransferScan() {
   const scan = useHoldingsScan()
   const { groups } = useWalletGroups()
@@ -37,7 +33,6 @@ export function useTransferScan() {
     key: string
     probes: ReadonlyMap<string, StandardProbe>
   }>({ key: '', probes: NO_PROBES })
-  const [selectedKeys, setSelectedKeys] = useState<readonly string[]>([])
   const [spent, setSpent] = useState<ReadonlyMap<string, number>>(new Map())
 
   const state = scan.state
@@ -122,9 +117,20 @@ export function useTransferScan() {
     [scan.rows, standards, spent]
   )
 
+  const select = useSelection(rows, {
+    keyOf: (row) => row.token.key,
+    isSelectable: (row) => row.selectable,
+  })
+
   const selection = useMemo<TransferSelection[]>(
-    () => selectedTransfers({ tokens, standards, spent, selectedKeys }),
-    [tokens, standards, spent, selectedKeys]
+    () =>
+      selectedTransfers({
+        tokens,
+        standards,
+        spent,
+        selectedKeys: select.selectedKeys,
+      }),
+    [tokens, standards, spent, select.selectedKeys]
   )
 
   const selectionGroups = useMemo<TransferSelectionGroup[]>(() => {
@@ -148,7 +154,7 @@ export function useTransferScan() {
         name:
           collection?.name ||
           collection?.slug ||
-          shortContract(entry.contract),
+          shortAddress(entry.contract),
         imageUrl: collection?.imageUrl ?? '',
         tokens: [token],
       })
@@ -158,49 +164,21 @@ export function useTransferScan() {
   }, [selection, collection])
 
   function resetSelection() {
-    setSelectedKeys([])
+    select.setKeys([])
     setSpent(new Map())
   }
 
-  function toggleToken(key: string) {
-    setSelectedKeys((current) =>
-      current.includes(key)
-        ? current.filter((value) => value !== key)
-        : [...current, key]
-    )
-  }
-
-  function toggleAll() {
-    const visible = rows
-      .filter((row) => row.selectable)
-      .map((row) => row.token.key)
-
-    if (
-      visible.length > 0 &&
-      visible.every((key) => selectedKeys.includes(key))
-    ) {
-      setSelectedKeys((current) => current.filter((key) => !visible.includes(key)))
-      return
-    }
-
-    setSelectedKeys((current) => [...new Set([...current, ...visible])])
-  }
-
   function removeToken(key: string) {
-    setSelectedKeys((current) => current.filter((value) => value !== key))
+    select.deselect([key])
   }
 
   function removeGroup(contract: string) {
     const target = contract.toLowerCase()
-    deselect(
+    select.deselect(
       selection
         .filter((entry) => entry.contract.toLowerCase() === target)
         .map((entry) => entry.key)
     )
-  }
-
-  function deselect(keys: readonly string[]) {
-    setSelectedKeys((current) => current.filter((key) => !keys.includes(key)))
   }
 
   function applySpent(units: Map<string, number>) {
@@ -232,7 +210,7 @@ export function useTransferScan() {
     collection,
     groups,
     wallets,
-    selectedKeys,
+    selectedKeys: select.selectedKeys,
     selection,
     selectionGroups,
     changeUrl: (next: string) => {
@@ -245,11 +223,11 @@ export function useTransferScan() {
       resetSelection()
       scan.changeWallets(ids)
     },
-    toggleToken,
-    toggleAll,
+    toggleToken: select.toggle,
+    toggleAll: select.toggleAll,
     removeToken,
     removeGroup,
-    deselect,
+    deselect: select.deselect,
     applySpent,
     scan: rescan,
   }

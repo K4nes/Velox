@@ -1,11 +1,11 @@
 import { Layers } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
+import { RunStatusCell } from '@/components/run-status-cell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -14,18 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { shortAddress } from '@/lib/format'
 import { amountFor, formatSwapAmount, parseFixedAmount } from '@/lib/swap-spec'
 import type { SwapAmounts } from '@/lib/swap-spec'
 import { SWAP_WALLET_TONE, swapWalletLabel } from '@/lib/swap-run'
 import type { SwapWalletState } from '@/lib/swap-run'
 import type { SwapBatch } from '@/lib/swap-batch'
-import { cn } from '@/lib/utils'
-
-function shortAddress(address: string): string {
-  return address.length > 12
-    ? `${address.slice(0, 6)}…${address.slice(-4)}`
-    : address
-}
 
 function StatusCell({ state }: { state: SwapWalletState | undefined }) {
   if (!state) {
@@ -51,30 +45,13 @@ function StatusCell({ state }: { state: SwapWalletState | undefined }) {
             : null
 
   return (
-    <div className="flex max-w-[240px] flex-col gap-0.5">
-      <span
-        className={cn(
-          'flex items-center gap-1.5 text-xs font-medium',
-          SWAP_WALLET_TONE[state.status]
-        )}
-      >
-        {live ? <Spinner aria-hidden className="size-3" /> : null}
-        {swapWalletLabel(state)}
-        {txHash ? (
-          <span className="text-muted-foreground font-normal">
-            {`${txHash.slice(0, 8)}…`}
-          </span>
-        ) : null}
-      </span>
-      {detail ? (
-        <span
-          className="text-muted-foreground truncate text-xs"
-          title={detail}
-        >
-          {detail}
-        </span>
-      ) : null}
-    </div>
+    <RunStatusCell
+      tone={SWAP_WALLET_TONE[state.status]}
+      label={swapWalletLabel(state)}
+      live={live}
+      note={txHash ? `${txHash.slice(0, 8)}…` : undefined}
+      error={detail ?? undefined}
+    />
   )
 }
 

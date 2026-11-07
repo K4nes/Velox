@@ -1,16 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useHoldingsScan } from '@/hooks/use-holdings-scan'
+import { useSelection } from '@/hooks/use-selection'
 import type { ListingToken } from '@/lib/listing-plan'
 
 export function useBulkSellScan() {
   const scan = useHoldingsScan()
-  const [selectedKeys, setSelectedKeys] = useState<readonly string[]>([])
+  const select = useSelection(scan.rows, {
+    keyOf: (row) => row.key,
+    // A row whose whole-unit balance is zero cannot be listed, so select-all
+    // leaves it out rather than poisoning the run.
+    isSelectable: (row) => Math.floor(row.quantity) >= 1,
+  })
 
   const selection = useMemo<ListingToken[]>(
     () =>
       scan.tokens.flatMap((row) => {
         const units = Math.floor(row.quantity)
-        if (!selectedKeys.includes(row.key) || units < 1) return []
+        if (!select.selectedKeys.includes(row.key) || units < 1) return []
         return [
           {
             key: row.key,
@@ -23,55 +29,25 @@ export function useBulkSellScan() {
           },
         ]
       }),
-    [scan.tokens, selectedKeys]
+    [scan.tokens, select.selectedKeys]
   )
-
-  function toggleToken(key: string) {
-    setSelectedKeys((current) =>
-      current.includes(key)
-        ? current.filter((value) => value !== key)
-        : [...current, key]
-    )
-  }
-
-  function toggleAll() {
-    // A row whose whole-unit balance is zero cannot be listed, so select-all
-    // leaves it out rather than poisoning the run.
-    const visible = scan.rows
-      .filter((row) => Math.floor(row.quantity) >= 1)
-      .map((row) => row.key)
-    setSelectedKeys((current) => {
-      const allSelected = visible.every((key) => current.includes(key))
-      return allSelected
-        ? current.filter((key) => !visible.includes(key))
-        : [...new Set([...current, ...visible])]
-    })
-  }
-
-  function deselect(keys: readonly string[]) {
-    setSelectedKeys((current) => current.filter((key) => !keys.includes(key)))
-  }
 
   function changeUrl(next: string) {
     if (scan.running) return
-    setSelectedKeys([])
+    select.setKeys([])
     scan.changeUrl(next)
   }
 
   function changeWallets(ids: string[]) {
     if (scan.running) return
-    setSelectedKeys([])
+    select.setKeys([])
     scan.changeWallets(ids)
   }
 
   async function rescan() {
     if (scan.running) return
-    setSelectedKeys([])
+    select.setKeys([])
     await scan.scan()
-  }
-
-  function selectKeys(keys: readonly string[]) {
-    setSelectedKeys(keys)
   }
 
   return {
@@ -82,17 +58,17 @@ export function useBulkSellScan() {
     totalRows: scan.totalRows,
     query: scan.query,
     setQuery: scan.setQuery,
-    selectedKeys,
+    selectedKeys: select.selectedKeys,
     selection,
     running: scan.running,
     canScan: scan.canScan,
     collection: scan.collection,
     changeUrl,
     changeWallets,
-    toggleToken,
-    toggleAll,
-    deselect,
+    toggleToken: select.toggle,
+    toggleAll: select.toggleAll,
+    deselect: select.deselect,
     scan: rescan,
-    selectKeys,
+    selectKeys: select.setKeys,
   }
 }
