@@ -1,6 +1,6 @@
-// Every run module publishes a progress record as `{ steps }` and moves it
-// forward one step at a time, so the record can grow a field without a commit
-// erasing it.
+// Every run module publishes a progress record with a `steps` array and moves
+// it forward one step at a time, so the record can grow a field without a
+// commit erasing it.
 export type RunSteps<S> = { steps: readonly S[] }
 
 export function stepById<S extends { id: string }>(

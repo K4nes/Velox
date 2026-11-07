@@ -3,6 +3,7 @@ import type { PrivateKeyAccount } from 'viem/accounts'
 
 import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
+import type { SwapAssetOption } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/async'
 import { notifyIndexer, pollSwapIntent, quoteSwap } from '@/lib/relay'
 import type {
@@ -79,7 +80,10 @@ export type SwapWalletState = {
   | { readonly status: 'skipped'; readonly reason: string }
 )
 
-export type SwapRunProgress = { readonly steps: readonly SwapWalletState[] }
+export type SwapRunProgress = {
+  readonly steps: readonly SwapWalletState[]
+  readonly to: SwapAssetOption
+}
 
 export type SwapRunOutcome = {
   readonly progress: SwapRunProgress
@@ -165,6 +169,7 @@ export async function runSwapPlan(input: {
       amount: job.amount,
       status: 'queued' as const,
     })),
+    to: input.batch.spec.to,
   }
   const emit = () => input.onProgress?.(progress)
 

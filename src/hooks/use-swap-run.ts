@@ -18,6 +18,7 @@ export function useSwapRun(input: {
   running: boolean
   error: string | null
   summary: SwapRunSummary | null
+  receivedTo: SwapRunProgress['to'] | null
   states: Map<string, SwapWalletState>
   start: () => Promise<void>
 } {
@@ -30,6 +31,7 @@ export function useSwapRun(input: {
     [progress]
   )
   const states = useMemo(() => walletStates(progress), [progress])
+  const receivedTo = progress?.to ?? null
 
   async function start() {
     const batch = input.batch
@@ -103,6 +105,7 @@ export function useSwapRun(input: {
     running: gate.running,
     error: gate.error,
     summary,
+    receivedTo,
     states,
     start,
   }

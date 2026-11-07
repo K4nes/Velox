@@ -64,6 +64,7 @@ export function SwapPage() {
           batch={batch.value}
           preview={preview.value}
           summary={run.summary}
+          receivedTo={run.receivedTo}
           error={run.error ?? batch.error}
           blockedReason={blockedReason}
           running={run.running}
