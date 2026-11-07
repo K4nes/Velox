@@ -65,6 +65,11 @@ export async function getEligibilityToken(
   })
 }
 
+// Each wallet is three OpenSea calls back to back against one rate limit bucket,
+// so a wallet starts only after the previous one finished. The pause keeps the
+// loop sequential and adds no request.
+const ELIGIBILITY_WALLET_SPACING_MS = 250
+
 export async function checkWalletEligibility(
   drop: DropInfo,
   wallets: StoredWallet[]
@@ -81,7 +86,9 @@ export async function checkWalletEligibility(
 
   for (const [index, wallet] of unique.entries()) {
     if (index > 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 250))
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, ELIGIBILITY_WALLET_SPACING_MS)
+      )
     }
 
     try {

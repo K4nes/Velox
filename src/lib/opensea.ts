@@ -11,6 +11,10 @@ import {
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000
+// http.ts reads `Retry-After` and `X-RateLimit-Reset`; this is the branch where
+// neither arrived, so there is no reset time to honour and the retry falls back
+// to a fixed floor.
+const NO_HEADER_RETRY_WAIT_MS = 2_000
 
 export class OpenSeaError extends Error {
   readonly status: number
@@ -231,7 +235,9 @@ async function attempt(
       (wait === null || wait <= MAX_RETRY_WAIT_MS)
 
     if (withinBudget) {
-      await new Promise((resolve) => setTimeout(resolve, wait ?? 2000))
+      await new Promise((resolve) =>
+        setTimeout(resolve, wait ?? NO_HEADER_RETRY_WAIT_MS)
+      )
       return attempt(path, options, keys, attemptCount + 1, keyIndex)
     }
     if (limit && keyAuth && hasNextKey) {
