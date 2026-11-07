@@ -1,6 +1,4 @@
-// Types and pure resolvers for the settings connection registry. No runtime
-// imports, and the only type import is `ChainSlug`, so plain Node can strip the
-// types and exercise this module without the bundler's path aliases.
+// Types and pure resolvers for the settings connection registry.
 import type { ChainSlug } from '@/config/chains'
 
 export type DataService = 'opensea' | 'coinmarketcap'

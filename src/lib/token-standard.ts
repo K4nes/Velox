@@ -17,7 +17,6 @@ export type StandardProbe =
   | { status: 'unsupported'; reason: string }
   | { status: 'unreadable'; error: string }
 
-// ERC-165 interface ids.
 const ERC721_INTERFACE_ID = '0x80ac58cd'
 const ERC1155_INTERFACE_ID = '0xd9b67a26'
 

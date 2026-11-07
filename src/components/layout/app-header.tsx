@@ -4,7 +4,6 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 type RouteHandle = { title?: string }
 
 export function AppHeader() {
-  // The title lives on the route, so a page never repeats it in two places.
   const title = useMatches()
     .map((match) => (match.handle as RouteHandle | undefined)?.title)
     .filter(Boolean)
