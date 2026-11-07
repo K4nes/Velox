@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useStore } from '@/hooks/use-store'
 import type { WalletGroup } from '@/components/wallet-select'
 import { getAll } from '@/lib/db'
 import type { FolderRecord } from '@/lib/wallet-model'
@@ -34,10 +34,13 @@ function buildGroups(folders: FolderRecord[], wallets: StoredWallet[]): WalletGr
   return groups
 }
 
-type Loaded = {
-  version: number
-  groups: WalletGroup[]
-  error: string | null
+async function readWalletGroups(): Promise<WalletGroup[]> {
+  const [folders, wallets] = await Promise.all([
+    getAll<FolderRecord>('folders'),
+    getAll<StoredWallet>('wallets'),
+  ])
+
+  return buildGroups(folders, wallets)
 }
 
 export function useWalletGroups(): {
@@ -46,42 +49,7 @@ export function useWalletGroups(): {
   error: string | null
   reload: () => void
 } {
-  const [version, setVersion] = useState(0)
-  const [loaded, setLoaded] = useState<Loaded | null>(null)
+  const { value, loading, error, reload } = useStore(readWalletGroups)
 
-  useEffect(() => {
-    let cancelled = false
-
-    Promise.all([getAll<FolderRecord>('folders'), getAll<StoredWallet>('wallets')])
-      .then(([folders, wallets]) => {
-        if (!cancelled) {
-          setLoaded({ version, groups: buildGroups(folders, wallets), error: null })
-        }
-      })
-      .catch((failure) => {
-        if (!cancelled) {
-          setLoaded({
-            version,
-            groups: [],
-            error: failure instanceof Error ? failure.message : String(failure),
-          })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [version])
-
-  const reload = useCallback(() => {
-    setVersion((current) => current + 1)
-  }, [])
-
-  return {
-    groups: loaded?.groups ?? [],
-    // Derived, so a reload flips to loading without a second state to keep in sync.
-    loading: loaded === null || loaded.version !== version,
-    error: loaded?.error ?? null,
-    reload,
-  }
+  return { groups: value, loading, error, reload }
 }
