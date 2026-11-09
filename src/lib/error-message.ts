@@ -17,7 +17,7 @@ export function toMessage(error: unknown): string {
 // failure differently. Check copy is the wording operators already know.
 export function mintFailureMessage(
   error: unknown,
-  step: 'collection' | 'drop' | 'eligibility'
+  step: 'drop' | 'eligibility'
 ): string {
   if (error instanceof OpenSeaError) {
     if (error.status === 0) {
@@ -27,9 +27,9 @@ export function mintFailureMessage(
       return 'OpenSea API key rejected. Update it in Settings.'
     }
     if (error.status === 404) {
-      if (step === 'collection') return 'Collection not found'
-      if (step === 'drop') return 'No drop found for this collection'
-      return 'Eligibility check failed'
+      return step === 'drop'
+        ? 'No drop found for this collection'
+        : 'Eligibility check failed'
     }
   }
 
