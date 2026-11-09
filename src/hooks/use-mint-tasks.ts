@@ -7,7 +7,7 @@ import { checkWalletEligibility } from '@/lib/eligibility'
 import { mintFailureMessage, toMessage } from '@/lib/error-message'
 import { traceMint } from '@/lib/mint-trace'
 import { mintForWallet } from '@/lib/mint'
-import { chainTime, waitForReceipt } from '@/lib/tx'
+import { callTransaction, chainTime, waitForReceipt } from '@/lib/tx'
 import {
   createTask,
   gweiToWei,
@@ -31,7 +31,13 @@ import type {
   TaskPatch,
   WalletRun,
 } from '@/lib/mint-task'
-import { getCollection, getDrop, slugFromUrl } from '@/lib/opensea'
+import {
+  buildMintTransaction,
+  getCollection,
+  getDrop,
+  slugFromUrl,
+} from '@/lib/opensea'
+import type { DropInfo, DropStage } from '@/lib/opensea'
 import { listWallets } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -190,7 +196,10 @@ export function useMintTasks() {
     })
   }
 
-  async function check(target?: Task): Promise<CheckResult | null> {
+  async function check(
+    target?: Task,
+    dropOverride?: DropInfo
+  ): Promise<CheckResult | null> {
     const task = target ?? realActive
     if (!task || task.status === 'running' || task.url.trim().length === 0) {
       return null
@@ -223,12 +232,18 @@ export function useMintTasks() {
     traceMint({ kind: 'check-start', taskId: id })
 
     try {
-      await getCollection(slug)
-      if (stale()) return null
+      let drop: DropInfo
+      if (dropOverride) {
+        drop = dropOverride
+        step = 'eligibility'
+      } else {
+        await getCollection(slug)
+        if (stale()) return null
 
-      step = 'drop'
-      const drop = await getDrop(slug)
-      if (stale()) return null
+        step = 'drop'
+        drop = await getDrop(slug)
+        if (stale()) return null
+      }
 
       if (drop.dropType !== 'seadrop_v1_erc721') {
         updateTask(id, {
@@ -303,25 +318,43 @@ export function useMintTasks() {
     }
   }
 
+  const mintQuantityFor = (
+    task: Task,
+    walletMax: number,
+    stage: DropStage | null
+  ): number | null => {
+    const ceiling = quantityCeiling(walletMax, stage)
+    const requested = Number.parseInt(task.quantity, 10)
+    const quantity = ceiling > 0 ? Math.min(requested, ceiling) : requested
+    return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
+  }
+
   // `prepared` carries a check that just landed, so an armed run mints from the
   // rows it computed instead of the ones React has not committed yet.
-  async function startMint(target?: Task, prepared?: CheckResult) {
+  async function startMint(
+    target?: Task,
+    options: {
+      prepared?: CheckResult
+      drop?: DropInfo
+      stageVerified?: boolean
+    } = {}
+  ) {
+    const prepared = options.prepared
     const task = target ?? realActive
     if (!task || !task.drop || mintingRef.current.has(task.id)) return
 
     const id = task.id
-    const drop = prepared?.drop ?? task.drop
+    const drop = options.drop ?? prepared?.drop ?? task.drop
     const stage =
       drop.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
-    const ceiling = quantityCeiling(
+    const quantity = mintQuantityFor(
+      task,
       prepared ? prepared.quantityMax : task.quantityMax,
       stage
     )
-    const requested = Number.parseInt(task.quantity, 10)
-    const quantity = ceiling > 0 ? Math.min(requested, ceiling) : requested
     const gasLimitInput = Number.parseInt(task.gasLimit, 10)
 
-    if (!Number.isFinite(quantity) || quantity < 1) {
+    if (quantity === null) {
       toast.error('Quantity must be at least 1')
       return
     }
@@ -333,9 +366,9 @@ export function useMintTasks() {
     const stopped = () => mintRunRef.current.get(id) !== run
 
     try {
-      const fresh = await getDrop(drop.slug)
+      const fresh = options.drop ?? (await getDrop(drop.slug))
       if (stopped()) return
-      if (fresh.activeStage === null) {
+      if (!options.stageVerified && fresh.activeStage === null) {
         setRuns((current) => ({
           ...current,
           [id]: (current[id] ?? []).filter(reachedChain),
@@ -352,12 +385,14 @@ export function useMintTasks() {
         return
       }
 
-      const liveStageUuid = fresh.activeStage.uuid
       // The endpoint sends only minter and quantity, so it mints the live stage
       // whatever the picker says. Sending a batch built from another stage would
       // mint A for wallets counted against B, and the doomed retry would wipe the
       // record of a transaction that already landed.
-      if (liveStageUuid !== task.stageUuid) {
+      const liveStageUuid = options.stageVerified
+        ? task.stageUuid
+        : (fresh.activeStage?.uuid ?? '')
+      if (!options.stageVerified && liveStageUuid !== task.stageUuid) {
         updateTask(id, { checked: false })
         toast.error('The live stage changed. Check the collection again.')
         return
@@ -494,6 +529,64 @@ export function useMintTasks() {
     updateTask(realActive.id, { arm: null })
   }
 
+  type ReadinessEntry = {
+    from: `0x${string}`
+    to: `0x${string}`
+    data: `0x${string}`
+    value: bigint
+  }
+
+  async function readinessFor(
+    task: Task,
+    drop: DropInfo,
+    quantity: number
+  ): Promise<ReadinessEntry[]> {
+    const candidates = (runsStateRef.current[task.id] ?? []).filter(
+      (row) =>
+        task.wallets.includes(row.walletId) &&
+        mintableRow(row, task.stageUuid)
+    )
+    const entries = await Promise.all(
+      candidates.map(async (row) => {
+        try {
+          const transaction = await buildMintTransaction(
+            drop.slug,
+            row.address,
+            quantity
+          )
+          return {
+            from: row.address as `0x${string}`,
+            to: transaction.to as `0x${string}`,
+            data: transaction.data as `0x${string}`,
+            value: BigInt(transaction.value),
+          }
+        } catch {
+          return null
+        }
+      })
+    )
+    return entries.filter((entry): entry is ReadinessEntry => entry !== null)
+  }
+
+  async function stageReady(
+    chainSlug: string,
+    entries: ReadinessEntry[]
+  ): Promise<boolean> {
+    if (entries.length === 0) return true
+    const results = await Promise.allSettled(
+      entries.map((entry) =>
+        callTransaction({
+          chainSlug,
+          from: entry.from,
+          to: entry.to,
+          data: entry.data,
+          value: entry.value,
+        })
+      )
+    )
+    return results.some((result) => result.status === 'fulfilled')
+  }
+
   async function openArmed(taskId: string, blockMs: number) {
     const task = tasksRef.current.find((entry) => entry.id === taskId)
     const arm = task?.arm
@@ -505,24 +598,61 @@ export function useMintTasks() {
       // flight. Re-read before acting, or a cancelled run still spends gas.
       const latest = tasksRef.current.find((entry) => entry.id === taskId)
       if (!latest || latest.arm?.stageUuid !== arm.stageUuid) return
-      if (drop.activeStage?.uuid !== arm.stageUuid) {
-        // The armed stage never went live. Give up once it is gone or its window
-        // has closed, instead of polling OpenSea every four seconds forever.
-        const stage = drop.stages.find((entry) => entry.uuid === arm.stageUuid)
-        const endMs = stage?.endTime ? Date.parse(stage.endTime) : NaN
-        if (!stage || (Number.isFinite(endMs) && blockMs >= endMs)) {
-          updateTask(taskId, { arm: null })
-          toast.error('The scheduled stage closed before it opened.')
-        }
+      const stage =
+        drop.stages.find((entry) => entry.uuid === arm.stageUuid) ?? null
+      const endMs = stage?.endTime ? Date.parse(stage.endTime) : NaN
+      if (!stage || (Number.isFinite(endMs) && blockMs >= endMs)) {
+        updateTask(taskId, { arm: null })
+        toast.error('The scheduled stage closed before it opened.')
         return
       }
+
+      // A different active_stage that is still inside its own window is a real
+      // stage change. A stale one whose window has closed does not block the
+      // scheduled fire; the calldata check below is the authority on the open.
+      const active = drop.activeStage
+      const activeStart = active?.startTime ? Date.parse(active.startTime) : NaN
+      const activeEnd = active?.endTime ? Date.parse(active.endTime) : NaN
+      if (
+        active &&
+        active.uuid !== arm.stageUuid &&
+        (!Number.isFinite(activeStart) || activeStart <= blockMs) &&
+        (!Number.isFinite(activeEnd) || blockMs < activeEnd)
+      ) {
+        toast.error('The live stage changed. Check the collection again.')
+        return
+      }
+
       // A check that started while the drop was in flight owns the task now; the
       // next tick retries with the arm intact.
       if (latest.status === 'running') return
+      const quantity = mintQuantityFor(latest, latest.quantityMax, stage)
+      if (quantity === null) {
+        toast.error('Quantity must be at least 1')
+        return
+      }
+
+      const entries = await readinessFor(latest, drop, quantity)
+      const ready = await stageReady(drop.chain, entries)
+      if (!ready) return
+
+      const current = tasksRef.current.find((entry) => entry.id === taskId)
+      if (
+        !current ||
+        current.arm?.stageUuid !== arm.stageUuid ||
+        current.quantity !== latest.quantity
+      ) {
+        return
+      }
+
       updateTask(taskId, { arm: null })
-      const prepared = await check(latest)
+      const prepared = await check(latest, drop)
       if (!prepared) return
-      await startMint(latest, prepared)
+      await startMint(latest, {
+        prepared,
+        drop,
+        stageVerified: true,
+      })
     } catch (error) {
       toast.error(toMessage(error))
     } finally {

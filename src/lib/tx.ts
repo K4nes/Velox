@@ -85,6 +85,24 @@ export async function chainTime(chainSlug: string): Promise<number> {
   return Number(block.timestamp) * 1000
 }
 
+// SeaDrop enforces the stage window on-chain. A call that would revert before
+// the open succeeds only once the contract accepts the exact mint calldata.
+export async function callTransaction(input: {
+  chainSlug: string
+  from: `0x${string}`
+  to: `0x${string}`
+  data: `0x${string}`
+  value: bigint
+}): Promise<void> {
+  const client = await clientFor(input.chainSlug)
+  await client.call({
+    account: input.from,
+    to: input.to,
+    data: input.data,
+    value: input.value,
+  })
+}
+
 // Two tasks can select the same wallet. The nonce is read from `pending` and the
 // transaction is signed right after, so the read and the send must be serialized
 // per address or both tasks sign the same nonce and the second replaces the
