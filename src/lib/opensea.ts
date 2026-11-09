@@ -1,6 +1,7 @@
 import { formatUnits } from 'viem'
 import { resolveKeys } from '@/lib/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
+import { traceMint } from '@/lib/mint-trace'
 import { offerEconomics } from '@/lib/instant-sell'
 import type { CollectionOffer } from '@/lib/instant-sell'
 import {
@@ -548,7 +549,7 @@ export async function getDrop(slug: string): Promise<DropInfo> {
     throw unexpected('/drops')
   }
 
-  return {
+  const drop: DropInfo = {
     slug: body.collection_slug ?? slug,
     name: body.collection_name ?? '',
     chain: body.chain,
@@ -566,6 +567,12 @@ export async function getDrop(slug: string): Promise<DropInfo> {
       })
       .sort(byStageStart),
   }
+  traceMint({
+    kind: 'drops',
+    slug: drop.slug,
+    activeStageUuid: drop.activeStage?.uuid ?? null,
+  })
+  return drop
 }
 
 type RawStageEligibility = {
@@ -611,7 +618,14 @@ export async function buildMintTransaction(
     throw unexpected('/drops/mint')
   }
 
-  return { chain: body.chain, to: body.to, data: body.data, value: body.value }
+  const transaction: MintTransaction = {
+    chain: body.chain,
+    to: body.to,
+    data: body.data,
+    value: body.value,
+  }
+  traceMint({ kind: 'calldata', slug, minter, quantity })
+  return transaction
 }
 
 export type ListingActionItem = {
