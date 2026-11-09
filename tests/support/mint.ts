@@ -162,13 +162,21 @@ export async function guardMintResponse(options: {
   await options.browser.route(
     '**/api.opensea.io/api/v2/drops/*/mint',
     async (route) => {
-      matched = true
       const upstream = await route.fetch()
-      const body = (await upstream.json()) as {
+      const body = (await upstream.json().catch(() => ({}))) as {
         chain?: string
         to?: string
         value?: string
       }
+
+      // The armed path asks for calldata before the open. OpenSea rejects that
+      // with 409 NOT_MINTING; it is not the successful response under test.
+      if (upstream.status === 409) {
+        await route.fulfill({ status: 409, json: body })
+        return
+      }
+
+      matched = true
       const contract = options.contract.toLowerCase()
 
       expect(upstream.status, 'the mint provider refused the request').toBe(200)
