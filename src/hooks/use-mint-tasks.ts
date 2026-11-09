@@ -418,7 +418,7 @@ export function useMintTasks() {
       const broadcast: { walletId: string; chain: string; txHash: string }[] = []
 
       // Two wallets at a time, handed out in wallet-list order so wallet 0 is
-      // in the first pair. A cancel only stops items that have not started.
+      // in the first pair.
       await mapLimit(selected, WALLET_CONCURRENCY, async (wallet) => {
         if (stopped()) return
         updateRun(wallet.id, () => ({ status: 'minting' }))
