@@ -104,11 +104,16 @@ export async function checkWalletEligibility(
       // The eligibility response only covers the stages this wallet can enter,
       // so the row is built from the drop's full schedule and each stage is
       // matched against that response.
+      // The two endpoints disagree on formatting: `/drops/{slug}` sends an
+      // undashed `uuid`, `/eligibility` sends a dashed `stage_uuid`. Matching
+      // the raw strings makes every cap zero, which reads as "not eligible".
       const stages =
         drop.stages.length > 0
           ? drop.stages.map((dropStage) => {
               const match = response.stages.find(
-                (stage) => stage.stageUuid === dropStage.uuid
+                (stage) =>
+                  stage.stageUuid.replaceAll('-', '').toLowerCase() ===
+                  dropStage.uuid.replaceAll('-', '').toLowerCase()
               )
               return {
                 stageUuid: dropStage.uuid,
