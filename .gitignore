@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# e2e output
+.e2e/
+.e2e-live/
+!docs/e2e-runs/**/*.log
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

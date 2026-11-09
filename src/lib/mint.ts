@@ -1,4 +1,5 @@
 import { buildMintTransaction } from '@/lib/opensea'
+import type { MintTransaction } from '@/lib/opensea'
 import { sendTransaction } from '@/lib/tx'
 import type { TxGas } from '@/lib/tx'
 import type { StoredWallet } from '@/lib/wallets'
@@ -8,13 +9,16 @@ export async function mintForWallet(input: {
   wallet: StoredWallet
   quantity: number
   gas: TxGas
+  transaction?: MintTransaction
   shouldAbort?: () => boolean
 }): Promise<{ txHash: string; chain: string }> {
-  const transaction = await buildMintTransaction(
-    input.slug,
-    input.wallet.address,
-    input.quantity
-  )
+  const transaction =
+    input.transaction ??
+    (await buildMintTransaction(
+      input.slug,
+      input.wallet.address,
+      input.quantity
+    ))
 
   return sendTransaction({
     wallet: input.wallet,

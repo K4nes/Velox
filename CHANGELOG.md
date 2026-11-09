@@ -8,6 +8,23 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-09
+
+### Changed
+
+- Mint broadcasts run two wallets at a time and receipt waits four at a time, so a
+  batch no longer serializes every wallet's network round trip.
+- The live mint guard passes OpenSea's pre-open 409 through to the app; only the
+  open-time 200 is validated.
+
+### Fixed
+
+- The armed mint fires at the stage open even when the pre-open prepare request is
+  rejected, and the prepare no longer races the open fire.
+- Arm waits sleep in bounded steps, so a stage more than 24 days out no longer
+  overflows the timer.
+- Eligibility matches stage UUIDs across dashed and undashed formats.
+
 ## [0.1.0] - 2026-11-08
 
 First release. Everything below was built before the repository had tags, so it is
@@ -63,7 +80,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/K4nes/velox/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/K4nes/velox/releases/tag/v0.1.0
 [#20]: https://github.com/K4nes/velox/pull/20
 [#21]: https://github.com/K4nes/velox/pull/21

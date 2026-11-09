@@ -12,6 +12,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import type { ChainEntry } from '@/config/chains'
 import { resolveRpcUrls } from '@/lib/connections'
+import { traceMint } from '@/lib/mint-trace'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -49,6 +50,7 @@ export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
     id: entry.chainId,
     name: entry.name,
     nativeCurrency: entry.currency,
+    blockTime: entry.blockTimeMs,
     rpcUrls: { default: { http: [rpcUrl] } },
   })
 }
@@ -82,6 +84,43 @@ export async function chainTime(chainSlug: string): Promise<number> {
   const client = await clientFor(chainSlug)
   const block = await client.getBlock({ blockTag: 'latest' })
   return Number(block.timestamp) * 1000
+}
+
+// SeaDrop enforces the stage window on-chain. A call that would revert before
+// the open succeeds only once the contract accepts the exact mint calldata.
+export async function callTransaction(input: {
+  chainSlug: string
+  from: `0x${string}`
+  to: `0x${string}`
+  data: `0x${string}`
+  value: bigint
+}): Promise<void> {
+  const client = await clientFor(input.chainSlug)
+  await client.call({
+    account: input.from,
+    to: input.to,
+    data: input.data,
+    value: input.value,
+  })
+}
+
+// A pre-open estimate usually reverts because SeaDrop's window is closed. The
+// caller keeps it best-effort and leaves the commit-time estimate in place.
+export async function estimateGasFor(input: {
+  wallet: StoredWallet
+  chainSlug: string
+  to: `0x${string}`
+  data: `0x${string}`
+  value: bigint
+}): Promise<bigint> {
+  const client = await clientFor(input.chainSlug)
+  const account = privateKeyToAccount(toPrivateKeyHex(input.wallet.privateKey))
+  return client.estimateGas({
+    account,
+    to: input.to,
+    data: input.data,
+    value: input.value,
+  })
 }
 
 // Two tasks can select the same wallet. The nonce is read from `pending` and the
@@ -187,9 +226,11 @@ async function broadcast(input: {
   }
 
   const txHash = keccak256(serializedTransaction)
+  let sent = false
 
   try {
     await client.sendRawTransaction({ serializedTransaction })
+    sent = true
   } catch (error) {
     // A 4xx is the proxy rejecting the request before the node sees it; only a
     // network fault, a timeout, or a server-side failure can hide a broadcast.
@@ -203,6 +244,13 @@ async function broadcast(input: {
       throw new BroadcastError(txHash, error, account.address, nonce)
     }
     throw error
+  } finally {
+    traceMint({
+      kind: 'send-raw',
+      walletAddress: account.address,
+      txHash,
+      ok: sent,
+    })
   }
 
   return { txHash, chain: input.chainSlug, from: account.address, nonce }
