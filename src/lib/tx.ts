@@ -12,6 +12,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import type { ChainEntry } from '@/config/chains'
 import { resolveRpcUrls } from '@/lib/connections'
+import { traceMint } from '@/lib/mint-trace'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -187,9 +188,11 @@ async function broadcast(input: {
   }
 
   const txHash = keccak256(serializedTransaction)
+  let sent = false
 
   try {
     await client.sendRawTransaction({ serializedTransaction })
+    sent = true
   } catch (error) {
     // A 4xx is the proxy rejecting the request before the node sees it; only a
     // network fault, a timeout, or a server-side failure can hide a broadcast.
@@ -203,6 +206,13 @@ async function broadcast(input: {
       throw new BroadcastError(txHash, error, account.address, nonce)
     }
     throw error
+  } finally {
+    traceMint({
+      kind: 'send-raw',
+      walletAddress: account.address,
+      txHash,
+      ok: sent,
+    })
   }
 
   return { txHash, chain: input.chainSlug, from: account.address, nonce }

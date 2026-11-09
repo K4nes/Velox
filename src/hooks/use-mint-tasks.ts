@@ -4,6 +4,7 @@ import { useWalletGroups } from '@/hooks/use-wallets'
 import { RpcConfigError } from '@/lib/connections'
 import { checkWalletEligibility } from '@/lib/eligibility'
 import { mintFailureMessage, toMessage } from '@/lib/error-message'
+import { traceMint } from '@/lib/mint-trace'
 import { mintForWallet } from '@/lib/mint'
 import { chainTime, waitForReceipt } from '@/lib/tx'
 import {
@@ -217,6 +218,8 @@ export function useMintTasks() {
     }
 
     let step: 'collection' | 'drop' | 'eligibility' = 'collection'
+    let checked = false
+    traceMint({ kind: 'check-start', taskId: id })
 
     try {
       await getCollection(slug)
@@ -283,6 +286,7 @@ export function useMintTasks() {
         quantityMax,
         quantity: initialQuantity(quantityMax, stage),
       })
+      checked = true
       return { drop, rows: mergedRows, quantityMax }
     } catch (error) {
       if (stale()) return null
@@ -293,6 +297,8 @@ export function useMintTasks() {
       })
       toast.error(mintFailureMessage(error, step))
       return null
+    } finally {
+      traceMint({ kind: 'check-end', taskId: id, ok: checked })
     }
   }
 
@@ -557,6 +563,7 @@ export function useMintTasks() {
         try {
           const ms = await chainTime(chain)
           if (cancelled) return
+          traceMint({ kind: 'poll', taskId: task.id, chainMs: ms })
           setBlockSample({ ms, at: Date.now() })
           if (ms >= arm.startMs) void openArmedRef.current(task.id, ms)
         } catch (error) {
