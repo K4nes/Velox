@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { ARM_TICK_MS, armWait } from '@/lib/arm-schedule'
 import { RpcConfigError } from '@/lib/connections'
 import { checkWalletEligibility } from '@/lib/eligibility'
 import { mintFailureMessage, toMessage } from '@/lib/error-message'
@@ -545,47 +546,121 @@ export function useMintTasks() {
     return () => window.clearInterval(timer)
   }, [needsClock, armedCount])
 
-  useEffect(() => {
-    if (armedCount === 0) return
-    let cancelled = false
+  const armSignature = tasks
+    .flatMap((task) =>
+      task.arm
+        ? [`${task.id}:${task.arm.stageUuid}:${task.arm.startMs}`]
+        : []
+    )
+    .sort()
+    .join('|')
 
-    const poll = async () => {
-      for (const task of tasksRef.current) {
-        const arm = task.arm
-        if (!arm) continue
-        if (task.status === 'running') continue
-        const chain = task.drop?.chain
-        if (!chain) {
-          updateTask(task.id, { arm: null })
-          toast.error('The scheduled mint was cancelled. Check the collection again.')
+  useEffect(() => {
+    if (armSignature === '') return
+    let cancelled = false
+    const timers = new Set<number>()
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        const timer = window.setTimeout(() => {
+          timers.delete(timer)
+          resolve()
+        }, ms)
+        timers.add(timer)
+      })
+
+    const sampleChain = async (task: Task, chain: string) => {
+      const ms = await chainTime(chain)
+      if (cancelled) return null
+      traceMint({ kind: 'poll', taskId: task.id, chainMs: ms })
+      setBlockSample({ ms, at: Date.now() })
+      return ms
+    }
+
+    const disarmTask = (taskId: string, message: string) => {
+      updateTask(taskId, { arm: null })
+      toast.error(message)
+    }
+
+    const runArm = async (taskId: string) => {
+      // One offset for the whole arm. The chain's whole-second timestamps make
+      // the local target approximate, which the tight window resolves.
+      let offsetMs: number | null = null
+
+      while (!cancelled) {
+        const task = tasksRef.current.find((entry) => entry.id === taskId)
+        const arm = task?.arm
+        if (!task || !arm) return
+        if (task.status === 'running') {
+          await sleep(ARM_TICK_MS)
           continue
         }
-        try {
-          const ms = await chainTime(chain)
-          if (cancelled) return
-          traceMint({ kind: 'poll', taskId: task.id, chainMs: ms })
-          setBlockSample({ ms, at: Date.now() })
-          if (ms >= arm.startMs) void openArmedRef.current(task.id, ms)
-        } catch (error) {
-          // A chain with no usable RPC never recovers on its own, so disarming
-          // beats a countdown that can never fire.
-          if (error instanceof RpcConfigError) {
-            updateTask(task.id, { arm: null })
-            toast.error(error.message)
+
+        const chain = task.drop?.chain
+        if (!chain) {
+          disarmTask(
+            task.id,
+            'The scheduled mint was cancelled. Check the collection again.'
+          )
+          return
+        }
+
+        if (offsetMs === null) {
+          try {
+            const ms = await sampleChain(task, chain)
+            if (ms === null) return
+            offsetMs = ms - Date.now()
+          } catch (error) {
+            // A chain with no usable RPC never recovers on its own, so
+            // disarming beats a countdown that can never fire.
+            if (error instanceof RpcConfigError) {
+              disarmTask(task.id, error.message)
+              return
+            }
+            await sleep(ARM_TICK_MS)
             continue
           }
-          // An RPC hiccup must not disarm anything; the next poll retries.
         }
+
+        const wait = armWait(arm.startMs - offsetMs, Date.now())
+        if (!wait.tighten) {
+          await sleep(wait.delayMs)
+          continue
+        }
+
+        const tickStart = Date.now()
+        try {
+          const ms = await sampleChain(task, chain)
+          if (ms === null) return
+          if (ms >= arm.startMs) {
+            await openArmedRef.current(task.id, ms)
+            if (cancelled) return
+            const latest = tasksRef.current.find(
+              (entry) => entry.id === taskId
+            )
+            if (!latest?.arm) return
+          }
+        } catch (error) {
+          // An RPC hiccup must not disarm anything; the next tick retries.
+          if (error instanceof RpcConfigError) {
+            disarmTask(task.id, error.message)
+            return
+          }
+        }
+        await sleep(Math.max(0, ARM_TICK_MS - (Date.now() - tickStart)))
       }
     }
 
-    void poll()
-    const timer = window.setInterval(() => void poll(), 4000)
+    for (const task of tasksRef.current) {
+      if (task.arm) void runArm(task.id)
+    }
+
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      for (const timer of timers) window.clearTimeout(timer)
+      timers.clear()
     }
-  }, [armedCount])
+  }, [armSignature])
 
   const view = useMemo(
     () =>
