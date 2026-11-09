@@ -144,14 +144,14 @@ export async function prepareMintRun(options: {
 /**
  * Answers the collection, drop, eligibility, mint, sign-in and chain endpoints
  * in memory, so a mint runs without keys or funds. `calldataDelayMs` holds that
- * wallet's mint response open and `receiptDelayMs` holds the receipt response;
- * both make the overlap assertions observable. The events keep each request's
- * arrival time.
+ * wallet's mint response open, `sendDelayMs` its broadcast response, and
+ * `receiptDelayMs` the receipt response; each makes one overlap assertion
+ * observable. The events keep each request's arrival time.
  */
 export async function mockMintNetwork(options: {
   browser: Browser
   slug: string
-  wallets: { address: string; calldataDelayMs?: number }[]
+  wallets: { address: string; calldataDelayMs?: number; sendDelayMs?: number }[]
   receiptDelayMs?: number
 }): Promise<{ events: MintEvent[] }> {
   const { browser, slug, receiptDelayMs = 0 } = options
@@ -160,6 +160,12 @@ export async function mockMintNetwork(options: {
     options.wallets.map((wallet) => [
       wallet.address.toLowerCase(),
       wallet.calldataDelayMs ?? 0,
+    ])
+  )
+  const sendDelayByAddress = new Map(
+    options.wallets.map((wallet) => [
+      wallet.address.toLowerCase(),
+      wallet.sendDelayMs ?? 0,
     ])
   )
   const now = Date.now()
@@ -232,6 +238,9 @@ export async function mockMintNetwork(options: {
         ).toLowerCase()
         const txHash = keccak256(serialized)
         events.push({ kind: 'send', address, txHash, at: Date.now() })
+        const delayed = Promise.withResolvers<void>()
+        setTimeout(delayed.resolve, sendDelayByAddress.get(address) ?? 0)
+        await delayed.promise
         await answer(route, txHash)
         return
       }

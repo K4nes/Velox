@@ -15,6 +15,9 @@ const SLUG = 'parallel-drop'
 // second request only after that send, so it fails the overlap assertion.
 const FIRST_CALLDATA_DELAY_MS = 800
 const SECOND_CALLDATA_DELAY_MS = 1_600
+// The first send stays open past the second send's arrival; serialized sends
+// make the second request wait for this response instead.
+const FIRST_SEND_DELAY_MS = 2_000
 // Both receipt requests must leave before either answer returns; serial waits
 // for the first receipt before it starts the second request.
 const RECEIPT_DELAY_MS = 800
@@ -33,7 +36,11 @@ test('two wallets mint in parallel and settle once each', async ({
     browser,
     slug: SLUG,
     wallets: [
-      { address: first.address, calldataDelayMs: FIRST_CALLDATA_DELAY_MS },
+      {
+        address: first.address,
+        calldataDelayMs: FIRST_CALLDATA_DELAY_MS,
+        sendDelayMs: FIRST_SEND_DELAY_MS,
+      },
       { address: second.address, calldataDelayMs: SECOND_CALLDATA_DELAY_MS },
     ],
     receiptDelayMs: RECEIPT_DELAY_MS,
@@ -87,6 +94,9 @@ test('two wallets mint in parallel and settle once each', async ({
     secondAddress,
   ])
   expect(new Set(sends.map((event) => event.txHash)).size).toBe(2)
+  // The second send leaves while the first response is still held open. A
+  // serialized send waits for that response, so the gap reaches the delay.
+  expect(sends[1].at - sends[0].at).toBeLessThan(FIRST_SEND_DELAY_MS)
 
   expect(receipts).toHaveLength(2)
   expect(new Set(receipts.map((event) => event.txHash)).size).toBe(2)
