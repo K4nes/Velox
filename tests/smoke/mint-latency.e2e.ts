@@ -50,7 +50,10 @@ type Counters = {
   drop: number
   eligibility: number
   mint: number
+  mintOk: number
 }
+
+type Clock = { startMs: number; leadMs: number; mintDelayMs: number }
 
 async function serveAuth(browser: Browser, counters: Counters): Promise<void> {
   await browser.route('**/api/auth/**', async (route) => {
@@ -81,7 +84,7 @@ async function serveAuth(browser: Browser, counters: Counters): Promise<void> {
 async function serveOpenSea(
   browser: Browser,
   counters: Counters,
-  clock: { startMs: number }
+  clock: Clock
 ): Promise<void> {
   await browser.route('**/api.opensea.io/**', async (route) => {
     const path = new URL(route.request.url).pathname
@@ -104,6 +107,22 @@ async function serveOpenSea(
     }
     if (path.endsWith(`/${SLUG}/mint`)) {
       counters.mint += 1
+      // Measured against live OpenSea: pre-open mint requests answer
+      // 409 NOT_MINTING. The prepare phase must not treat that as calldata.
+      if (
+        clock.startMs === 0 ||
+        Date.now() < clock.startMs + clock.mintDelayMs
+      ) {
+        await route.fulfill({
+          status: 409,
+          json: {
+            errors: ['Drop is not currently active for minting'],
+            code: 'NOT_MINTING',
+          },
+        })
+        return
+      }
+      counters.mintOk += 1
       await route.fulfill({
         status: 200,
         json: { chain: 'robinhood', to: CONTRACT, data: '0x1234', value: '0' },
@@ -112,7 +131,7 @@ async function serveOpenSea(
     }
     if (path.endsWith(`/${SLUG}`)) {
       counters.drop += 1
-      if (clock.startMs === 0) clock.startMs = Date.now() + 15_000
+      if (clock.startMs === 0) clock.startMs = Date.now() + clock.leadMs
       await route.fulfill({
         status: 200,
         json: {
@@ -145,8 +164,8 @@ async function serveOpenSea(
 
 async function serveRpc(
   browser: Browser,
-  clock: { startMs: number },
-  calls: { ethCall: number[]; send: number[] }
+  clock: Clock,
+  calls: { block: number[]; ethCall: number[]; send: number[] }
 ): Promise<void> {
   await browser.route(/^http:\/\/127\.0\.0\.1:8545(?:\/.*)?$/, async (route) => {
     const request = JSON.parse(route.request.postData ?? '{}') as {
@@ -171,6 +190,7 @@ async function serveRpc(
 
     switch (request.method) {
       case 'eth_getBlockByNumber':
+        calls.block.push(Date.now())
         await ok({
           number: '0x1',
           hash: `0x${'11'.repeat(32)}`,
@@ -306,6 +326,24 @@ async function checkOnce(screen: Screen): Promise<void> {
   await expect(row.getByText('Scheduled', { exact: true })).toBeVisible()
 }
 
+async function armMockStage(screen: Screen): Promise<number> {
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Public' }).click()
+  await expect(screen.getByLabel('Quantity')).toHaveValue('2')
+  await screen.getByLabel('Quantity').fill('1')
+  await expect(screen.getByLabel('Quantity')).toHaveValue('1')
+  await screen.getByRole('button', { name: 'Advanced Gas' }).click()
+  await screen.getByLabel('Max Fee (Gwei)').fill('1')
+  await screen.getByLabel('Priority Fee (Gwei)').fill('0.1')
+
+  const armedAt = Date.now()
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(screen.getByText('Mint opens in')).toBeVisible({
+    timeout: 10_000,
+  })
+  return armedAt
+}
+
 test('a second check reuses the SIWE token', async ({
   app,
   browser,
@@ -317,8 +355,9 @@ test('a second check reuses the SIWE token', async ({
     drop: 0,
     eligibility: 0,
     mint: 0,
+    mintOk: 0,
   }
-  const clock = { startMs: 0 }
+  const clock: Clock = { startMs: 0, leadMs: 15_000, mintDelayMs: 0 }
   await serveAuth(browser, counters)
   await serveOpenSea(browser, counters, clock)
 
@@ -347,9 +386,14 @@ test('the armed run prepares and fires near startMs', async ({
     drop: 0,
     eligibility: 0,
     mint: 0,
+    mintOk: 0,
   }
-  const clock = { startMs: 0 }
-  const calls = { ethCall: [] as number[], send: [] as number[] }
+  const clock: Clock = { startMs: 0, leadMs: 15_000, mintDelayMs: 0 }
+  const calls = {
+    block: [] as number[],
+    ethCall: [] as number[],
+    send: [] as number[],
+  }
   await serveAuth(browser, counters)
   await serveOpenSea(browser, counters, clock)
   await serveRpc(browser, clock, calls)
@@ -358,20 +402,7 @@ test('the armed run prepares and fires near startMs', async ({
   await checkOnce(screen)
   expect(clock.startMs, 'the drop response set a start time').toBeGreaterThan(0)
 
-  await screen.getByLabel('Mint Stage').click()
-  await screen.getByRole('option', { name: 'Public' }).click()
-  await expect(screen.getByLabel('Quantity')).toHaveValue('2')
-  await screen.getByLabel('Quantity').fill('1')
-  await expect(screen.getByLabel('Quantity')).toHaveValue('1')
-  await screen.getByRole('button', { name: 'Advanced Gas' }).click()
-  await screen.getByLabel('Max Fee (Gwei)').fill('1')
-  await screen.getByLabel('Priority Fee (Gwei)').fill('0.1')
-
-  const armedAt = Date.now()
-  await screen.getByRole('button', { name: 'Start Mint' }).click()
-  await expect(screen.getByText('Mint opens in')).toBeVisible({
-    timeout: 10_000,
-  })
+  const armedAt = await armMockStage(screen)
 
   await expect.poll(() => calls.send.length, { timeout: 40_000 }).toBe(1)
   await expect(screen.getByText('Confirmed', { exact: true }).first()).toBeVisible(
@@ -388,8 +419,8 @@ test('the armed run prepares and fires near startMs', async ({
   ).toBeGreaterThanOrEqual(clock.startMs)
   expect(
     calls.send[0] - clock.startMs,
-    'the send landed within two seconds of the open'
-  ).toBeLessThan(2_000)
+    'the send landed within 2.5 seconds of the open'
+  ).toBeLessThan(2_500)
 
   const trace = await browser.evaluate<TraceEvent[]>(
     () => window.__veloxMintTrace?.snapshot() ?? []
@@ -413,16 +444,166 @@ test('the armed run prepares and fires near startMs', async ({
   }
 
   const calldata = trace.filter((event) => event.kind === 'calldata')
-  expect(calldata.length, 'calldata was fetched').toBeGreaterThanOrEqual(1)
+  expect(calldata.length, 'one open-time calldata response').toBe(1)
   expect(
     calldata[0].wall,
-    'calldata was fetched before the open'
-  ).toBeLessThan(clock.startMs)
+    'live OpenSea rejects pre-open calldata, so the fetch moved to the open'
+  ).toBeGreaterThanOrEqual(clock.startMs)
+  expect(counters.mintOk, 'one successful calldata response').toBe(1)
 
   const drops = trace.filter(
     (event) =>
       event.kind === 'drops' && event.wall >= armedAt && event.wall <= calls.send[0]
   )
   expect(drops.length, 'one drop read inside the armed fire').toBe(1)
-  expect(counters.mint, 'one calldata response').toBe(1)
+})
+
+test('a failed open-time calldata read backs off and recovers', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const counters: Counters = {
+    nonce: 0,
+    token: 0,
+    drop: 0,
+    eligibility: 0,
+    mint: 0,
+    mintOk: 0,
+  }
+  const clock: Clock = {
+    startMs: 0,
+    leadMs: 15_000,
+    mintDelayMs: 6_500,
+  }
+  const calls = {
+    block: [] as number[],
+    ethCall: [] as number[],
+    send: [] as number[],
+  }
+  await serveAuth(browser, counters)
+  await serveOpenSea(browser, counters, clock)
+  await serveRpc(browser, clock, calls)
+
+  await openSeededTask(app, browser, screen)
+  await checkOnce(screen)
+  await armMockStage(screen)
+
+  await expect.poll(() => calls.send.length, { timeout: 40_000 }).toBe(1)
+  const trace = await browser.evaluate<TraceEvent[]>(
+    () => window.__veloxMintTrace?.snapshot() ?? []
+  )
+  const sendAt = calls.send[0]
+  expect(
+    sendAt - clock.startMs,
+    'no send at the open while calldata was unavailable'
+  ).toBeGreaterThan(5_000)
+  expect(counters.mintOk, 'one successful calldata response').toBe(1)
+
+  const calldata = trace.filter((event) => event.kind === 'calldata')
+  expect(calldata.length, 'one successful calldata response').toBe(1)
+  expect(
+    calldata[0].wall - clock.startMs,
+    'calldata was built after the provider opened'
+  ).toBeGreaterThan(5_000)
+  expect(
+    calls.ethCall.every((at) => at - clock.startMs > 5_000),
+    'no readiness call ran without calldata'
+  ).toBe(true)
+
+  const dropTimes = trace
+    .filter(
+      (event) =>
+        event.kind === 'drops' &&
+        event.wall >= clock.startMs &&
+        event.wall <= sendAt
+    )
+    .map((event) => event.wall)
+  expect(dropTimes.length, 'post-open retries backed off').toBeGreaterThanOrEqual(
+    3
+  )
+  const gaps = dropTimes
+    .slice(1)
+    .map((at, index) => at - dropTimes[index])
+  expect(gaps[0], 'first retry waited about a second').toBeGreaterThanOrEqual(700)
+  expect(gaps[0]).toBeLessThan(2_000)
+  expect(gaps[1], 'second retry waited about two seconds').toBeGreaterThanOrEqual(
+    1_500
+  )
+  expect(gaps[1]).toBeLessThan(3_000)
+  if (gaps[2] !== undefined) {
+    expect(gaps[2], 'third retry capped at four seconds').toBeGreaterThanOrEqual(
+      3_000
+    )
+    expect(gaps[2]).toBeLessThan(5_500)
+  }
+  expect(counters.eligibility, 'the open check was reused across retries').toBe(
+    2
+  )
+})
+
+test('a far-future arm sleeps instead of spinning', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const counters: Counters = {
+    nonce: 0,
+    token: 0,
+    drop: 0,
+    eligibility: 0,
+    mint: 0,
+    mintOk: 0,
+  }
+  const clock: Clock = {
+    startMs: 0,
+    // Past the signed 32-bit setTimeout limit of about 24.8 days.
+    leadMs: 30 * 24 * 60 * 60 * 1000,
+    mintDelayMs: 0,
+  }
+  const calls = {
+    block: [] as number[],
+    ethCall: [] as number[],
+    send: [] as number[],
+  }
+  await browser.addInitScript(() => {
+    const original = window.setTimeout
+    const delays: number[] = []
+    ;(window as unknown as { __timerDelays: number[] }).__timerDelays = delays
+    window.setTimeout = ((handler, timeout, ...args) => {
+      if (typeof timeout === 'number') delays.push(timeout)
+      return original(handler, timeout, ...args)
+    }) as typeof window.setTimeout
+  })
+  await serveAuth(browser, counters)
+  await serveOpenSea(browser, counters, clock)
+  await serveRpc(browser, clock, calls)
+
+  await openSeededTask(app, browser, screen)
+  await checkOnce(screen)
+  await armMockStage(screen)
+  await new Promise((resolve) => setTimeout(resolve, 1_200))
+
+  const delays = await browser.evaluate<number[]>(
+    () =>
+      (window as unknown as { __timerDelays?: number[] }).__timerDelays ?? []
+  )
+  expect(delays.length, 'the arm scheduled a sleep').toBeGreaterThan(0)
+  expect(
+    Math.max(...delays),
+    'the arm sleep stays under the 32-bit timer limit'
+  ).toBeLessThanOrEqual(60_000)
+  expect(
+    delays.filter((delay) => delay > 5_000).length,
+    'a far-future arm does not wake in a tight loop'
+  ).toBeLessThanOrEqual(10)
+  expect(calls.send.length, 'a far-future arm did not send').toBe(0)
+
+  const trace = await browser.evaluate<TraceEvent[]>(
+    () => window.__veloxMintTrace?.snapshot() ?? []
+  )
+  expect(
+    trace.filter((event) => event.kind === 'poll').length,
+    'no tight chain polling thirty days out'
+  ).toBeLessThanOrEqual(1)
 })
