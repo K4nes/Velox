@@ -80,6 +80,7 @@ export function useMintTasks() {
   const preparedMintRef = useRef(new Map<string, PreparedMint>())
   const prepareAttemptRef = useRef(new Map<string, string>())
   const preparingRef = useRef(new Set<string>())
+  const prepareTaskRef = useRef(new Map<string, Promise<void>>())
   const readinessFailuresRef = useRef(new Map<string, number>())
   const openCheckRef = useRef(
     new Map<string, { key: string; check: CheckResult }>()
@@ -150,6 +151,7 @@ export function useMintTasks() {
   function clearArmState(id: string) {
     preparedMintRef.current.delete(id)
     prepareAttemptRef.current.delete(id)
+    prepareTaskRef.current.delete(id)
     readinessFailuresRef.current.delete(id)
     openCheckRef.current.delete(id)
   }
@@ -673,6 +675,9 @@ export function useMintTasks() {
     taskId: string,
     arm: { stageUuid: string; startMs: number }
   ): Promise<void> {
+    // openArmed owns calldata once it starts firing. A prepare racing it would
+    // issue a second /mint request and break the single open-time fetch.
+    if (firingRef.current.has(taskId)) return
     const task = tasksRef.current.find((entry) => entry.id === taskId)
     if (
       !task ||
@@ -798,6 +803,11 @@ export function useMintTasks() {
     firingRef.current.add(taskId)
     const armKey = `${taskId}:${arm.stageUuid}:${arm.startMs}`
     try {
+      // A prepare started just before the open can still be in flight. Let it
+      // settle so readiness reuses its calldata instead of fetching a second
+      // copy.
+      const pendingPrepare = prepareTaskRef.current.get(taskId)
+      if (pendingPrepare) await pendingPrepare
       const drop = await getDrop(task.drop.slug)
       // The operator can disarm, or arm a different stage, while the drop is in
       // flight. Re-read before acting, or a cancelled run still spends gas.
@@ -979,6 +989,7 @@ export function useMintTasks() {
       // the local target approximate, which the tight window resolves.
       let offsetMs: number | null = null
       let postOpenDelay = 1_000
+      let openReached = false
 
       while (!cancelled) {
         const task = tasksRef.current.find((entry) => entry.id === taskId)
@@ -1017,8 +1028,23 @@ export function useMintTasks() {
 
         const wait = armWait(arm.startMs - offsetMs, Date.now())
         // Prepare off the timer's path: the fire still happens if calldata or a
-        // sign-in is slower than the remaining lead time.
-        if (wait.prepare) void prepareArmedRef.current(task.id, arm)
+        // sign-in is slower than the remaining lead time. Once the open has
+        // passed, readiness owns calldata, so a second prepare cannot race it.
+        if (
+          wait.prepare &&
+          !openReached &&
+          !firingRef.current.has(task.id) &&
+          !prepareTaskRef.current.has(task.id)
+        ) {
+          const running = prepareArmedRef.current(task.id, arm)
+          prepareTaskRef.current.set(task.id, running)
+          const finished = () => {
+            if (prepareTaskRef.current.get(task.id) === running) {
+              prepareTaskRef.current.delete(task.id)
+            }
+          }
+          void running.then(finished, finished)
+        }
         if (!wait.tighten) {
           await sleep(wait.delayMs)
           continue
@@ -1029,6 +1055,7 @@ export function useMintTasks() {
           const ms = await sampleChain(task, chain)
           if (ms === null) return
           if (ms >= arm.startMs) {
+            openReached = true
             await openArmedRef.current(task.id, ms)
             if (cancelled) return
             const latest = tasksRef.current.find(
