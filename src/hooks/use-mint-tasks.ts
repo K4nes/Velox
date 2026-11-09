@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
+import { mapLimit } from '@/lib/async'
 import { RpcConfigError } from '@/lib/connections'
 import { checkWalletEligibility } from '@/lib/eligibility'
 import { mintFailureMessage, toMessage } from '@/lib/error-message'
 import { mintForWallet } from '@/lib/mint'
-import { chainTime, waitForReceipt } from '@/lib/tx'
+import { chainTime, waitForReceipt, WALLET_CONCURRENCY } from '@/lib/tx'
 import {
   createTask,
   gweiToWei,
@@ -416,8 +417,10 @@ export function useMintTasks() {
 
       const broadcast: { walletId: string; chain: string; txHash: string }[] = []
 
-      for (const wallet of selected) {
-        if (stopped()) break
+      // Two wallets at a time, handed out in wallet-list order so wallet 0 is
+      // in the first pair. A cancel only stops items that have not started.
+      await mapLimit(selected, WALLET_CONCURRENCY, async (wallet) => {
+        if (stopped()) return
         updateRun(wallet.id, () => ({ status: 'minting' }))
         try {
           const result = await mintForWallet({
@@ -427,7 +430,7 @@ export function useMintTasks() {
             gas,
             shouldAbort: stopped,
           })
-          if (stopped()) break
+          if (stopped()) return
           updateRun(wallet.id, (row) => ({
             status: 'broadcast',
             txHash: result.txHash,
@@ -439,16 +442,17 @@ export function useMintTasks() {
             txHash: result.txHash,
           })
         } catch (error) {
-          if (stopped()) break
+          if (stopped()) return
           updateRun(wallet.id, () => ({
             status: 'failed',
             error: toMessage(error),
           }))
         }
-      }
+      })
 
-      for (const entry of broadcast) {
-        if (stopped()) break
+      // Receipts are independent reads, so they can outrun the send cap.
+      await mapLimit(broadcast, 4, async (entry) => {
+        if (stopped()) return
         try {
           const status = await waitForReceipt(entry.chain, entry.txHash)
           updateRun(entry.walletId, () =>
@@ -461,7 +465,7 @@ export function useMintTasks() {
             error: toMessage(error),
           }))
         }
-      }
+      })
     } catch (error) {
       const message = `Mint failed — ${toMessage(error)}`
       updateTask(id, { status: 'failed' })
