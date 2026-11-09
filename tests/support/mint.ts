@@ -144,15 +144,17 @@ export async function prepareMintRun(options: {
 /**
  * Answers the collection, drop, eligibility, mint, sign-in and chain endpoints
  * in memory, so a mint runs without keys or funds. `calldataDelayMs` holds that
- * wallet's mint response open; the events keep each request's arrival time,
- * which is how the overlap assertion tells serial from parallel.
+ * wallet's mint response open and `receiptDelayMs` holds the receipt response;
+ * both make the overlap assertions observable. The events keep each request's
+ * arrival time.
  */
 export async function mockMintNetwork(options: {
   browser: Browser
   slug: string
   wallets: { address: string; calldataDelayMs?: number }[]
+  receiptDelayMs?: number
 }): Promise<{ events: MintEvent[] }> {
-  const { browser, slug } = options
+  const { browser, slug, receiptDelayMs = 0 } = options
   const events: MintEvent[] = []
   const delayByAddress = new Map(
     options.wallets.map((wallet) => [
@@ -236,6 +238,9 @@ export async function mockMintNetwork(options: {
       case 'eth_getTransactionReceipt': {
         const txHash = params[0] as string
         events.push({ kind: 'receipt', txHash, at: Date.now() })
+        const delayed = Promise.withResolvers<void>()
+        setTimeout(delayed.resolve, receiptDelayMs)
+        await delayed.promise
         await answer(route, {
           transactionHash: txHash,
           transactionIndex: '0x0',

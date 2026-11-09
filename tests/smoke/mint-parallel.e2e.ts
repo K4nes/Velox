@@ -10,10 +10,14 @@ import {
 import type { MintEvent } from '../support/mint'
 
 const SLUG = 'parallel-drop'
-// The first wallet answers late enough that a serial loop would already have
-// broadcast it before the second wallet's calldata request started.
+// Holding the first wallet's mint response open lets a parallel run record the
+// second wallet's calldata request before the first send; serial starts the
+// second request only after that send, so it fails the overlap assertion.
 const FIRST_CALLDATA_DELAY_MS = 800
 const SECOND_CALLDATA_DELAY_MS = 1_600
+// Both receipt requests must leave before either answer returns; serial waits
+// for the first receipt before it starts the second request.
+const RECEIPT_DELAY_MS = 800
 
 type SendEvent = Extract<MintEvent, { kind: 'send' }>
 type CalldataEvent = Extract<MintEvent, { kind: 'calldata' }>
@@ -32,6 +36,7 @@ test('two wallets mint in parallel and settle once each', async ({
       { address: first.address, calldataDelayMs: FIRST_CALLDATA_DELAY_MS },
       { address: second.address, calldataDelayMs: SECOND_CALLDATA_DELAY_MS },
     ],
+    receiptDelayMs: RECEIPT_DELAY_MS,
   })
 
   await prepareMintRun({
@@ -88,4 +93,7 @@ test('two wallets mint in parallel and settle once each', async ({
   expect(receipts.map((event) => event.txHash).sort()).toEqual(
     sends.map((event) => event.txHash).sort(),
   )
+  // A serial confirm loop issues the second request only after the first
+  // answer returns, which the delay makes larger than the gap here.
+  expect(receipts[1].at - receipts[0].at).toBeLessThan(RECEIPT_DELAY_MS)
 })

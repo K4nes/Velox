@@ -33,7 +33,7 @@ export function mintWallets(count: number): WalletRow[] {
   return Array.from({ length: count }, (_, index) => {
     const privateKey = generatePrivateKey()
     return {
-      id: `wallet-mint-${index}`,
+      id: `wallet-mint-${String(index).padStart(3, '0')}`,
       folderId: RH8_FOLDER.id,
       label: `mint-${index}`,
       address: privateKeyToAccount(privateKey).address,
