@@ -3,11 +3,20 @@ import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { ARM_TICK_MS, armWait } from '@/lib/arm-schedule'
 import { RpcConfigError } from '@/lib/connections'
-import { checkWalletEligibility } from '@/lib/eligibility'
+import {
+  checkWalletEligibility,
+  getEligibilityToken,
+} from '@/lib/eligibility'
+import { cachedEligibilityToken } from '@/lib/eligibility-token-cache'
 import { mintFailureMessage, toMessage } from '@/lib/error-message'
 import { traceMint } from '@/lib/mint-trace'
 import { mintForWallet } from '@/lib/mint'
-import { callTransaction, chainTime, waitForReceipt } from '@/lib/tx'
+import {
+  callTransaction,
+  chainTime,
+  estimateGasFor,
+  waitForReceipt,
+} from '@/lib/tx'
 import {
   createTask,
   gweiToWei,
@@ -37,9 +46,21 @@ import {
   getDrop,
   slugFromUrl,
 } from '@/lib/opensea'
-import type { DropInfo, DropStage } from '@/lib/opensea'
+import type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea'
 import { listWallets } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
+
+type PreparedMintEntry = {
+  walletId: string
+  from: `0x${string}`
+  transaction: MintTransaction
+  gasLimit?: bigint
+}
+
+type PreparedMint = {
+  key: string
+  entries: PreparedMintEntry[]
+}
 
 export function useMintTasks() {
   const [tasks, setTasks] = useState<Task[]>(() => [createTask()])
@@ -50,6 +71,9 @@ export function useMintTasks() {
   const mintRunRef = useRef(new Map<string, number>())
   const mintingRef = useRef(new Set<string>())
   const firingRef = useRef(new Set<string>())
+  const preparedMintRef = useRef(new Map<string, PreparedMint>())
+  const prepareAttemptRef = useRef(new Map<string, string>())
+  const preparingRef = useRef(new Set<string>())
   // The countdown renders from a local tick, but the fire decision comes from the
   // chain's clock: a desktop that is a minute off would mint before the stage opens.
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -113,6 +137,11 @@ export function useMintTasks() {
     setRunningIds((current) => current.filter((value) => value !== id))
   }
 
+  function clearPrepared(id: string) {
+    preparedMintRef.current.delete(id)
+    prepareAttemptRef.current.delete(id)
+  }
+
   function addTask() {
     const task = createTask()
     setTasks((current) => [...current, task])
@@ -130,6 +159,7 @@ export function useMintTasks() {
     cancelRun(id)
     cancelMint(id)
     finishMint(id)
+    clearPrepared(id)
     runsRef.current.delete(id)
     mintRunRef.current.delete(id)
     setRuns((current) => {
@@ -150,6 +180,7 @@ export function useMintTasks() {
   function changeUrl(url: string) {
     if (!realActive || mintingRef.current.has(realActive.id)) return
     cancelRun(realActive.id)
+    clearPrepared(realActive.id)
     setRuns((current) => ({
       ...current,
       [realActive.id]: (current[realActive.id] ?? []).filter(landed),
@@ -168,6 +199,7 @@ export function useMintTasks() {
     if (!realActive) return
     const id = realActive.id
     cancelRun(id)
+    clearPrepared(id)
     setRuns((current) => ({
       ...current,
       [id]: (current[id] ?? []).filter(reachedChain),
@@ -186,6 +218,7 @@ export function useMintTasks() {
 
   function selectStage(uuid: string) {
     if (!realActive) return
+    clearPrepared(realActive.id)
     const max = quantityMaxFor(runs[realActive.id] ?? [], realActive.wallets, uuid)
     const stage = realActive.drop?.stages.find((entry) => entry.uuid === uuid) ?? null
     updateTask(realActive.id, {
@@ -329,14 +362,28 @@ export function useMintTasks() {
     return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
   }
 
+  // Everything that must match for prepared calldata to still describe this
+  // fire. A stage or quantity change rebuilds rather than signing stale data.
+  const prepareKeyFor = (task: Task, quantity: number): string =>
+    [
+      task.stageUuid,
+      quantity,
+      task.gasLimit,
+      task.maxFee,
+      task.priorityFee,
+    ].join('|')
+
   // `prepared` carries a check that just landed, so an armed run mints from the
   // rows it computed instead of the ones React has not committed yet.
+  // `preparedMint` carries calldata built before the open; a stage or quantity
+  // change makes its key stale and the commit rebuilds it.
   async function startMint(
     target?: Task,
     options: {
       prepared?: CheckResult
       drop?: DropInfo
       stageVerified?: boolean
+      preparedMint?: PreparedMint
     } = {}
   ) {
     const prepared = options.prepared
@@ -358,6 +405,16 @@ export function useMintTasks() {
       toast.error('Quantity must be at least 1')
       return
     }
+
+    const preparedEntries =
+      options.preparedMint?.key === prepareKeyFor(task, quantity)
+        ? new Map(
+            options.preparedMint.entries.map((entry) => [
+              entry.walletId,
+              entry,
+            ])
+          )
+        : null
 
     mintingRef.current.add(id)
     setRunningIds((current) => [...current, id])
@@ -461,12 +518,16 @@ export function useMintTasks() {
       for (const wallet of selected) {
         if (stopped()) break
         updateRun(wallet.id, () => ({ status: 'minting' }))
+        const preparedEntry = preparedEntries?.get(wallet.id)
         try {
           const result = await mintForWallet({
             slug: drop.slug,
             wallet,
             quantity,
-            gas,
+            gas: preparedEntry?.gasLimit
+              ? { ...gas, gasLimit: preparedEntry.gasLimit }
+              : gas,
+            transaction: preparedEntry?.transaction,
             shouldAbort: stopped,
           })
           if (stopped()) break
@@ -526,6 +587,7 @@ export function useMintTasks() {
 
   function disarmStage() {
     if (!realActive) return
+    clearPrepared(realActive.id)
     updateTask(realActive.id, { arm: null })
   }
 
@@ -587,6 +649,124 @@ export function useMintTasks() {
     return results.some((result) => result.status === 'fulfilled')
   }
 
+  async function prepareArmed(
+    taskId: string,
+    arm: { stageUuid: string; startMs: number }
+  ): Promise<void> {
+    const task = tasksRef.current.find((entry) => entry.id === taskId)
+    if (
+      !task ||
+      !task.arm ||
+      !task.drop ||
+      task.arm.stageUuid !== arm.stageUuid ||
+      task.arm.startMs !== arm.startMs
+    ) {
+      return
+    }
+    const stage =
+      task.drop.stages.find((entry) => entry.uuid === arm.stageUuid) ?? null
+    if (!stage) return
+    const quantity = mintQuantityFor(task, task.quantityMax, stage)
+    if (quantity === null) return
+
+    const key = prepareKeyFor(task, quantity)
+    if (preparedMintRef.current.get(taskId)?.key === key) return
+    if (prepareAttemptRef.current.get(taskId) === key) return
+    if (preparingRef.current.has(taskId)) return
+    prepareAttemptRef.current.set(taskId, key)
+    preparingRef.current.add(taskId)
+
+    try {
+      const mintable = new Set(
+        (runsStateRef.current[taskId] ?? [])
+          .filter(
+            (row) =>
+              task.wallets.includes(row.walletId) &&
+              mintableRow(row, task.stageUuid)
+          )
+          .map((row) => row.walletId)
+      )
+      const selected = (await listWallets()).filter(
+        (wallet) =>
+          task.wallets.includes(wallet.id) && mintable.has(wallet.id)
+      )
+      if (selected.length === 0) return
+
+      const gasLimitInput = Number.parseInt(task.gasLimit, 10)
+      const pinnedGasLimit =
+        Number.isFinite(gasLimitInput) && gasLimitInput > 0
+          ? BigInt(gasLimitInput)
+          : undefined
+      const entries: PreparedMintEntry[] = []
+
+      for (const wallet of selected) {
+        const current = tasksRef.current.find((entry) => entry.id === taskId)
+        if (
+          !current?.arm ||
+          current.arm.stageUuid !== arm.stageUuid ||
+          current.arm.startMs !== arm.startMs
+        ) {
+          return
+        }
+
+        try {
+          await cachedEligibilityToken(wallet.address, () =>
+            getEligibilityToken(wallet.privateKey)
+          )
+        } catch {
+          // The check retries a sign-in; a failed warm must not fail prepare.
+        }
+
+        try {
+          const transaction = await buildMintTransaction(
+            task.drop.slug,
+            wallet.address,
+            quantity
+          )
+          let gasLimit = pinnedGasLimit
+          if (gasLimit === undefined) {
+            try {
+              gasLimit = await estimateGasFor({
+                wallet,
+                chainSlug: transaction.chain,
+                to: transaction.to as `0x${string}`,
+                data: transaction.data as `0x${string}`,
+                value: BigInt(transaction.value),
+              })
+            } catch {
+              // The stage is still closed, so the commit estimates again.
+            }
+          }
+          entries.push({
+            walletId: wallet.id,
+            from: wallet.address as `0x${string}`,
+            transaction,
+            gasLimit,
+          })
+        } catch {
+          // Missing calldata falls back to the commit path.
+        }
+      }
+
+      const current = tasksRef.current.find((entry) => entry.id === taskId)
+      if (
+        !current?.arm ||
+        current.arm.stageUuid !== arm.stageUuid ||
+        current.arm.startMs !== arm.startMs
+      ) {
+        return
+      }
+      preparedMintRef.current.set(taskId, {
+        key: prepareKeyFor(current, quantity),
+        entries,
+      })
+    } catch {
+      // Best-effort: openArmed and the commit rebuild what is missing.
+    } finally {
+      preparingRef.current.delete(taskId)
+    }
+  }
+
   async function openArmed(taskId: string, blockMs: number) {
     const task = tasksRef.current.find((entry) => entry.id === taskId)
     const arm = task?.arm
@@ -632,7 +812,17 @@ export function useMintTasks() {
         return
       }
 
-      const entries = await readinessFor(latest, drop, quantity)
+      const preparedMint = preparedMintRef.current.get(taskId)
+      const entries =
+        preparedMint?.key === prepareKeyFor(latest, quantity) &&
+        preparedMint.entries.length > 0
+          ? preparedMint.entries.map((entry) => ({
+              from: entry.from,
+              to: entry.transaction.to as `0x${string}`,
+              data: entry.transaction.data as `0x${string}`,
+              value: BigInt(entry.transaction.value),
+            }))
+          : await readinessFor(latest, drop, quantity)
       const ready = await stageReady(drop.chain, entries)
       if (!ready) return
 
@@ -646,12 +836,15 @@ export function useMintTasks() {
       }
 
       updateTask(taskId, { arm: null })
+      preparedMintRef.current.delete(taskId)
+      prepareAttemptRef.current.delete(taskId)
       const prepared = await check(latest, drop)
       if (!prepared) return
       await startMint(latest, {
         prepared,
         drop,
         stageVerified: true,
+        preparedMint,
       })
     } catch (error) {
       toast.error(toMessage(error))
@@ -667,6 +860,10 @@ export function useMintTasks() {
   const openArmedRef = useRef(openArmed)
   useEffect(() => {
     openArmedRef.current = openArmed
+  })
+  const prepareArmedRef = useRef(prepareArmed)
+  useEffect(() => {
+    prepareArmedRef.current = prepareArmed
   })
 
   useEffect(() => {
@@ -757,6 +954,10 @@ export function useMintTasks() {
           await sleep(wait.delayMs)
           continue
         }
+
+        // Prepare off the timer's path: the fire still happens if calldata or a
+        // sign-in is slower than the remaining lead time.
+        void prepareArmedRef.current(task.id, arm)
 
         const tickStart = Date.now()
         try {

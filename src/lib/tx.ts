@@ -103,6 +103,25 @@ export async function callTransaction(input: {
   })
 }
 
+// A pre-open estimate usually reverts because SeaDrop's window is closed. The
+// caller keeps it best-effort and leaves the commit-time estimate in place.
+export async function estimateGasFor(input: {
+  wallet: StoredWallet
+  chainSlug: string
+  to: `0x${string}`
+  data: `0x${string}`
+  value: bigint
+}): Promise<bigint> {
+  const client = await clientFor(input.chainSlug)
+  const account = privateKeyToAccount(toPrivateKeyHex(input.wallet.privateKey))
+  return client.estimateGas({
+    account,
+    to: input.to,
+    data: input.data,
+    value: input.value,
+  })
+}
+
 // Two tasks can select the same wallet. The nonce is read from `pending` and the
 // transaction is signed right after, so the read and the send must be serialized
 // per address or both tasks sign the same nonce and the second replaces the
