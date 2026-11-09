@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "e2e run",
+    "test:e2e:live": "e2e run --config e2e.live.config.ts tests/live/balance.e2e.ts",
+    "test:e2e:mint": "e2e run --config e2e.live.config.ts tests/live/mint"
   },
   "dependencies": {
     "@animate-ui/react": "^2.0.0",
@@ -37,12 +40,14 @@
     "viem": "^2.57.13"
   },
   "devDependencies": {
+    "@e2e-dev/web": "^0.15.5",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
+    "e2e": "^0.23.0",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
