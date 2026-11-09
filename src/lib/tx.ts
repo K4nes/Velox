@@ -50,6 +50,7 @@ export function toViemChain(entry: ChainEntry, rpcUrl: string): Chain {
     id: entry.chainId,
     name: entry.name,
     nativeCurrency: entry.currency,
+    blockTime: entry.blockTimeMs,
     rpcUrls: { default: { http: [rpcUrl] } },
   })
 }
