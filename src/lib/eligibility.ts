@@ -1,7 +1,13 @@
 import { privateKeyToAccount } from 'viem/accounts'
+import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/eligibility-token-cache'
 import { toMessage } from '@/lib/error-message'
-import { getCollection, getDrop, getEligibility } from '@/lib/opensea'
-import type { DropInfo } from '@/lib/opensea'
+import {
+  OpenSeaError,
+  getCollection,
+  getDrop,
+  getEligibility,
+} from '@/lib/opensea'
+import type { DropInfo, EligibilityResponse } from '@/lib/opensea'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 
@@ -98,8 +104,28 @@ export async function checkWalletEligibility(
     }
 
     try {
-      const { token } = await getEligibilityToken(wallet.privateKey)
-      const response = await getEligibility(drop.slug, token)
+      let token = await cachedEligibilityToken(wallet.address, () =>
+        getEligibilityToken(wallet.privateKey)
+      )
+      let response: EligibilityResponse
+      try {
+        response = await getEligibility(drop.slug, token)
+      } catch (error) {
+        // A cached token can be revoked before its expiresAt. Drop it once so
+        // the next check signs in again instead of failing every row.
+        if (
+          error instanceof OpenSeaError &&
+          (error.status === 401 || error.status === 403)
+        ) {
+          forgetEligibilityToken(wallet.address)
+          token = await cachedEligibilityToken(wallet.address, () =>
+            getEligibilityToken(wallet.privateKey)
+          )
+          response = await getEligibility(drop.slug, token)
+        } else {
+          throw error
+        }
+      }
 
       // The eligibility response only covers the stages this wallet can enter,
       // so the row is built from the drop's full schedule and each stage is
