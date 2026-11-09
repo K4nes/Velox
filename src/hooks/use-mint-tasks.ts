@@ -61,6 +61,13 @@ type PreparedMint = {
   entries: PreparedMintEntry[]
 }
 
+type Readiness = {
+  candidates: number
+  entries: PreparedMintEntry[]
+}
+
+const READINESS_FALLBACK_ATTEMPTS = 4
+
 export function useMintTasks() {
   const [tasks, setTasks] = useState<Task[]>(() => [createTask()])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -73,6 +80,10 @@ export function useMintTasks() {
   const preparedMintRef = useRef(new Map<string, PreparedMint>())
   const prepareAttemptRef = useRef(new Map<string, string>())
   const preparingRef = useRef(new Set<string>())
+  const readinessFailuresRef = useRef(new Map<string, number>())
+  const openCheckRef = useRef(
+    new Map<string, { key: string; check: CheckResult }>()
+  )
   // The countdown renders from a local tick, but the fire decision comes from the
   // chain's clock: a desktop that is a minute off would mint before the stage opens.
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -139,6 +150,8 @@ export function useMintTasks() {
   function clearPrepared(id: string) {
     preparedMintRef.current.delete(id)
     prepareAttemptRef.current.delete(id)
+    readinessFailuresRef.current.delete(id)
+    openCheckRef.current.delete(id)
   }
 
   function addTask() {
@@ -586,25 +599,31 @@ export function useMintTasks() {
     updateTask(realActive.id, { arm: null })
   }
 
-  type ReadinessEntry = {
-    from: `0x${string}`
-    to: `0x${string}`
-    data: `0x${string}`
-    value: bigint
-  }
-
-  async function readinessFor(
+  // Live OpenSea answers 409 NOT_MINTING before a stage opens, so this open-time
+  // batch is the real path. It builds every mintable wallet's calldata in one
+  // round trip, then the commit reuses those entries instead of fetching again.
+  async function readinessForRows(
     task: Task,
     drop: DropInfo,
-    quantity: number
-  ): Promise<ReadinessEntry[]> {
-    const candidates = (runsStateRef.current[task.id] ?? []).filter(
+    quantity: number,
+    rows: WalletRun[],
+    preparedMint?: PreparedMint
+  ): Promise<Readiness> {
+    const mintable = rows.filter(
       (row) =>
         task.wallets.includes(row.walletId) &&
         mintableRow(row, task.stageUuid)
     )
+    const prepared =
+      preparedMint?.key === prepareKeyFor(task, quantity)
+        ? new Map(
+            preparedMint.entries.map((entry) => [entry.walletId, entry])
+          )
+        : null
     const entries = await Promise.all(
-      candidates.map(async (row) => {
+      mintable.map(async (row) => {
+        const cached = prepared?.get(row.walletId)
+        if (cached) return cached
         try {
           const transaction = await buildMintTransaction(
             drop.slug,
@@ -612,32 +631,38 @@ export function useMintTasks() {
             quantity
           )
           return {
+            walletId: row.walletId,
             from: row.address as `0x${string}`,
-            to: transaction.to as `0x${string}`,
-            data: transaction.data as `0x${string}`,
-            value: BigInt(transaction.value),
+            transaction,
           }
         } catch {
           return null
         }
       })
     )
-    return entries.filter((entry): entry is ReadinessEntry => entry !== null)
+    return {
+      candidates: mintable.length,
+      entries: entries.filter(
+        (entry): entry is PreparedMintEntry => entry !== null
+      ),
+    }
   }
 
   async function stageReady(
     chainSlug: string,
-    entries: ReadinessEntry[]
+    entries: PreparedMintEntry[]
   ): Promise<boolean> {
-    if (entries.length === 0) return true
+    // No calldata means no evidence. The caller retries with backoff instead of
+    // treating a failed build as a successful readiness check.
+    if (entries.length === 0) return false
     const results = await Promise.allSettled(
       entries.map((entry) =>
         callTransaction({
           chainSlug,
           from: entry.from,
-          to: entry.to,
-          data: entry.data,
-          value: entry.value,
+          to: entry.transaction.to as `0x${string}`,
+          data: entry.transaction.data as `0x${string}`,
+          value: BigInt(entry.transaction.value),
         })
       )
     )
@@ -713,6 +738,10 @@ export function useMintTasks() {
         }
 
         try {
+          // Measured 2026-11-09: live OpenSea answers 409 NOT_MINTING to this
+          // endpoint before a stage opens. This stays best-effort for providers
+          // that do answer; openArmed builds the same calldata at the open when
+          // it does not.
           const transaction = await buildMintTransaction(
             task.drop.slug,
             wallet.address,
@@ -767,6 +796,7 @@ export function useMintTasks() {
     const arm = task?.arm
     if (!task || !arm || !task.drop || firingRef.current.has(taskId)) return
     firingRef.current.add(taskId)
+    const armKey = `${taskId}:${arm.stageUuid}:${arm.startMs}`
     try {
       const drop = await getDrop(task.drop.slug)
       // The operator can disarm, or arm a different stage, while the drop is in
@@ -778,6 +808,7 @@ export function useMintTasks() {
       const endMs = stage?.endTime ? Date.parse(stage.endTime) : NaN
       if (!stage || (Number.isFinite(endMs) && blockMs >= endMs)) {
         updateTask(taskId, { arm: null })
+        clearPrepared(taskId)
         toast.error('The scheduled stage closed before it opened.')
         return
       }
@@ -788,12 +819,11 @@ export function useMintTasks() {
       const active = drop.activeStage
       const activeStart = active?.startTime ? Date.parse(active.startTime) : NaN
       const activeEnd = active?.endTime ? Date.parse(active.endTime) : NaN
-      if (
-        active &&
-        active.uuid !== arm.stageUuid &&
+      const activeLive =
+        active !== null &&
         (!Number.isFinite(activeStart) || activeStart <= blockMs) &&
         (!Number.isFinite(activeEnd) || blockMs < activeEnd)
-      ) {
+      if (active && active.uuid !== arm.stageUuid && activeLive) {
         toast.error('The live stage changed. Check the collection again.')
         return
       }
@@ -801,45 +831,85 @@ export function useMintTasks() {
       // A check that started while the drop was in flight owns the task now; the
       // next tick retries with the arm intact.
       if (latest.status === 'running') return
-      const quantity = mintQuantityFor(latest, latest.quantityMax, stage)
+
+      // Caps can appear only when the stage opens, so readiness must start from
+      // the rows of an open-time check, not the pre-open ones. Keep that check
+      // across readiness retries instead of re-running eligibility every tick.
+      let checked = openCheckRef.current.get(taskId)
+      if (checked?.key !== armKey) {
+        const result = await check(latest, drop)
+        if (!result) {
+          updateTask(taskId, { arm: null })
+          clearPrepared(taskId)
+          return
+        }
+        checked = { key: armKey, check: result }
+        openCheckRef.current.set(taskId, checked)
+      }
+
+      const current = tasksRef.current.find((entry) => entry.id === taskId)
+      if (!current?.arm || current.arm.stageUuid !== arm.stageUuid) return
+      const quantity = mintQuantityFor(latest, checked.check.quantityMax, stage)
       if (quantity === null) {
+        updateTask(taskId, { arm: null })
+        clearPrepared(taskId)
         toast.error('Quantity must be at least 1')
         return
       }
 
-      const preparedMint = preparedMintRef.current.get(taskId)
-      const entries =
-        preparedMint?.key === prepareKeyFor(latest, quantity) &&
-        preparedMint.entries.length > 0
-          ? preparedMint.entries.map((entry) => ({
-              from: entry.from,
-              to: entry.transaction.to as `0x${string}`,
-              data: entry.transaction.data as `0x${string}`,
-              value: BigInt(entry.transaction.value),
-            }))
-          : await readinessFor(latest, drop, quantity)
-      const ready = await stageReady(drop.chain, entries)
-      if (!ready) return
-
-      const current = tasksRef.current.find((entry) => entry.id === taskId)
-      if (
-        !current ||
-        current.arm?.stageUuid !== arm.stageUuid ||
-        current.quantity !== latest.quantity
-      ) {
+      const readiness = await readinessForRows(
+        latest,
+        checked.check.drop,
+        quantity,
+        checked.check.rows,
+        preparedMintRef.current.get(taskId)
+      )
+      if (readiness.candidates === 0) {
+        updateTask(taskId, { arm: null })
+        clearPrepared(taskId)
+        toast.error('No wallet can mint this stage')
         return
       }
 
+      const ready = await stageReady(drop.chain, readiness.entries)
+      if (!ready) {
+        const failures = (readinessFailuresRef.current.get(taskId) ?? 0) + 1
+        readinessFailuresRef.current.set(taskId, failures)
+        // Calldata that failed at the open must not be reused on every retry.
+        preparedMintRef.current.delete(taskId)
+        prepareAttemptRef.current.delete(taskId)
+        if (failures < READINESS_FALLBACK_ATTEMPTS) return
+
+        const activeConfirmed = active?.uuid === arm.stageUuid && activeLive
+        if (!activeConfirmed) {
+          updateTask(taskId, { arm: null })
+          clearPrepared(taskId)
+          toast.error(
+            'The stage did not confirm as open. Check the collection again.'
+          )
+          return
+        }
+        // The retries spent, and OpenSea now reports the armed stage live:
+        // fall back to the old gate and let the rows report any send failure.
+      }
+
+      const armNow = tasksRef.current.find((entry) => entry.id === taskId)
+      if (!armNow?.arm || armNow.arm.stageUuid !== arm.stageUuid) return
+
+      const preparedForCommit = ready
+        ? {
+            key: prepareKeyFor(latest, quantity),
+            entries: readiness.entries,
+          }
+        : undefined
+
       updateTask(taskId, { arm: null })
-      preparedMintRef.current.delete(taskId)
-      prepareAttemptRef.current.delete(taskId)
-      const prepared = await check(latest, drop)
-      if (!prepared) return
+      clearPrepared(taskId)
       await startMint(latest, {
-        prepared,
+        prepared: checked.check,
         drop,
-        stageVerified: true,
-        preparedMint,
+        stageVerified: ready,
+        preparedMint: preparedForCommit,
       })
     } catch (error) {
       toast.error(toMessage(error))
@@ -908,6 +978,7 @@ export function useMintTasks() {
       // One offset for the whole arm. The chain's whole-second timestamps make
       // the local target approximate, which the tight window resolves.
       let offsetMs: number | null = null
+      let postOpenDelay = 1_000
 
       while (!cancelled) {
         const task = tasksRef.current.find((entry) => entry.id === taskId)
@@ -945,14 +1016,13 @@ export function useMintTasks() {
         }
 
         const wait = armWait(arm.startMs - offsetMs, Date.now())
+        // Prepare off the timer's path: the fire still happens if calldata or a
+        // sign-in is slower than the remaining lead time.
+        if (wait.prepare) void prepareArmedRef.current(task.id, arm)
         if (!wait.tighten) {
           await sleep(wait.delayMs)
           continue
         }
-
-        // Prepare off the timer's path: the fire still happens if calldata or a
-        // sign-in is slower than the remaining lead time.
-        void prepareArmedRef.current(task.id, arm)
 
         const tickStart = Date.now()
         try {
@@ -965,6 +1035,11 @@ export function useMintTasks() {
               (entry) => entry.id === taskId
             )
             if (!latest?.arm) return
+            // Past the open, a failed readiness check must not become four
+            // provider round trips a second. Ramp 1s -> 2s -> 4s, cap there.
+            await sleep(postOpenDelay)
+            postOpenDelay = Math.min(postOpenDelay * 2, 4_000)
+            continue
           }
         } catch (error) {
           // An RPC hiccup must not disarm anything; the next tick retries.
