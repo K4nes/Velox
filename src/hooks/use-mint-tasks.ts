@@ -42,7 +42,6 @@ import type {
 } from '@/lib/mint-task'
 import {
   buildMintTransaction,
-  getCollection,
   getDrop,
   slugFromUrl,
 } from '@/lib/opensea'
@@ -260,7 +259,7 @@ export function useMintTasks() {
       return null
     }
 
-    let step: 'collection' | 'drop' | 'eligibility' = 'collection'
+    let step: 'drop' | 'eligibility' = 'drop'
     let checked = false
     traceMint({ kind: 'check-start', taskId: id })
 
@@ -270,10 +269,6 @@ export function useMintTasks() {
         drop = dropOverride
         step = 'eligibility'
       } else {
-        await getCollection(slug)
-        if (stale()) return null
-
-        step = 'drop'
         drop = await getDrop(slug)
         if (stale()) return null
       }
