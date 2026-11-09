@@ -147,7 +147,7 @@ export function useMintTasks() {
     setRunningIds((current) => current.filter((value) => value !== id))
   }
 
-  function clearPrepared(id: string) {
+  function clearArmState(id: string) {
     preparedMintRef.current.delete(id)
     prepareAttemptRef.current.delete(id)
     readinessFailuresRef.current.delete(id)
@@ -171,7 +171,7 @@ export function useMintTasks() {
     cancelRun(id)
     cancelMint(id)
     finishMint(id)
-    clearPrepared(id)
+    clearArmState(id)
     runsRef.current.delete(id)
     mintRunRef.current.delete(id)
     setRuns((current) => {
@@ -192,7 +192,7 @@ export function useMintTasks() {
   function changeUrl(url: string) {
     if (!realActive || mintingRef.current.has(realActive.id)) return
     cancelRun(realActive.id)
-    clearPrepared(realActive.id)
+    clearArmState(realActive.id)
     setRuns((current) => ({
       ...current,
       [realActive.id]: (current[realActive.id] ?? []).filter(landed),
@@ -211,7 +211,7 @@ export function useMintTasks() {
     if (!realActive) return
     const id = realActive.id
     cancelRun(id)
-    clearPrepared(id)
+    clearArmState(id)
     setRuns((current) => ({
       ...current,
       [id]: (current[id] ?? []).filter(reachedChain),
@@ -230,7 +230,7 @@ export function useMintTasks() {
 
   function selectStage(uuid: string) {
     if (!realActive) return
-    clearPrepared(realActive.id)
+    clearArmState(realActive.id)
     const max = quantityMaxFor(runs[realActive.id] ?? [], realActive.wallets, uuid)
     const stage = realActive.drop?.stages.find((entry) => entry.uuid === uuid) ?? null
     updateTask(realActive.id, {
@@ -595,7 +595,7 @@ export function useMintTasks() {
 
   function disarmStage() {
     if (!realActive) return
-    clearPrepared(realActive.id)
+    clearArmState(realActive.id)
     updateTask(realActive.id, { arm: null })
   }
 
@@ -808,7 +808,7 @@ export function useMintTasks() {
       const endMs = stage?.endTime ? Date.parse(stage.endTime) : NaN
       if (!stage || (Number.isFinite(endMs) && blockMs >= endMs)) {
         updateTask(taskId, { arm: null })
-        clearPrepared(taskId)
+        clearArmState(taskId)
         toast.error('The scheduled stage closed before it opened.')
         return
       }
@@ -840,7 +840,7 @@ export function useMintTasks() {
         const result = await check(latest, drop)
         if (!result) {
           updateTask(taskId, { arm: null })
-          clearPrepared(taskId)
+          clearArmState(taskId)
           return
         }
         checked = { key: armKey, check: result }
@@ -852,7 +852,7 @@ export function useMintTasks() {
       const quantity = mintQuantityFor(latest, checked.check.quantityMax, stage)
       if (quantity === null) {
         updateTask(taskId, { arm: null })
-        clearPrepared(taskId)
+        clearArmState(taskId)
         toast.error('Quantity must be at least 1')
         return
       }
@@ -866,7 +866,7 @@ export function useMintTasks() {
       )
       if (readiness.candidates === 0) {
         updateTask(taskId, { arm: null })
-        clearPrepared(taskId)
+        clearArmState(taskId)
         toast.error('No wallet can mint this stage')
         return
       }
@@ -883,7 +883,7 @@ export function useMintTasks() {
         const activeConfirmed = active?.uuid === arm.stageUuid && activeLive
         if (!activeConfirmed) {
           updateTask(taskId, { arm: null })
-          clearPrepared(taskId)
+          clearArmState(taskId)
           toast.error(
             'The stage did not confirm as open. Check the collection again.'
           )
@@ -904,7 +904,7 @@ export function useMintTasks() {
         : undefined
 
       updateTask(taskId, { arm: null })
-      clearPrepared(taskId)
+      clearArmState(taskId)
       await startMint(latest, {
         prepared: checked.check,
         drop,
