@@ -1,4 +1,5 @@
 import './env'
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import type { FolderRow, WalletRow } from './seed'
 
 export const FIXED_NOW = 1_760_000_000_000
@@ -21,6 +22,25 @@ export function rh8Wallet(privateKey: string): WalletRow {
     privateKey,
     createdAt: FIXED_NOW,
   }
+}
+
+/**
+ * Wallets for the deterministic mint run. The keys are generated per run, so no
+ * committed fixture can sign a transaction that reaches a real chain; the ids
+ * sort in list order, which is the order the mint hands out work.
+ */
+export function mintWallets(count: number): WalletRow[] {
+  return Array.from({ length: count }, (_, index) => {
+    const privateKey = generatePrivateKey()
+    return {
+      id: `wallet-mint-${index}`,
+      folderId: RH8_FOLDER.id,
+      label: `mint-${index}`,
+      address: privateKeyToAccount(privateKey).address,
+      privateKey,
+      createdAt: FIXED_NOW,
+    }
+  })
 }
 
 /** The transfer destination: a second wallet, supplied through the env pair. */

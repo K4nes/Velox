@@ -1,6 +1,7 @@
-import type { Screen } from 'e2e'
+import type { JsonValue, Screen } from 'e2e'
 import { expect } from 'e2e'
-import type { Browser, WebApp } from '@e2e-dev/web'
+import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
+import { keccak256, recoverTransactionAddress } from 'viem'
 import {
   openseaConnection,
   RH8_ADDRESS,
@@ -10,6 +11,7 @@ import {
 } from './data'
 import { requireEnv } from './env'
 import { seedVelox } from './seed'
+import type { WalletRow } from './seed'
 
 /** One stage of a `/drops/{slug}` response, as far as the mint tests read it. */
 export type DropStage = {
@@ -40,6 +42,17 @@ export type DropState = {
   now: number
 }
 
+/** One request the mocked mint endpoints saw, in arrival order. */
+export type MintEvent =
+  | { kind: 'calldata'; address: string; at: number }
+  | { kind: 'send'; address: string; txHash: string; at: number }
+  | { kind: 'receipt'; txHash: string; at: number }
+
+/** Seeded for deterministic runs; every request to it is answered in memory. */
+export const MINT_TEST_RPC_URL = 'https://rpc.velox.test/robinhood'
+
+const MINT_TEST_CONTRACT = '0x1111111111111111111111111111111111111111'
+
 /**
  * Reads the drop over the public API with the seeded OpenSea key and sorts its
  * stages. Both mint scenarios decide from this whether they apply, so the
@@ -69,9 +82,11 @@ export async function readDrop(slug: string): Promise<DropState> {
 }
 
 /**
- * Seeds `rh8`, the Robinhood RPC row and the OpenSea key, then fills the mint
- * form until `Check` produces the run row. `status` is the row state this
- * scenario expects: `Eligible` when a stage is open, `Scheduled` otherwise.
+ * Seeds the wallets, the Robinhood RPC row and the OpenSea key, then fills the
+ * mint form until `Check` produces the run rows. `status` is the row state this
+ * scenario expects: `Eligible` when a stage is open, `Scheduled` otherwise. The
+ * default seed is the live `rh8` setup; a deterministic test passes its own
+ * generated wallets and mocked endpoints.
  */
 export async function prepareMintRun(options: {
   app: WebApp
@@ -79,8 +94,15 @@ export async function prepareMintRun(options: {
   screen: Screen
   slug: string
   status: 'Eligible' | 'Scheduled'
+  wallets?: WalletRow[]
+  rpcUrl?: string
+  apiKey?: string
+  addresses?: string[]
 }): Promise<void> {
   const { app, browser, screen, slug, status } = options
+  const wallets =
+    options.wallets ?? [rh8Wallet(requireEnv('E2E_WALLET_RH8_KEY'))]
+  const addresses = options.addresses ?? [RH8_ADDRESS]
 
   await browser.addInitScript(() => {
     try {
@@ -91,10 +113,10 @@ export async function prepareMintRun(options: {
   await app.open('/mint/tasks')
   await seedVelox(browser, {
     folders: [RH8_FOLDER],
-    wallets: [rh8Wallet(requireEnv('E2E_WALLET_RH8_KEY'))],
+    wallets,
     connections: [
-      robinhoodRpc(requireEnv('E2E_RH_RPC_URL')),
-      openseaConnection(requireEnv('E2E_OPEN_SEA_KEY')),
+      robinhoodRpc(options.rpcUrl ?? requireEnv('E2E_RH_RPC_URL')),
+      openseaConnection(options.apiKey ?? requireEnv('E2E_OPEN_SEA_KEY')),
     ],
   })
   await app.open('/mint/tasks')
@@ -110,11 +132,221 @@ export async function prepareMintRun(options: {
   await browser.keyboard.press('Escape')
   await screen.getByRole('button', 'Check').click()
 
-  const row = screen.getByRole('row').filter({ hasText: 'rh8' })
-  await expect(row.getByText(RH8_ADDRESS, { exact: true })).toBeVisible({
-    timeout: 120_000,
+  for (const address of addresses) {
+    const row = screen.getByRole('row').filter({ hasText: address })
+    await expect(row.getByText(address, { exact: true })).toBeVisible({
+      timeout: 120_000,
+    })
+    await expect(row.getByText(status, { exact: true })).toBeVisible()
+  }
+}
+
+/**
+ * Answers the collection, drop, eligibility, mint, sign-in and chain endpoints
+ * in memory, so a mint runs without keys or funds. `calldataDelayMs` holds that
+ * wallet's mint response open; the events keep each request's arrival time,
+ * which is how the overlap assertion tells serial from parallel.
+ */
+export async function mockMintNetwork(options: {
+  browser: Browser
+  slug: string
+  wallets: { address: string; calldataDelayMs?: number }[]
+}): Promise<{ events: MintEvent[] }> {
+  const { browser, slug } = options
+  const events: MintEvent[] = []
+  const delayByAddress = new Map(
+    options.wallets.map((wallet) => [
+      wallet.address.toLowerCase(),
+      wallet.calldataDelayMs ?? 0,
+    ])
+  )
+  const now = Date.now()
+  const stage = {
+    uuid: 'parallel-stage',
+    stage_type: 'public',
+    label: 'Public',
+    price: '0',
+    max_per_wallet: '1',
+    start_time: new Date(now - 60_000).toISOString(),
+    end_time: new Date(now + 3_600_000).toISOString(),
+  }
+
+  async function answer(route: WebRoute, result: JsonValue) {
+    const request = JSON.parse(route.request.postData ?? '{}') as { id?: JsonValue }
+    await route.fulfill({
+      status: 200,
+      json: { jsonrpc: '2.0', id: request.id ?? null, result },
+    })
+  }
+
+  async function handleRpc(route: WebRoute) {
+    const request = JSON.parse(route.request.postData ?? '{}') as {
+      id?: JsonValue
+      method?: string
+      params?: unknown[]
+    }
+    const params = request.params ?? []
+
+    switch (request.method) {
+      case 'eth_estimateGas':
+        await answer(route, '0x30d40')
+        return
+      case 'eth_getBlockByNumber':
+        await answer(route, {
+          number: '0x1',
+          hash: `0x${'00'.repeat(32)}`,
+          parentHash: `0x${'00'.repeat(32)}`,
+          nonce: '0x0000000000000000',
+          sha3Uncles: `0x${'00'.repeat(32)}`,
+          logsBloom: `0x${'00'.repeat(256)}`,
+          transactionsRoot: `0x${'00'.repeat(32)}`,
+          stateRoot: `0x${'00'.repeat(32)}`,
+          receiptsRoot: `0x${'00'.repeat(32)}`,
+          miner: MINT_TEST_CONTRACT,
+          difficulty: '0x0',
+          totalDifficulty: '0x0',
+          extraData: '0x',
+          size: '0x0',
+          gasLimit: '0x1c9c380',
+          gasUsed: '0x0',
+          timestamp: '0x1',
+          transactions: [],
+          uncles: [],
+          baseFeePerGas: '0x1',
+          mixHash: `0x${'00'.repeat(32)}`,
+        })
+        return
+      case 'eth_maxPriorityFeePerGas':
+      case 'eth_gasPrice':
+        await answer(route, '0x3b9aca00')
+        return
+      case 'eth_getTransactionCount':
+        await answer(route, '0x0')
+        return
+      case 'eth_sendRawTransaction': {
+        const serialized = params[0] as `0x${string}`
+        const address = (
+          await recoverTransactionAddress({ serializedTransaction: serialized })
+        ).toLowerCase()
+        const txHash = keccak256(serialized)
+        events.push({ kind: 'send', address, txHash, at: Date.now() })
+        await answer(route, txHash)
+        return
+      }
+      case 'eth_getTransactionReceipt': {
+        const txHash = params[0] as string
+        events.push({ kind: 'receipt', txHash, at: Date.now() })
+        await answer(route, {
+          transactionHash: txHash,
+          transactionIndex: '0x0',
+          blockHash: `0x${'00'.repeat(32)}`,
+          blockNumber: '0x1',
+          from: MINT_TEST_CONTRACT,
+          to: MINT_TEST_CONTRACT,
+          cumulativeGasUsed: '0x5208',
+          gasUsed: '0x5208',
+          contractAddress: null,
+          logs: [],
+          logsBloom: `0x${'00'.repeat(256)}`,
+          status: '0x1',
+          type: '0x2',
+          effectiveGasPrice: '0x1',
+        })
+        return
+      }
+      default:
+        await route.fulfill({
+          status: 200,
+          json: {
+            jsonrpc: '2.0',
+            id: request.id ?? null,
+            error: {
+              code: -32601,
+              message: `unexpected RPC method ${request.method}`,
+            },
+          },
+        })
+    }
+  }
+
+  await browser.route(/\/api\/auth\/nonce$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: { message: 'velox deterministic sign-in' },
+    })
   })
-  await expect(row.getByText(status, { exact: true })).toBeVisible()
+  await browser.route(/\/api\/auth\/token$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: { token: 'deterministic-token', expiresAt: Date.now() + 3_600_000 },
+    })
+  })
+  await browser.route(/\/api\/v2\/collections\/[^/]+$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        collection: slug,
+        name: 'Parallel Drop',
+        image_url: '',
+        total_supply: 100,
+        contracts: [{ address: MINT_TEST_CONTRACT, chain: 'robinhood' }],
+      },
+    })
+  })
+  await browser.route(/\/api\/v2\/drops\/[^/]+\/eligibility$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        stages: [
+          {
+            stage_uuid: stage.uuid,
+            is_eligible: true,
+            max_total_mintable_by_wallet: '1',
+            price: '0',
+          },
+        ],
+      },
+    })
+  })
+  await browser.route(/\/api\/v2\/drops\/[^/]+\/mint$/, async (route) => {
+    const body = JSON.parse(route.request.postData ?? '{}') as {
+      minter?: string
+    }
+    const address = (body.minter ?? '').toLowerCase()
+    events.push({ kind: 'calldata', address, at: Date.now() })
+    const delayed = Promise.withResolvers<void>()
+    setTimeout(delayed.resolve, delayByAddress.get(address) ?? 0)
+    await delayed.promise
+    await route.fulfill({
+      status: 200,
+      json: {
+        chain: 'robinhood',
+        to: MINT_TEST_CONTRACT,
+        data: '0x12345678',
+        value: '0',
+      },
+    })
+  })
+  await browser.route(/\/api\/v2\/drops\/[^/]+$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        collection_slug: slug,
+        collection_name: 'Parallel Drop',
+        chain: 'robinhood',
+        contract_address: MINT_TEST_CONTRACT,
+        drop_type: 'seadrop_v1_erc721',
+        is_minting: true,
+        max_supply: '100',
+        total_supply: '0',
+        active_stage: stage,
+        stages: [stage],
+      },
+    })
+  })
+  await browser.route(/rpc\.velox\.test/, handleRpc)
+
+  return { events }
 }
 
 /**
