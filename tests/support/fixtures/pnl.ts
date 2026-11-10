@@ -1,4 +1,3 @@
-import { RH8_ADDRESS } from '../data'
 import type { SeedPnlRecord } from '../seed'
 
 /** The row key's day: local date, as the monthly view computes it. */
@@ -49,7 +48,7 @@ export function pnlRecordFixture(
     imageUrl: '',
     chain: options.chain ?? 'robinhood',
     contract,
-    wallets: options.wallets ?? [RH8_ADDRESS],
+    wallets: options.wallets ?? [],
     netPnl,
     ethPriceUsd:
       options.ethPriceUsd === undefined ? 3000 : options.ethPriceUsd,

@@ -111,3 +111,77 @@ export function openseaConnection(apiKey: string) {
     updatedAt: FIXED_NOW,
   }
 }
+
+/** The key the PnL card sends to `/api/price/eth-usdt` for its USD figure. */
+export function coinmarketcapConnection(apiKey: string) {
+  return {
+    kind: 'data-api',
+    id: 'coinmarketcap',
+    name: 'CoinMarketCap',
+    order: 1,
+    autoFallback: true,
+    credentials: [{ id: 'coinmarketcap-key', value: apiKey }],
+    updatedAt: FIXED_NOW,
+  }
+}
+
+export type WalletOptions = {
+  label: string
+  privateKey: string
+  folderId: string
+  /** Pin a display address; the key's own address is the default. */
+  address?: string
+}
+
+/**
+ * One wallet row. Nothing identity-like is baked in: the label, key and folder
+ * come from the caller, and the address is the key's own unless pinned, so a
+ * live scenario cannot import a wallet it did not supply.
+ */
+export function walletRow(options: WalletOptions): WalletRow {
+  return {
+    id: `wallet-${options.label}`,
+    folderId: options.folderId,
+    label: options.label,
+    address:
+      options.address ??
+      privateKeyToAccount(options.privateKey as `0x${string}`).address,
+    privateKey: options.privateKey,
+    createdAt: FIXED_NOW,
+  }
+}
+
+/** A folder row for the wallet picker; the id follows the name. */
+export function walletFolder(name: string): FolderRow {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+  return { id: `folder-${slug}`, name, createdAt: FIXED_NOW }
+}
+
+export type LiveWalletOptions = {
+  privateKey: string
+  label: string
+  folder: string
+}
+
+/**
+ * The wallet and folder a live scenario seeds, all of them supplied by the
+ * caller (the ignored env file in practice). The folder name is what the picker
+ * shows, so a test reads it back from here instead of naming one.
+ */
+export function liveWallet(options: LiveWalletOptions): {
+  folder: FolderRow
+  wallet: WalletRow
+} {
+  const folder = walletFolder(options.folder)
+  return {
+    folder,
+    wallet: walletRow({
+      label: options.label,
+      privateKey: options.privateKey,
+      folderId: folder.id,
+    }),
+  }
+}
