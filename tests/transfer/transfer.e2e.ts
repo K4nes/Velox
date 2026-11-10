@@ -1,6 +1,11 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { RH8_FOLDER, mintWallets, openseaConnection, robinhoodRpc } from '../support/data'
+import {
+  mintWallets,
+  openseaConnection,
+  walletFolder,
+  robinhoodRpc,
+} from '../support/data'
 import { holdingsFixture } from '../support/fixtures/holdings'
 import { collectionFixture } from '../support/fixtures/collection'
 import { mockCollection, mockHoldings } from '../support/opensea'
@@ -19,7 +24,8 @@ test('a pasted destination arms the transfer', async ({
   browser,
   screen,
 }) => {
-  const [wallet] = mintWallets(1)
+  const folder = walletFolder('Transfer')
+  const [wallet] = mintWallets(1, folder.id)
 
   await mockCollection(browser, {
     slug: SLUG,
@@ -43,13 +49,19 @@ test('a pasted destination arms the transfer', async ({
 
   await app.open('/transfer')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [robinhoodRpc(RPC_URL), openseaConnection('deterministic-key')],
   })
   await app.open('/transfer')
 
-  await scanCollection({ browser, screen, feature: 'transfer', collection: SLUG })
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'transfer',
+    collection: SLUG,
+    folder: folder.name,
+  })
 
   await expect(
     screen.getByRole('button', { name: 'Select NFTs to transfer' })
