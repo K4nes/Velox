@@ -4,14 +4,13 @@ import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
 import {
   openseaConnection,
-  RH8_ADDRESS,
-  RH8_FOLDER,
-  rh8Wallet,
   robinhoodRpc,
+  walletFolder,
+  walletRow,
 } from './data'
 import { requireEnv } from './env'
 import { seedVelox } from './seed'
-import type { WalletRow } from './seed'
+import type { FolderRow, WalletRow } from './seed'
 
 /** One stage of a `/drops/{slug}` response, as far as the mint tests read it. */
 export type DropStage = {
@@ -85,8 +84,8 @@ export async function readDrop(slug: string): Promise<DropState> {
  * Seeds the wallets, the Robinhood RPC row and the OpenSea key, then fills the
  * mint form until `Check` produces the run rows. `status` is the row state this
  * scenario expects: `Eligible` when a stage is open, `Scheduled` otherwise. The
- * default seed is the live `rh8` setup; a deterministic test passes its own
- * generated wallets and mocked endpoints.
+ * default seed is the env-supplied live wallet; a deterministic test passes its
+ * own generated wallets, folder and mocked endpoints.
  */
 export async function prepareMintRun(options: {
   app: WebApp
@@ -94,15 +93,25 @@ export async function prepareMintRun(options: {
   screen: Screen
   slug: string
   status: 'Eligible' | 'Scheduled'
+  folder?: FolderRow
   wallets?: WalletRow[]
   rpcUrl?: string
   apiKey?: string
   addresses?: string[]
 }): Promise<void> {
   const { app, browser, screen, slug, status } = options
+  const folder =
+    options.folder ?? walletFolder(requireEnv('E2E_WALLET_FOLDER'))
   const wallets =
-    options.wallets ?? [rh8Wallet(requireEnv('E2E_WALLET_RH8_KEY'))]
-  const addresses = options.addresses ?? [RH8_ADDRESS]
+    options.wallets ??
+    [
+      walletRow({
+        label: requireEnv('E2E_WALLET_LABEL'),
+        privateKey: requireEnv('E2E_WALLET_KEY'),
+        folderId: folder.id,
+      }),
+    ]
+  const addresses = options.addresses ?? wallets.map((wallet) => wallet.address)
 
   await browser.addInitScript(() => {
     try {
@@ -112,7 +121,7 @@ export async function prepareMintRun(options: {
 
   await app.open('/mint/tasks')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets,
     connections: [
       robinhoodRpc(options.rpcUrl ?? requireEnv('E2E_RH_RPC_URL')),
@@ -128,7 +137,9 @@ export async function prepareMintRun(options: {
   // The wallet row lives in a collapsed group, so the group checkbox is the
   // way in; the picker closes on Escape.
   await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen.getByRole('checkbox', { name: 'Select all in Robinhood' }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
   await browser.keyboard.press('Escape')
   await screen.getByRole('button', 'Check').click()
 
