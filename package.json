@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:e2e": "e2e run",
-    "test:e2e:live": "e2e run --config e2e.live.config.ts tests/wallet-profiles/live/balance.e2e.ts tests/eligibility/live",
+    "test:e2e:live": "e2e run --config e2e.live.config.ts tests/wallet-profiles/live/balance.e2e.ts tests/eligibility/live tests/pnl/live",
     "test:e2e:mint": "e2e run --config e2e.live.config.ts tests/mint/live"
   },
   "dependencies": {

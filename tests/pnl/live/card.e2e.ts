@@ -14,7 +14,7 @@ const ETH_FIGURE = /^-?\d+\.\d{4}(?: ETH)?$/
 // The collection and the wallet both come from the ignored env file; nothing
 // about this run is imported from a fixture.
 const slug = process.env.E2E_PNL_SLUG ?? ''
-const privateKey = process.env.E2E_WALLET_RH8_KEY ?? ''
+const privateKey = process.env.E2E_WALLET_KEY ?? ''
 const label = process.env.E2E_WALLET_LABEL ?? ''
 const folderName = process.env.E2E_WALLET_FOLDER ?? ''
 const chain = process.env.E2E_PNL_CHAIN ?? ''
@@ -93,7 +93,7 @@ test(
   {
     skip: ready
       ? false
-      : 'set E2E_PNL_SLUG, E2E_WALLET_RH8_KEY, E2E_WALLET_LABEL, E2E_WALLET_FOLDER, E2E_PNL_CHAIN, E2E_OPENSEA_API_URL and E2E_OPEN_SEA_KEY',
+      : 'set E2E_PNL_SLUG, E2E_WALLET_KEY, E2E_WALLET_LABEL, E2E_WALLET_FOLDER, E2E_PNL_CHAIN, E2E_OPENSEA_API_URL and E2E_OPEN_SEA_KEY',
   },
   async ({ app, browser, screen }) => {
     const { folder, wallet } = liveWallet({
