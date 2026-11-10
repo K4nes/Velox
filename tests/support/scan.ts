@@ -22,13 +22,13 @@ export async function scanCollection(options: {
   screen: Screen
   feature: ScanFeature
   collection: string
-  folder?: string
+  folder: string
 }): Promise<void> {
-  const { browser, screen, feature, collection, folder = 'Robinhood' } = options
+  const { browser, screen, feature, collection, folder } = options
 
   await screen
     .getByLabel('Collection URL or slug (OpenSea / Scatter)')
-    .fill(`https://opensea.io/collection/${collection}`)
+    .fill(collection)
 
   await screen.getByRole('button', { name: /Select wallets/ }).click()
   await screen.getByRole('checkbox', { name: `Select all in ${folder}` }).click()

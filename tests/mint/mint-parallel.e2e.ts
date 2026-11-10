@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { mintWallets, secondWallet } from '../support/data'
+import { mintWallets, secondWallet, walletFolder } from '../support/data'
 import { requireEnv } from '../support/env'
 import {
   MINT_TEST_RPC_URL,
@@ -32,8 +32,9 @@ test('two wallets mint in parallel and settle once each', async ({
   browser,
   screen,
 }) => {
-  const [first] = mintWallets(1)
-  const second = secondWallet(requireEnv('E2E_WALLET_SECOND_KEY'))
+  const folder = walletFolder('Mint')
+  const [first] = mintWallets(1, folder.id)
+  const second = secondWallet(requireEnv('E2E_WALLET_SECOND_KEY'), folder.id)
   const mock = await mockMintNetwork({
     browser,
     slug: SLUG,
@@ -54,6 +55,7 @@ test('two wallets mint in parallel and settle once each', async ({
     screen,
     slug: SLUG,
     status: 'Eligible',
+    folder,
     wallets: [first, second],
     rpcUrl: MINT_TEST_RPC_URL,
     apiKey: 'deterministic-key',
