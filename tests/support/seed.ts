@@ -9,10 +9,39 @@ export type WalletRow = {
   createdAt: number
 }
 
+/** The versioned split the PnL pages read (`src/lib/pnl-records.ts`). */
+export type SeedPnlBreakdown = {
+  v: 2
+  realized: string
+  spent: string
+  basis: string
+  held: number
+  sold: number
+}
+
+/** One `pnl-records` row, keyed by `<contract>|<day>`. */
+export type SeedPnlRecord = {
+  id: string
+  createdAt: number
+  day: string
+  slug: string
+  name: string
+  imageUrl: string
+  chain: string
+  contract: string
+  wallets: string[]
+  netPnl: string
+  ethPriceUsd: number | null
+  truncated: boolean
+  unpriced: boolean
+  breakdown?: SeedPnlBreakdown
+}
+
 export type Seed = {
   folders?: FolderRow[]
   wallets?: WalletRow[]
   connections?: Record<string, unknown>[]
+  pnlRecords?: SeedPnlRecord[]
 }
 
 type Evaluator = {
@@ -44,6 +73,7 @@ export async function seedVelox(page: Evaluator, seed: Seed): Promise<void> {
     if (data.folders !== undefined) await write('folders', data.folders)
     if (data.wallets !== undefined) await write('wallets', data.wallets)
     if (data.connections !== undefined) await write('connections', data.connections)
+    if (data.pnlRecords !== undefined) await write('pnl-records', data.pnlRecords)
 
     db.close()
   }, seed)

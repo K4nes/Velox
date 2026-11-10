@@ -74,17 +74,29 @@ export function destWallet(privateKey: string): WalletRow {
   }
 }
 
-export function robinhoodRpc(url: string) {
+/** A custom RPC connection row for any chain slug the app knows. */
+export function customRpc(chain: string, url: string) {
+  const endpoint = `${chain}-custom`
   return {
     kind: 'rpc',
-    id: 'rpc:custom:robinhood-alchemy',
-    name: 'Robinhood Alchemy',
+    id: `rpc:custom:${endpoint}`,
+    name: `${chain} custom RPC`,
     provider: 'custom',
     order: 0,
     autoFallback: true,
     credentials: [],
-    endpoints: [{ id: 'robinhood-alchemy', chain: 'robinhood', url, probe: null }],
+    endpoints: [{ id: endpoint, chain, url, probe: null }],
     updatedAt: FIXED_NOW,
+  }
+}
+
+export function robinhoodRpc(url: string) {
+  const row = customRpc('robinhood', url)
+  return {
+    ...row,
+    id: 'rpc:custom:robinhood-alchemy',
+    name: 'Robinhood Alchemy',
+    endpoints: [{ ...row.endpoints[0], id: 'robinhood-alchemy' }],
   }
 }
 
