@@ -4,30 +4,10 @@ import type { FolderRow, WalletRow } from './seed'
 
 export const FIXED_NOW = 1_760_000_000_000
 
-/** `rh8`'s address: the value the run row is keyed on. */
-export const RH8_ADDRESS = '0x74c8f5ab3649c280fb986fde3ee13da4dd1f5210'
-
-export const RH8_FOLDER: FolderRow = {
-  id: 'folder-rh8',
-  name: 'Robinhood',
-  createdAt: FIXED_NOW,
-}
-
-export function rh8Wallet(privateKey: string): WalletRow {
-  return {
-    id: 'wallet-rh8',
-    folderId: RH8_FOLDER.id,
-    label: 'rh8',
-    address: RH8_ADDRESS,
-    privateKey,
-    createdAt: FIXED_NOW,
-  }
-}
-
-export function secondWallet(privateKey: string): WalletRow {
+export function secondWallet(privateKey: string, folderId: string): WalletRow {
   return {
     id: 'wallet-second',
-    folderId: RH8_FOLDER.id,
+    folderId,
     label: 'second',
     address: privateKeyToAccount(privateKey as `0x${string}`).address,
     privateKey,
@@ -38,14 +18,15 @@ export function secondWallet(privateKey: string): WalletRow {
 /**
  * Wallets for the deterministic mint run. The keys are generated per run, so no
  * committed fixture can sign a transaction that reaches a real chain; the ids
- * sort in list order, which is the order the mint hands out work.
+ * sort in list order, which is the order the mint hands out work. The caller
+ * supplies the folder the wallets belong to.
  */
-export function mintWallets(count: number): WalletRow[] {
+export function mintWallets(count: number, folderId: string): WalletRow[] {
   return Array.from({ length: count }, (_, index) => {
     const privateKey = generatePrivateKey()
     return {
       id: `wallet-mint-${String(index).padStart(3, '0')}`,
-      folderId: RH8_FOLDER.id,
+      folderId,
       label: `mint-${index}`,
       address: privateKeyToAccount(privateKey).address,
       privateKey,
