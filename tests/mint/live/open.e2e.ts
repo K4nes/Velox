@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { RH8_ADDRESS } from '../../support/data'
+import { liveWallet } from '../../support/data'
 import { requireEnv } from '../../support/env'
 import {
   assertMintFunds,
@@ -12,16 +12,28 @@ import {
 } from '../../support/mint'
 
 const ready = Boolean(
-  process.env.E2E_WALLET_RH8_KEY &&
+  process.env.E2E_DROP_SLUG &&
+    process.env.E2E_WALLET_KEY &&
+    process.env.E2E_WALLET_LABEL &&
+    process.env.E2E_WALLET_FOLDER &&
     process.env.E2E_RH_RPC_URL &&
     process.env.E2E_OPEN_SEA_KEY,
 )
 
 test(
-  'rh8 mints the open stage',
-  { skip: ready ? false : 'set E2E_WALLET_RH8_KEY, E2E_RH_RPC_URL and E2E_OPEN_SEA_KEY' },
+  'the configured wallet mints the open stage',
+  {
+    skip: ready
+      ? false
+      : 'set E2E_DROP_SLUG, E2E_WALLET_KEY, E2E_WALLET_LABEL, E2E_WALLET_FOLDER, E2E_RH_RPC_URL and E2E_OPEN_SEA_KEY',
+  },
   async ({ app, browser, screen }) => {
-    const slug = process.env.E2E_DROP_SLUG ?? 'bigfatfish'
+    const slug = requireEnv('E2E_DROP_SLUG')
+    const wallet = liveWallet({
+      privateKey: requireEnv('E2E_WALLET_KEY'),
+      label: requireEnv('E2E_WALLET_LABEL'),
+      folder: requireEnv('E2E_WALLET_FOLDER'),
+    }).wallet
     const drop = await readDrop(slug)
 
     // The scheduled scenario owns the future-stage case; here a stage must
@@ -40,7 +52,7 @@ test(
     })
     await assertMintFunds({
       rpcUrl: requireEnv('E2E_RH_RPC_URL'),
-      address: RH8_ADDRESS,
+      address: wallet.address,
       valueWei: BigInt(stage.price ?? '0'),
     })
 
