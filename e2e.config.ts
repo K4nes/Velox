@@ -3,7 +3,7 @@ import { web } from '@e2e-dev/web'
 
 export default {
   projectId: 'velox',
-  tests: ['tests/**/*.e2e.ts', '!tests/live/**'],
+  tests: ['tests/**/*.e2e.ts', '!tests/**/live/**'],
   reporters: ['list', 'junit'],
   timeout: 120_000,
   actionTimeout: 30_000,

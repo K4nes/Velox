@@ -3,7 +3,7 @@ import { web } from '@e2e-dev/web'
 
 export default {
   projectId: 'velox-live',
-  tests: 'tests/live/**/*.e2e.ts',
+  tests: 'tests/**/live/**/*.e2e.ts',
   reporters: ['list', 'junit'],
   retries: 0,
   workers: 1,

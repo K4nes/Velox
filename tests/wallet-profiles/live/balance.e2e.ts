@@ -1,8 +1,8 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { requireEnv } from '../support/env'
-import { RH8_FOLDER, rh8Wallet, robinhoodRpc } from '../support/data'
-import { seedVelox } from '../support/seed'
+import { requireEnv } from '../../support/env'
+import { RH8_FOLDER, rh8Wallet, robinhoodRpc } from '../../support/data'
+import { seedVelox } from '../../support/seed'
 
 const ready = Boolean(process.env.E2E_WALLET_RH8_KEY && process.env.E2E_RH_RPC_URL)
 
