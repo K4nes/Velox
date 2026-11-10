@@ -281,3 +281,19 @@ Cheap checks first, stop at the first rung that settles it:
 2. `npx tsc -b --force`
 3. `npm run build`
 4. browser test — **only when asked**
+
+## E2E live data and mocks
+
+- Live E2E tests MUST take external identity from environment variables or
+  explicit test options: collection URL/slug, wallet key/address/label,
+  expected status, chain, RPC and API endpoints. Never hardcode a specific
+  drop, wallet, address, or expected status in a live test. Skip clearly when
+  the required env is absent. A live check that cannot be parameterized is a
+  one-off script, not suite material.
+- Reusable mock helpers and fixtures MUST accept the collection, slug, stage,
+  address, and response values as options. A helper must not embed one fixture
+  case. A deterministic test may pass specific values into those helpers; the
+  specificity belongs to the test or its fixture builder, not the shared
+  helper.
+- Put local env values in the ignored `.env.e2e.local`. Never commit secret
+  values; document only the variable names.
