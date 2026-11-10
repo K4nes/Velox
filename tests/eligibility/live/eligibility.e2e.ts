@@ -9,7 +9,7 @@ import type { FolderRow, WalletRow } from '../../support/seed'
 const COLLECTION_URL = process.env.E2E_ELIGIBILITY_COLLECTION_URL
 const EXPECTED_STATUS = process.env.E2E_ELIGIBILITY_EXPECT
 const WALLET_KEY =
-  process.env.E2E_ELIGIBILITY_WALLET_KEY ?? process.env.E2E_WALLET_RH8_KEY
+  process.env.E2E_ELIGIBILITY_WALLET_KEY ?? process.env.E2E_WALLET_KEY
 const OPEN_SEA_KEY = process.env.E2E_OPEN_SEA_KEY
 const RPC_URL = process.env.E2E_RH_RPC_URL
 
@@ -32,13 +32,13 @@ test(
   {
     skip: ready
       ? false
-      : 'set E2E_ELIGIBILITY_COLLECTION_URL, E2E_ELIGIBILITY_EXPECT, E2E_ELIGIBILITY_WALLET_KEY (or E2E_WALLET_RH8_KEY), E2E_OPEN_SEA_KEY and E2E_RH_RPC_URL',
+      : 'set E2E_ELIGIBILITY_COLLECTION_URL, E2E_ELIGIBILITY_EXPECT, E2E_ELIGIBILITY_WALLET_KEY (or E2E_WALLET_KEY), E2E_OPEN_SEA_KEY and E2E_RH_RPC_URL',
   },
   async ({ app, browser, screen }) => {
     const collectionUrl = requireEnv('E2E_ELIGIBILITY_COLLECTION_URL')
     const expected = requireEnv('E2E_ELIGIBILITY_EXPECT')
     const privateKey =
-      process.env.E2E_ELIGIBILITY_WALLET_KEY ?? requireEnv('E2E_WALLET_RH8_KEY')
+      process.env.E2E_ELIGIBILITY_WALLET_KEY ?? requireEnv('E2E_WALLET_KEY')
     const account = privateKeyToAccount(asHexKey(privateKey))
     const wallet: WalletRow = {
       id: 'wallet-eligibility-live',

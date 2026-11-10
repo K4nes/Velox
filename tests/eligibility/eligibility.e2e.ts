@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { RH8_FOLDER, mintWallets, openseaConnection } from '../support/data'
+import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { dropFixture } from '../support/fixtures/drop'
 import {
   guardOpenSeaHost,
@@ -25,7 +25,8 @@ test('an eligible wallet renders and saves a snapshot', async ({
   browser,
   screen,
 }) => {
-  const [wallet] = mintWallets(1)
+  const folder = walletFolder('Eligibility')
+  const [wallet] = mintWallets(1, folder.id)
   const drop = dropFixture({
     slug: SLUG,
     contract: CONTRACT,
@@ -71,7 +72,7 @@ test('an eligible wallet renders and saves a snapshot', async ({
 
   await app.open('/mint/eligibility')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [openseaConnection('deterministic-key')],
   })
@@ -84,7 +85,7 @@ test('an eligible wallet renders and saves a snapshot', async ({
     .fill(COLLECTION_URL)
   await screen.getByRole('button', { name: /Select wallets/ }).click()
   await screen
-    .getByRole('checkbox', { name: `Select all in ${RH8_FOLDER.name}` })
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
     .click()
   await browser.keyboard.press('Escape')
 

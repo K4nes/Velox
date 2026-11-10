@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { RH8_FOLDER, mintWallets, openseaConnection } from '../support/data'
+import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
 import { mockCollection, mockHoldings, mockRarityBatch } from '../support/opensea'
@@ -15,7 +15,8 @@ test('a scan fills the inventory and the owned count', async ({
   browser,
   screen,
 }) => {
-  const [wallet] = mintWallets(1)
+  const folder = walletFolder('Portfolio')
+  const [wallet] = mintWallets(1, folder.id)
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
 
   await mockCollection(browser, {
@@ -57,7 +58,7 @@ test('a scan fills the inventory and the owned count', async ({
 
   await app.open('/portfolio')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [openseaConnection('deterministic-key')],
   })
@@ -70,7 +71,13 @@ test('a scan fills the inventory and the owned count', async ({
     ),
   ).toBeVisible()
 
-  await scanCollection({ browser, screen, feature: 'portfolio', collection: SLUG })
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'portfolio',
+    collection: SLUG,
+    folder: folder.name,
+  })
 
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
   await expect(row).toHaveCount(1)
