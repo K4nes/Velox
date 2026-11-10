@@ -35,6 +35,17 @@ async function answer(
 }
 
 /**
+ * Aborts every `api.opensea.io` request no later route claims. The newest
+ * route wins, so register it before the specific OpenSea mocks; a path a test
+ * did not anticipate then fails instead of reaching the network.
+ */
+export async function guardOpenSeaHost(browser: Browser): Promise<void> {
+  await browser.route('**/api.opensea.io/**', async (route) => {
+    await route.abort()
+  })
+}
+
+/**
  * Answers `GET /collections/{slug}` for one slug. The pattern is anchored at
  * the slug, so `/collections/{slug}/stats` is not swallowed.
  */
@@ -47,6 +58,46 @@ export async function mockCollection(
     `/api/v2/collections/${escapeRegExp(options.slug)}$`,
   )
   await browser.route(pattern, async (route) => {
+    await answer(route, counter, options.body)
+  })
+  return counter
+}
+
+/** Answers `GET /drops/{slug}`, the drop schedule the mint pages read. */
+export async function mockDrop(
+  browser: Browser,
+  options: { slug: string; body: JsonValue },
+): Promise<RequestCounter> {
+  const counter = newCounter()
+  const pattern = new RegExp(
+    `/api/v2/drops/${escapeRegExp(options.slug)}$`,
+  )
+  await browser.route(pattern, async (route) => {
+    await answer(route, counter, options.body)
+  })
+  return counter
+}
+
+/**
+ * Answers `GET /drops/{slug}/eligibility`. When `token` is set, a request that
+ * does not carry it as a bearer token gets a 401 and is not counted.
+ */
+export async function mockEligibility(
+  browser: Browser,
+  options: { slug: string; body: JsonValue; token?: string },
+): Promise<RequestCounter> {
+  const counter = newCounter()
+  const pattern = new RegExp(
+    `/api/v2/drops/${escapeRegExp(options.slug)}/eligibility$`,
+  )
+  await browser.route(pattern, async (route) => {
+    if (
+      options.token !== undefined &&
+      route.request.headers.authorization !== `Bearer ${options.token}`
+    ) {
+      await route.fulfill({ status: 401, json: { errors: ['unauthorized'] } })
+      return
+    }
     await answer(route, counter, options.body)
   })
   return counter
