@@ -8,6 +8,7 @@ export type ChainEntry = {
   blockTimeMs: number
   rpcUrl: string
   explorerApi: string
+  explorerUrl: string
   wrappedNative: string
 }
 
@@ -20,6 +21,7 @@ export const chains = [
     blockTimeMs: 12_000,
     rpcUrl: 'https://ethereum-rpc.publicnode.com',
     explorerApi: '',
+    explorerUrl: 'https://etherscan.io',
     wrappedNative: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
   },
   {
@@ -30,6 +32,7 @@ export const chains = [
     blockTimeMs: 100,
     rpcUrl: 'https://rpc.mainnet.chain.robinhood.com',
     explorerApi: 'https://robinhoodchain.blockscout.com/api/v2',
+    explorerUrl: 'https://robinhoodchain.blockscout.com',
     wrappedNative: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
   },
   {
@@ -40,6 +43,7 @@ export const chains = [
     blockTimeMs: 2_000,
     rpcUrl: 'https://mainnet.base.org',
     explorerApi: '',
+    explorerUrl: 'https://basescan.org',
     wrappedNative: '0x4200000000000000000000000000000000000006',
   },
   {
@@ -50,6 +54,7 @@ export const chains = [
     blockTimeMs: 250,
     rpcUrl: 'https://rpc.apechain.com/http',
     explorerApi: '',
+    explorerUrl: 'https://apescan.io',
     wrappedNative: '',
   },
 ] as const satisfies readonly ChainEntry[]
@@ -58,6 +63,13 @@ export type ChainSlug = (typeof chains)[number]['slug']
 
 export function chainBySlug(slug: string): ChainEntry | undefined {
   return chains.find((chain) => chain.slug === slug)
+}
+
+// A hash from a chain this app cannot link answers null instead of a dead URL.
+export function txUrl(slug: string, txHash: string): string | null {
+  const base = chainBySlug(slug)?.explorerUrl
+  if (!base) return null
+  return `${base}/tx/${txHash}`
 }
 
 // Relay reports numeric ids in step calldata; this is the only way back to a slug.

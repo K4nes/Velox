@@ -1,3 +1,4 @@
+import { TxHashLink } from '@/components/tx-hash-link'
 import { Card } from '@/components/ui/card'
 import {
   Table,
@@ -63,8 +64,8 @@ export function RunTable({ runs, stageUuid, statusOf }: RunTableProps) {
                         {RUN_LABEL[rowStatus]}
                       </span>
                       {run.txHash && run.mintedStages.at(-1) === stageUuid ? (
-                        <span className="text-muted-foreground ml-2">
-                          {`${run.txHash.slice(0, 10)}…`}
+                        <span className="ml-2">
+                          <TxHashLink chain={run.chain} txHash={run.txHash} />
                         </span>
                       ) : null}
                       {run.error ? (

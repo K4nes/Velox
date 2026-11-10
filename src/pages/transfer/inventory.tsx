@@ -3,6 +3,7 @@ import { PackageOpen, Search } from 'lucide-react'
 import { BodyMessage } from '@/components/body-message'
 import { RunStatusCell } from '@/components/run-status-cell'
 import { TokenImage } from '@/components/token-image'
+import { TxHashLink } from '@/components/tx-hash-link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -24,9 +25,11 @@ import type { TransferStepState } from '@/lib/transfer-run'
 
 function StatusCell({
   step,
+  chain,
   blockedReason,
 }: {
   step: TransferStepState | undefined
+  chain: string
   blockedReason: string | null
 }) {
   if (!step) {
@@ -46,7 +49,7 @@ function StatusCell({
       tone={TRANSFER_STEP_TONE[step.status]}
       label={TRANSFER_STEP_LABEL[step.status]}
       live={live}
-      note={txHash ? `${txHash.slice(0, 8)}…` : undefined}
+      note={txHash ? <TxHashLink chain={chain} txHash={txHash} /> : undefined}
       error={
         step.status === 'failed' || step.status === 'unknown'
           ? step.error
@@ -240,6 +243,7 @@ export function Inventory({
                 <TableCell className="px-3">
                   <StatusCell
                     step={tokenStates.get(key)}
+                    chain={row.token.chain}
                     blockedReason={row.blockedReason}
                   />
                 </TableCell>

@@ -1,5 +1,6 @@
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
+import type { ReactNode } from 'react'
 
 export function RunStatusCell({
   tone,
@@ -12,7 +13,7 @@ export function RunStatusCell({
   tone: string
   label: string
   live: boolean
-  note?: string
+  note?: ReactNode
   error?: string
   className?: string
 }) {

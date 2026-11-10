@@ -8,6 +8,11 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+### Changed
+
+- A transaction hash renders as an underlined `Tx Hash` link on mint tasks, transfer, instant
+  sell and swap, so the explorer is one click away instead of a masked string.
+
 ## [0.1.1] - 2026-11-09
 
 ### Changed
