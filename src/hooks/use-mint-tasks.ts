@@ -506,6 +506,7 @@ export function useMintTasks() {
                 ...row,
                 status: 'queued' as const,
                 txHash: undefined,
+                chain: undefined,
                 error: undefined,
               }
             : row
@@ -548,6 +549,7 @@ export function useMintTasks() {
           updateRun(wallet.id, (row) => ({
             status: 'broadcast',
             txHash: result.txHash,
+            chain: result.chain,
             mintedStages: [...row.mintedStages, liveStageUuid],
           }))
           broadcast.push({

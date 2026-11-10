@@ -3,6 +3,7 @@ import { PackageOpen, Search } from 'lucide-react'
 import { BodyMessage } from '@/components/body-message'
 import { RunStatusCell } from '@/components/run-status-cell'
 import { TokenImage } from '@/components/token-image'
+import { TxHashLink } from '@/components/tx-hash-link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -104,7 +105,13 @@ function BidCell({
   )
 }
 
-function StatusCell({ step }: { step: SellStepState | undefined }) {
+function StatusCell({
+  step,
+  chain,
+}: {
+  step: SellStepState | undefined
+  chain: string
+}) {
   if (!step) {
     return <span className="text-muted-foreground text-xs">—</span>
   }
@@ -122,7 +129,7 @@ function StatusCell({ step }: { step: SellStepState | undefined }) {
       tone={SELL_STEP_TONE[step.status]}
       label={SELL_STEP_LABEL[step.status]}
       live={live}
-      note={hash ? `${hash.slice(0, 8)}…` : undefined}
+      note={hash ? <TxHashLink chain={chain} txHash={hash} /> : undefined}
       error={step.status === 'failed' ? step.error : undefined}
     />
   )
@@ -323,7 +330,7 @@ export function Inventory({
                   />
                 </TableCell>
                 <TableCell className="px-3">
-                  <StatusCell step={row.status} />
+                  <StatusCell step={row.status} chain={row.token.chain} />
                 </TableCell>
               </TableRow>
             )

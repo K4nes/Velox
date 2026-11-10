@@ -36,6 +36,9 @@ export type WalletRun = {
   caps: Record<string, number>
   status: RunStatus
   txHash?: string
+  // The chain the hash was broadcast on. A re-check can drop the detected drop, so
+  // the explorer link must not depend on what the task holds right now.
+  chain?: string
   error?: string
   checkFailed?: boolean
   // Every stage this wallet broadcast on, oldest first. One landing slot cannot
@@ -254,7 +257,11 @@ export function mergeCheckedRows(
           ...row,
           mintedStages: previous.mintedStages,
           ...(landed(previous)
-            ? { status: previous.status, txHash: previous.txHash }
+            ? {
+                status: previous.status,
+                txHash: previous.txHash,
+                chain: previous.chain,
+              }
             : {}),
         }
       }

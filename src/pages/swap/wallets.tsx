@@ -2,6 +2,7 @@ import { Layers } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
 import { RunStatusCell } from '@/components/run-status-cell'
+import { TxHashLink } from '@/components/tx-hash-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -32,7 +33,7 @@ function StatusCell({ state }: { state: SwapWalletState | undefined }) {
     state.status === 'signing' ||
     state.status === 'confirming' ||
     state.status === 'waiting'
-  const txHash = 'tx' in state && state.tx !== null ? state.tx.hash : null
+  const tx = 'tx' in state && state.tx !== null ? state.tx : null
   const detail =
     state.status === 'failed' || state.status === 'unconfirmed'
       ? state.error
@@ -49,7 +50,7 @@ function StatusCell({ state }: { state: SwapWalletState | undefined }) {
       tone={SWAP_WALLET_TONE[state.status]}
       label={swapWalletLabel(state)}
       live={live}
-      note={txHash ? `${txHash.slice(0, 8)}…` : undefined}
+      note={tx ? <TxHashLink chain={tx.chain} txHash={tx.hash} /> : undefined}
       error={detail || undefined}
     />
   )
