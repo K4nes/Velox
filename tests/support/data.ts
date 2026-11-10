@@ -24,6 +24,17 @@ export function rh8Wallet(privateKey: string): WalletRow {
   }
 }
 
+export function secondWallet(privateKey: string): WalletRow {
+  return {
+    id: 'wallet-second',
+    folderId: RH8_FOLDER.id,
+    label: 'second',
+    address: privateKeyToAccount(privateKey as `0x${string}`).address,
+    privateKey,
+    createdAt: FIXED_NOW,
+  }
+}
+
 /**
  * Wallets for the deterministic mint run. The keys are generated per run, so no
  * committed fixture can sign a transaction that reaches a real chain; the ids
