@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { customRpc, mintWallets, RH8_FOLDER } from '../support/data'
+import { customRpc, mintWallets, walletFolder } from '../support/data'
 import { mockRpc, word } from '../support/rpc'
 import { seedVelox } from '../support/seed'
 
@@ -47,12 +47,13 @@ test('a funded wallet gets a quote and an enabled swap', async ({
     })
   })
 
-  const [wallet] = mintWallets(1)
+  const folder = walletFolder('Swap')
+  const [wallet] = mintWallets(1, folder.id)
   if (!wallet) throw new Error('mintWallets(1) returned no wallet')
 
   await app.open('/swap')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [customRpc('ethereum', RPC_URL)],
   })
@@ -66,7 +67,9 @@ test('a funded wallet gets a quote and an enabled swap', async ({
   await screen
     .getByRole('button', { name: /Select wallets \(\d+ selected\)/ })
     .click()
-  await screen.getByRole('checkbox', { name: 'Select all in Robinhood' }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
   await browser.keyboard.press('Escape')
   await screen.getByLabel(`Amount for ${wallet.label}`).fill('0.1')
 
