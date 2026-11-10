@@ -1,11 +1,7 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import type { JsonValue } from 'e2e'
-import {
-  mintWallets,
-  openseaConnection,
-  RH8_FOLDER,
-} from '../support/data'
+import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
 import { offerLadderFixture } from '../support/fixtures/offers'
@@ -26,7 +22,8 @@ test('one bid covers one selected token', async ({
   browser,
   screen,
 }) => {
-  const [wallet] = mintWallets(1)
+  const folder = walletFolder('Instant Sell')
+  const [wallet] = mintWallets(1, folder.id)
 
   // Registered first, so the specific mocks below win: any OpenSea path they
   // do not answer is aborted rather than reaching the live API.
@@ -59,7 +56,7 @@ test('one bid covers one selected token', async ({
 
   await app.open('/instant-sell')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [openseaConnection('deterministic-key')],
   })
@@ -70,6 +67,7 @@ test('one bid covers one selected token', async ({
     screen,
     feature: 'instant-sell',
     collection: SLUG,
+    folder: folder.name,
   })
 
   // The row's bid renders only after the offers response converts into a live
