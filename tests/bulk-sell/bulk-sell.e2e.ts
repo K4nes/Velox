@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { RH8_FOLDER, mintWallets, openseaConnection } from '../support/data'
+import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
 import { mockCollection, mockHoldings } from '../support/opensea'
@@ -16,9 +16,11 @@ test('selection and price gate the listing run', async ({
   browser,
   screen,
 }) => {
+  const folder = walletFolder('Bulk Sell')
   // The wallet is generated per run; the test never signs, so no key is stored
   // beyond the one this run made.
-  const [wallet] = mintWallets(1)
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
 
   const listed: string[] = []
   await browser.route(
@@ -48,7 +50,7 @@ test('selection and price gate the listing run', async ({
 
   await app.open('/bulk-sell')
   await seedVelox(browser, {
-    folders: [RH8_FOLDER],
+    folders: [folder],
     wallets: [wallet],
     connections: [openseaConnection('deterministic-key')],
   })
@@ -59,6 +61,7 @@ test('selection and price gate the listing run', async ({
     screen,
     feature: 'bulk-sell',
     collection: SLUG,
+    folder: folder.name,
   })
 
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
