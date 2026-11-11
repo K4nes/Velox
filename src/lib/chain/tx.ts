@@ -12,7 +12,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import type { ChainEntry } from '@/config/chains'
 import { resolveRpcUrls } from '@/lib/chain/connections'
-import { traceMint } from '@/lib/mint-trace'
+import { traceMint } from '@/lib/mint/mint-trace'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 

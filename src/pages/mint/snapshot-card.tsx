@@ -10,8 +10,8 @@ import {
 import {
   formatSnapshotDate,
   summarizeSnapshot,
-} from '@/lib/snapshots'
-import type { EligibilitySnapshot } from '@/lib/snapshots'
+} from '@/lib/mint/snapshots'
+import type { EligibilitySnapshot } from '@/lib/mint/snapshots'
 
 type SnapshotCardProps = {
   snapshot: EligibilitySnapshot

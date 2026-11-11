@@ -8,7 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { EligibilityTableState, StageColumn } from '@/lib/opensea/eligibility'
-import type { Marketplace } from '@/lib/snapshots'
+import type { Marketplace } from '@/lib/mint/snapshots'
 
 export function EligibilityResultSummary({
   name,
