@@ -19,8 +19,8 @@ import {
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
-import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listing-run'
-import type { RunStepState } from '@/lib/listing-run'
+import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listings/listing-run'
+import type { RunStepState } from '@/lib/listings/listing-run'
 
 function StatusCell({ step }: { step: RunStepState | undefined }) {
   if (!step) {

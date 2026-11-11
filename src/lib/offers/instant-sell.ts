@@ -3,7 +3,7 @@ import type {
   ConsiderationItem,
   OrderComponentsLeaf,
 } from '@/lib/opensea/seaport'
-import type { ListingToken } from '@/lib/listing-plan'
+import type { ListingToken } from '@/lib/listings/listing-plan'
 
 export type OfferCurrency = {
   address: string
