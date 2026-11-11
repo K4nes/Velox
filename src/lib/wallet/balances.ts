@@ -1,4 +1,4 @@
-import { balanceKey, type BalanceMap } from '@/lib/balance-key'
+import { balanceKey, type BalanceMap } from '@/lib/wallet/balance-key'
 import { clientFor } from '@/lib/chain/tx'
 
 const CONCURRENCY = 5

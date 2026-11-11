@@ -2,7 +2,7 @@ import { buildMintTransaction } from '@/lib/opensea'
 import type { MintTransaction } from '@/lib/opensea'
 import { sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
-import type { StoredWallet } from '@/lib/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export async function mintForWallet(input: {
   slug: string

@@ -10,7 +10,7 @@ import type {
   SwapRunSummary,
   SwapWalletState,
 } from '@/lib/swap-run'
-import { listWallets } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
 
 export function useSwapRun(input: {
   batch: SwapBatch | null

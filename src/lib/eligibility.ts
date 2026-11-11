@@ -8,8 +8,8 @@ import {
   getEligibility,
 } from '@/lib/opensea'
 import type { DropInfo, EligibilityResponse } from '@/lib/opensea'
-import { toPrivateKeyHex } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { toPrivateKeyHex } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type StageColumn = { uuid: string; label: string }
 

@@ -1,7 +1,7 @@
 import { formatEther } from 'viem'
 import { chainBySlug } from '@/config/chains'
-import { balanceKey, type BalanceMap } from '@/lib/balance-key'
-import type { StoredWallet } from '@/lib/wallets'
+import { balanceKey, type BalanceMap } from '@/lib/wallet/balance-key'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type WalletProfile = {
   id: string

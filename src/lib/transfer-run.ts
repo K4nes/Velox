@@ -13,8 +13,8 @@ import type {
   TransferPlan,
   PlannedTransferWallet,
 } from '@/lib/transfer-plan'
-import { toPrivateKeyHex } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { toPrivateKeyHex } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type TransferStepStatus =
   | 'queued'

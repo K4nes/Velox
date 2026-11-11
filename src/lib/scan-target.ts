@@ -1,7 +1,7 @@
 import { slugFromUrl } from '@/lib/opensea'
 import { toMessage } from '@/lib/core/error-message'
-import { listWallets } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type ScanTarget =
   | { status: 'ready'; slug: string; wallets: StoredWallet[] }

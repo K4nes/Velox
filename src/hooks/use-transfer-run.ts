@@ -18,7 +18,7 @@ import type {
   DestinationResolution,
   TransferSelection,
 } from '@/lib/transfer-plan'
-import { listWallets } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
 
 const RESOLVE_DEBOUNCE_MS = 400
 

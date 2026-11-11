@@ -5,7 +5,7 @@ import { resolveSwapBatch } from '@/lib/swap-batch'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { amountFor, amountKey, specKey } from '@/lib/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
-import { listWallets } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
 
 const DEBOUNCE_MS = 300
 

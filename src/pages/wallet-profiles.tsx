@@ -30,8 +30,8 @@ import {
   listWallets,
   parseWalletLines,
   removeWallet,
-} from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+} from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 import {
   folderBalance,
   folderState,
@@ -41,8 +41,8 @@ import {
   toFolders,
   uid,
   walletCount,
-} from '@/lib/wallet-model'
-import type { FolderRecord } from '@/lib/wallet-model'
+} from '@/lib/wallet/wallet-model'
+import type { FolderRecord } from '@/lib/wallet/wallet-model'
 import { cn } from '@/lib/utils'
 
 export function WalletProfilesPage() {
