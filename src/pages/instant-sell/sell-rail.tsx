@@ -135,7 +135,7 @@ export function SellRail({
       </Card>
 
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
           <h2 className="truncate text-[13px] font-semibold">
             Active OpenSea Offers
           </h2>
