@@ -8,6 +8,13 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+### Added
+
+- An E2E suite. `tests/` holds a mocked lane that covers the pages with a headless browser
+  (`npm run test:e2e`) and a live lane against real wallets, drops and providers
+  (`npm run test:e2e:live`, `npm run test:e2e:mint`), configured by `e2e.config.ts` and
+  `e2e.live.config.ts` ([#34], [#35], [#42]).
+
 ### Changed
 
 - A transaction hash renders as an underlined `Tx Hash` link on mint tasks, transfer, instant
@@ -98,3 +105,6 @@ consolidated into a single entry.
 [#27]: https://github.com/K4nes/velox/pull/27
 [#28]: https://github.com/K4nes/velox/pull/28
 [#29]: https://github.com/K4nes/velox/pull/29
+[#34]: https://github.com/K4nes/velox/pull/34
+[#35]: https://github.com/K4nes/velox/pull/35
+[#42]: https://github.com/K4nes/velox/pull/42
