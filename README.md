@@ -18,7 +18,7 @@ the same provider settings.
 
 It runs on your machine. Wallet keys are stored in the browser and signing happens
 locally, so there is no account, no upload and no remote backend — just a Vite app with
-two small server-side routes for the calls a browser cannot make alone.
+three small server-side routes for the calls a browser cannot make alone.
 
 ## Contents
 
@@ -44,7 +44,7 @@ two small server-side routes for the calls a browser cannot make alone.
 
 ```bash
 git clone https://github.com/K4nes/velox.git
-cd velox2
+cd velox
 npm install
 ```
 
@@ -108,31 +108,39 @@ Everything a user configures lives in **Settings**, not in the environment:
 ## Development
 
 ```bash
-npm run dev      # dev server with the local API routes
-npm run build    # tsc -b, then vite build
-npm run lint     # oxlint
-npm run preview  # serve dist/ with the same local API routes
+npm run dev             # dev server with the local API routes
+npm run build           # tsc -b, then vite build
+npm run lint            # oxlint
+npm run preview         # serve dist/ with the same local API routes
+npm run test:e2e        # headless browser suite, mocked lane
+npm run test:e2e:live   # live lane on real wallets, drops and providers
+npm run test:e2e:mint   # live lane, mint only
 ```
 
-There is no test runner. Changes are checked with `npm run build` and a run of the page
-you touched.
+`test:e2e` starts its own Vite server on a free port and needs no setup. The two live
+scripts read the `E2E_*` values from the git-ignored `.env.e2e.local`. Without them the live
+specs skip. Changes are checked with `npm run build` and the suite that covers the page you
+touched.
 
 ### How it fits together
 
-- **Frontend.** React 19, TypeScript, Vite 8, Tailwind 4. Routes live in
-  `src/router.tsx` (`createBrowserRouter`); page files mirror the URL; everything renders
-  inside `AppLayout`.
+- **Frontend.** React 19, TypeScript, Vite 8, Tailwind 4. The route table is
+  `src/config/routes.tsx`; `src/router.tsx` builds the router from it
+  (`createBrowserRouter`); page files mirror the URL; everything renders inside `AppLayout`.
 - **Domain logic.** `src/lib/` holds the OpenSea, Seaport, Relay, PnL, transfer and wallet
   code. `src/hooks/` drives the long-running flows (scans, listings, mints, swaps) and
   their run state.
-- **Local API.** `server/` is a Vite plugin that mounts two route groups on the dev and
+- **Local API.** `server/` is a Vite plugin that mounts three routes on the dev and
   preview servers:
-  - `/api/auth/*` — OpenSea SIWE sign-in, exchanged for an eligibility token.
+  - `/api/auth/nonce` — the OpenSea SIWE message for an address.
+  - `/api/auth/token` — verifies the signed message, mints an OpenSea token scoped
+    `read:eligibility` with a one-day life, exchanges it for a short-lived access token,
+    then revokes the minted token. The long-lived credential never reaches the browser.
   - `/api/price/eth-usdt` — CoinMarketCap quote, cached for 60 seconds and keyed per
     credential.
 
-  Both exist because they need something the browser cannot hold: a server-side key or
-  an upstream cookie. Every other request goes from the browser straight to OpenSea,
+  Each exists because it needs something the browser cannot hold: a server-side credential
+  or an upstream cookie. Every other request goes from the browser straight to OpenSea,
   Relay or an RPC endpoint.
 - **Components.** `src/components/ui/` is the vendored shadcn and Animate UI library;
   `src/components/layout/` is page chrome; page-specific components live next to their
@@ -151,7 +159,8 @@ Nothing leaves the browser except the requests a page makes.
 | `localStorage` | theme, active chain, cached card images |
 
 IndexedDB version and migrations live in `src/lib/db/`. PnL records carry a version
-field (`v`); readers branch on it instead of assuming the current shape.
+field (`v`) on their nested `breakdown`; readers test that it is present, to tell the
+current split from the legacy `invested` shape.
 
 Two things to know before you put real assets in it:
 
