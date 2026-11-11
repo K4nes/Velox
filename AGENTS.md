@@ -65,11 +65,11 @@ Edit a file in `src/components/ui/` only when the change must hold for every ins
 `npx shadcn add` and `npx @animate-ui/cli animate` overwrite files from the registry; diff
 every reported overwrite and re-apply the local edits.
 
-**`src/lib/connection-model.ts` stays free of runtime imports.** It is written to be
+**`src/lib/chain/connection-model.ts` stays free of runtime imports.** It is written to be
 type-stripped and loaded by plain Node without the `@/` alias. Adding a runtime import
 breaks that.
 
-**Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db.ts` plus a
+**Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
 migration inside the `versionchange` transaction. PnL records carry a `v` field that
 readers branch on; bump it when a stored field changes meaning. localStorage holds theme,
 active chain and the card image cache only.
@@ -97,7 +97,7 @@ release is tagged `vMAJOR.MINOR.PATCH` — a `v` prefix, no suffixes, no dates.
   renamed or removed page, a stored record whose meaning changes.
 - `MINOR` — a new page, a new provider, a new capability.
 - `PATCH` — fixes and refactors with no user-visible behaviour change.
-- `DB_VERSION` in `src/lib/db.ts` is not the app version. It moves independently, with
+- `DB_VERSION` in `src/lib/db/db.ts` is not the app version. It moves independently, with
   its own migration.
 
 Cut a release by moving the `## [Unreleased]` entries into a new

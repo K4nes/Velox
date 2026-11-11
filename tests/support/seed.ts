@@ -9,7 +9,7 @@ export type WalletRow = {
   createdAt: number
 }
 
-/** The versioned split the PnL pages read (`src/lib/pnl-records.ts`). */
+/** The versioned split the PnL pages read (`src/lib/pnl/pnl-records.ts`). */
 export type SeedPnlBreakdown = {
   v: 2
   realized: string

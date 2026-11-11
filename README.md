@@ -150,7 +150,7 @@ Nothing leaves the browser except the requests a page makes.
 | IndexedDB `velox` | wallets (folder, label, address, private key), folders, eligibility snapshots, PnL records, provider connections |
 | `localStorage` | theme, active chain, cached card images |
 
-IndexedDB version and migrations live in `src/lib/db.ts`. PnL records carry a version
+IndexedDB version and migrations live in `src/lib/db/`. PnL records carry a version
 field (`v`); readers branch on it instead of assuming the current shape.
 
 Two things to know before you put real assets in it:
