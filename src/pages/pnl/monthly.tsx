@@ -215,7 +215,7 @@ export function PnlMonthlyPage() {
       </div>
 
       <Card className="flex flex-1 flex-col gap-0 py-0">
-        <div className="flex h-12 items-center justify-end gap-3 px-4">
+        <div className="flex h-12 items-center justify-end gap-3 border-b px-4">
           {dayLabel ? (
             <Button
               variant="ghost"
