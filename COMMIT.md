@@ -21,6 +21,13 @@ The scope is optional.
 - `ci`: Change CI/CD configuration.
 - `chore`: Perform maintenance that does not fit another type.
 
+There is no `release` type. A release commit moves the changelog and bumps the version, so
+it is a `chore` with a `release` scope: `chore(release): add the changelog and bump the
+version to 0.1.0`.
+
+Merge commits are exempt from this format. `Merge branch 'x'` and `Merge pull request #N
+from user/branch` are written by git and stay as generated. Do not edit them to fit.
+
 ### Writing Rules
 
 1. Write commit messages in English.

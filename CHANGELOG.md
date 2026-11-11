@@ -8,8 +8,18 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-11
+
+### Added
+
+- An E2E suite. `tests/` holds a mocked lane that covers the pages with a headless browser
+  (`npm run test:e2e`) and a live lane against real wallets, drops and providers
+  (`npm run test:e2e:live`, `npm run test:e2e:mint`), configured by `e2e.config.ts` and
+  `e2e.live.config.ts` ([#34], [#35], [#42]).
+
 ### Changed
 
+- The library moved to one folder per domain in `src/lib/` and `src/hooks/` (#46 to #69). No behaviour changes.
 - A transaction hash renders as an underlined `Tx Hash` link on mint tasks, transfer, instant
   sell and swap, so the explorer is one click away instead of a masked string.
 
@@ -85,7 +95,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/K4nes/velox/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/K4nes/velox/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/K4nes/velox/releases/tag/v0.1.0
 [#20]: https://github.com/K4nes/velox/pull/20
@@ -98,3 +109,6 @@ consolidated into a single entry.
 [#27]: https://github.com/K4nes/velox/pull/27
 [#28]: https://github.com/K4nes/velox/pull/28
 [#29]: https://github.com/K4nes/velox/pull/29
+[#34]: https://github.com/K4nes/velox/pull/34
+[#35]: https://github.com/K4nes/velox/pull/35
+[#42]: https://github.com/K4nes/velox/pull/42
