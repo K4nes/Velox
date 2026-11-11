@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { resolveScanWallets } from '@/lib/inventory/holdings'
 import { scanFailureMessage } from '@/lib/core/error-message'
+import { failureLine } from '@/lib/core/run-engine'
 import { scanPortfolio } from '@/lib/inventory/portfolio'
 import type {
   PortfolioScanResult,
@@ -55,7 +56,12 @@ function toastResult(result: PortfolioScanResult) {
   const failed = result.wallets.filter((wallet) => wallet.error !== null)
   if (failed.length > 0) {
     toast.error(
-      `${failed.length} of ${result.wallets.length} wallets failed — ${failed[0]?.error ?? ''}`
+      failureLine(
+        failed.length,
+        result.wallets.length,
+        'wallets',
+        failed[0]?.error ?? null
+      )
     )
     return
   }

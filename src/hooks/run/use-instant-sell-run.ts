@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/run/use-run-gate'
 import { toMessage } from '@/lib/core/error-message'
+import { countFailed, failureLine } from '@/lib/core/run-engine'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import {
   runSellTargets,
@@ -73,12 +74,10 @@ export function useInstantSellRun(input: {
       const keys = soldKeys(outcome.progress)
       if (keys.length > 0) input.onSold?.(keys)
 
-      const failed = outcome.progress.steps.filter(
-        (step) => step.status === 'failed'
-      ).length
+      const failed = countFailed(outcome.progress.steps)
       if (failed > 0) {
         toast.error(
-          `${failed} of ${outcome.progress.steps.length} offers failed`
+          failureLine(failed, outcome.progress.steps.length, 'offers')
         )
       }
     } catch (failure) {

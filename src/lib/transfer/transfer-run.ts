@@ -3,6 +3,7 @@ import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/error-message'
 import { stepById, withStep } from '@/lib/core/run-progress'
+import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import {
   BroadcastError,
   WALLET_CONCURRENCY,
@@ -42,12 +43,7 @@ export type TransferStepState = {
   | { status: 'failed'; error: string; txHash: string | null }
 )
 
-export type TransferRunProgress = { steps: readonly TransferStepState[] }
-
-export type TransferRunOutcome = {
-  progress: TransferRunProgress
-  error: string | null
-}
+export type TransferRunProgress = RunProgress<TransferStepState>
 
 export type TransferRunSummary = {
   total: number
@@ -81,7 +77,7 @@ export async function runTransferPlan(input: {
   wallets: readonly StoredWallet[]
   onProgress?: (progress: TransferRunProgress) => void
   shouldAbort?: () => boolean
-}): Promise<TransferRunOutcome> {
+}): Promise<RunOutcome<TransferRunProgress>> {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
   )
