@@ -1,5 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts'
-import { getAll, put, remove } from '@/lib/db'
+import { getAll, put, remove } from '@/lib/db/db'
 
 export type StoredWallet = {
   id: string
