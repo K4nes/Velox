@@ -12,7 +12,7 @@ import type {
   PlannedApproval,
   PlannedOrder,
   PlannedWallet,
-} from '@/lib/listing-plan'
+} from '@/lib/listings/listing-plan'
 
 export type RunStepStatus =
   | 'queued'

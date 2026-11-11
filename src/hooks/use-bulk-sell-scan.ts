@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useHoldingsScan } from '@/hooks/use-holdings-scan'
 import { useSelection } from '@/hooks/use-selection'
-import type { ListingToken } from '@/lib/listing-plan'
+import type { ListingToken } from '@/lib/listings/listing-plan'
 
 export function useBulkSellScan() {
   const scan = useHoldingsScan()
