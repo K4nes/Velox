@@ -5,7 +5,9 @@ import { toMessage } from '@/lib/core/error-message'
 import { submitListingOrder } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
-import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
+import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { addressKey, sameAddress } from '@/lib/wallet/address'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 import type {
@@ -81,7 +83,7 @@ export async function runListingPlan(input: {
   shouldAbort?: () => boolean
 }): Promise<RunOutcome<ListingRunProgress>> {
   const records = new Map(
-    input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
+    input.wallets.map((wallet) => [addressKey(wallet.address), wallet])
   )
 
   let progress: ListingRunProgress = {
@@ -112,7 +114,7 @@ export async function runListingPlan(input: {
   input.onProgress?.(progress)
 
   for (const planned of input.plan.wallets) {
-    if (!records.has(planned.address)) {
+    if (!records.has(addressKey(planned.address))) {
       return {
         progress,
         error: `No saved wallet matches ${planned.address}`,
@@ -161,7 +163,7 @@ export async function runListingPlan(input: {
     // The key signs as its own account. A stored address that drifted from the
     // key would submit orders OpenSea rejects as an invalid signature after the
     // approval has already been paid for.
-    if (account.address.toLowerCase() !== planned.address) {
+    if (!sameAddress(account.address, planned.address)) {
       const message = `Stored key signs as ${account.address}, not ${planned.address}`
       for (const step of planned.steps) {
         const current = stepById(progress, step.id)
@@ -255,7 +257,7 @@ export async function runListingPlan(input: {
 
   await mapLimit(input.plan.wallets, WALLET_CONCURRENCY, async (planned) => {
     if (input.shouldAbort?.()) return
-    const record = records.get(planned.address)
+    const record = records.get(addressKey(planned.address))
     if (!record) return
     await runWallet(planned, record)
   })

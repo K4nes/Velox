@@ -1,8 +1,7 @@
 import { balanceKey, type BalanceMap } from '@/lib/wallet/balance-key'
 import { clientFor } from '@/lib/chain/tx'
 import { mapLimitSettled } from '@/lib/core/async'
-
-const CONCURRENCY = 5
+import { BALANCE_CONCURRENCY } from '@/lib/core/concurrency'
 
 export type BalanceResult = {
   balances: BalanceMap
@@ -20,7 +19,7 @@ export async function fetchBalances(
   const client = await clientFor(chainSlug)
   const { resolved, failed, firstError } = await mapLimitSettled(
     addresses,
-    CONCURRENCY,
+    BALANCE_CONCURRENCY,
     (address) => client.getBalance({ address: address as `0x${string}` })
   )
 

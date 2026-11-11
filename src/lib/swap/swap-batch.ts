@@ -1,5 +1,6 @@
 import { assetKey, assetOptions } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/core/async'
+import { BALANCE_CONCURRENCY } from '@/lib/core/concurrency'
 import { readTokenBalance } from '@/lib/chain/erc20'
 import { amountFor, parseFixedAmount } from '@/lib/swap/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
@@ -26,8 +27,6 @@ export type SwapBatch = {
 
 // One balance read per wallet; the client is hoisted because `clientFor`
 // re-reads IndexedDB on every call.
-const BALANCE_CONCURRENCY = 5
-
 export async function resolveSwapBatch(input: {
   spec: SwapSpec
   amounts: SwapAmounts

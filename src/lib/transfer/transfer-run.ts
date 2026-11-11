@@ -2,11 +2,12 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/error-message'
+import { SETTLE_CONCURRENCY, WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { addressKey, sameAddress } from '@/lib/wallet/address'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import {
   BroadcastError,
-  WALLET_CONCURRENCY,
   sendTransaction,
   waitForReceiptOutcome,
 } from '@/lib/chain/tx'
@@ -70,8 +71,6 @@ export const TRANSFER_STEP_TONE: Record<TransferStepStatus, string> = {
   failed: 'text-destructive',
 }
 
-const RECEIPT_CONCURRENCY = 4
-
 export async function runTransferPlan(input: {
   plan: TransferPlan
   wallets: readonly StoredWallet[]
@@ -79,7 +78,7 @@ export async function runTransferPlan(input: {
   shouldAbort?: () => boolean
 }): Promise<RunOutcome<TransferRunProgress>> {
   const records = new Map(
-    input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
+    input.wallets.map((wallet) => [addressKey(wallet.address), wallet])
   )
 
   let progress: TransferRunProgress = {
@@ -100,7 +99,7 @@ export async function runTransferPlan(input: {
   input.onProgress?.(progress)
 
   for (const wallet of input.plan.wallets) {
-    if (!records.has(wallet.address.toLowerCase())) {
+    if (!records.has(addressKey(wallet.address))) {
       return { progress, error: `No saved wallet matches ${wallet.address}` }
     }
   }
@@ -124,7 +123,7 @@ export async function runTransferPlan(input: {
   }
 
   async function runWallet(planned: PlannedTransferWallet): Promise<void> {
-    const record = records.get(planned.address.toLowerCase())
+    const record = records.get(addressKey(planned.address))
     if (!record) return
 
     let account: ReturnType<typeof privateKeyToAccount>
@@ -137,7 +136,7 @@ export async function runTransferPlan(input: {
 
     // The key signs as its own account. A transfer sent from an address the key
     // does not control reverts on chain after gas is spent.
-    if (account.address.toLowerCase() !== planned.address.toLowerCase()) {
+    if (!sameAddress(account.address, planned.address)) {
       failWallet(
         planned,
         `Stored key signs as ${account.address}, not ${planned.address}`
@@ -222,7 +221,7 @@ export async function runTransferPlan(input: {
 
     // Every hash already broadcast is awaited to its receipt: the run aborts
     // future sends, never a transaction the network has seen.
-    await mapLimit(broadcast, RECEIPT_CONCURRENCY, async (pending) => {
+    await mapLimit(broadcast, SETTLE_CONCURRENCY, async (pending) => {
       const current = stepById(progress, pending.id)
       if (!current || current.status !== 'confirming') return
 
