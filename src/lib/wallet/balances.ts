@@ -1,5 +1,6 @@
 import { balanceKey, type BalanceMap } from '@/lib/wallet/balance-key'
 import { clientFor } from '@/lib/chain/tx'
+import { mapLimitSettled } from '@/lib/core/async'
 
 const CONCURRENCY = 5
 
@@ -17,37 +18,21 @@ export async function fetchBalances(
   }
 
   const client = await clientFor(chainSlug)
-  const balances: BalanceMap = new Map()
-  const failed: string[] = []
-  let failure: unknown = null
-  let cursor = 0
-
-  const worker = async () => {
-    while (cursor < addresses.length) {
-      const address = addresses[cursor]
-      cursor += 1
-      try {
-        balances.set(
-          balanceKey(chainSlug, address),
-          await client.getBalance({ address: address as `0x${string}` })
-        )
-      } catch (error) {
-        failed.push(address)
-        if (failure === null) {
-          failure = error
-        }
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, addresses.length) }, worker)
+  const { resolved, failed, firstError } = await mapLimitSettled(
+    addresses,
+    CONCURRENCY,
+    (address) => client.getBalance({ address: address as `0x${string}` })
   )
+
+  const balances: BalanceMap = new Map()
+  for (const { item, value } of resolved) {
+    balances.set(balanceKey(chainSlug, item), value)
+  }
 
   // One rejected call (a rate-limited public RPC) must not wipe the balances
   // that did resolve, so the error surfaces only when nothing came back.
-  if (balances.size === 0 && failure !== null) {
-    throw failure
+  if (balances.size === 0 && firstError !== null) {
+    throw firstError
   }
 
   return { balances, failed }
