@@ -1,4 +1,4 @@
-import { migrations } from '@/lib/db-migrations'
+import { migrations } from '@/lib/db/db-migrations'
 
 export type StoreName =
   | 'folders'

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSnapshots } from '@/hooks/use-snapshots'
-import { get } from '@/lib/db'
+import { get } from '@/lib/db/db'
 import { checkEligibility } from '@/lib/eligibility'
 import { toMessage } from '@/lib/core/error-message'
 import {

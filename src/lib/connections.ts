@@ -1,5 +1,5 @@
 import { chainBySlug } from '@/config/chains'
-import { getAll, put, remove } from '@/lib/db'
+import { getAll, put, remove } from '@/lib/db/db'
 import {
   pickKeys,
   pickRpcUrls,
