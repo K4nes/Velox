@@ -3,8 +3,8 @@ import {
   getCollection,
   getCollectionStats,
   getNftRankBatch,
-} from '@/lib/opensea'
-import type { CollectionInfo, CollectionStats } from '@/lib/opensea'
+} from '@/lib/opensea/index'
+import type { CollectionInfo, CollectionStats } from '@/lib/opensea/index'
 import { mapLimit } from '@/lib/core/async'
 import { scanFailureMessage } from '@/lib/core/error-message'
 import { scanHeldTokens } from '@/lib/holdings'

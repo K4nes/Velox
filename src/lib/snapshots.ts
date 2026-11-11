@@ -1,8 +1,8 @@
 import { chainBySlug } from '@/config/chains'
 import { getAll, put, remove } from '@/lib/db/db'
-import { buildStageColumns } from '@/lib/eligibility'
-import type { EligibilityResult, EligibilityRow, StageColumn } from '@/lib/eligibility'
-import type { DropInfo } from '@/lib/opensea'
+import { buildStageColumns } from '@/lib/opensea/eligibility'
+import type { EligibilityResult, EligibilityRow, StageColumn } from '@/lib/opensea/eligibility'
+import type { DropInfo } from '@/lib/opensea/index'
 
 export type Marketplace = 'OpenSea' | 'Scatter'
 

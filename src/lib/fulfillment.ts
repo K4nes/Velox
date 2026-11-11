@@ -1,8 +1,8 @@
 import { encodeFunctionData } from 'viem'
 import { offerEconomics } from '@/lib/instant-sell'
 import type { CollectionOffer, SellTarget } from '@/lib/instant-sell'
-import type { OfferFulfillmentTransaction } from '@/lib/opensea'
-import { parseOrderComponents } from '@/lib/seaport'
+import type { OfferFulfillmentTransaction } from '@/lib/opensea/index'
+import { parseOrderComponents } from '@/lib/opensea/seaport'
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/

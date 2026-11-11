@@ -8,7 +8,7 @@ import {
   parseOrderComponents,
   type OrderComponentsLeaf,
   type SeaportParameters,
-} from '@/lib/seaport'
+} from '@/lib/opensea/seaport'
 
 const MAX_RETRY_ATTEMPTS = 2
 const MAX_RETRY_WAIT_MS = 30_000

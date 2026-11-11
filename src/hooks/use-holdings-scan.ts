@@ -4,8 +4,8 @@ import { useLiveRead } from '@/hooks/use-live-read'
 import { resolveScanWallets, scanHeldTokens } from '@/lib/holdings'
 import { scanFailureMessage, toMessage } from '@/lib/core/error-message'
 import type { HeldToken, WalletScan } from '@/lib/holdings'
-import { getCollection, slugFromUrl } from '@/lib/opensea'
-import type { CollectionInfo } from '@/lib/opensea'
+import { getCollection, slugFromUrl } from '@/lib/opensea/index'
+import type { CollectionInfo } from '@/lib/opensea/index'
 import { resolveScanTarget } from '@/lib/scan-target'
 
 export type HoldingsScanState =

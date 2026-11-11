@@ -1,13 +1,13 @@
 import { privateKeyToAccount } from 'viem/accounts'
-import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/eligibility-token-cache'
+import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { toMessage } from '@/lib/core/error-message'
 import {
   OpenSeaError,
   getCollection,
   getDrop,
   getEligibility,
-} from '@/lib/opensea'
-import type { DropInfo, EligibilityResponse } from '@/lib/opensea'
+} from '@/lib/opensea/index'
+import type { DropInfo, EligibilityResponse } from '@/lib/opensea/index'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 

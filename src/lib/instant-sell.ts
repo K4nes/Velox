@@ -2,7 +2,7 @@ import { chainBySlug } from '@/config/chains'
 import type {
   ConsiderationItem,
   OrderComponentsLeaf,
-} from '@/lib/seaport'
+} from '@/lib/opensea/seaport'
 import type { ListingToken } from '@/lib/listing-plan'
 
 export type OfferCurrency = {

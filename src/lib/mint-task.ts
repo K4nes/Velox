@@ -1,6 +1,6 @@
 import { formatEther } from 'viem'
-import type { EligibilityRow } from '@/lib/eligibility'
-import type { DropInfo, DropStage } from '@/lib/opensea'
+import type { EligibilityRow } from '@/lib/opensea/eligibility'
+import type { DropInfo, DropStage } from '@/lib/opensea/index'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
 

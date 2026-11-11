@@ -8,7 +8,7 @@ import {
 import { buildFulfillmentCall } from '@/lib/fulfillment'
 import { toMessage } from '@/lib/core/error-message'
 import type { SellTarget } from '@/lib/instant-sell'
-import { requestOfferFulfillment } from '@/lib/opensea'
+import { requestOfferFulfillment } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
