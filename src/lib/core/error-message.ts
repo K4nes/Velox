@@ -1,4 +1,4 @@
-import { OpenSeaError } from '@/lib/opensea'
+import { OpenSeaError } from '@/lib/opensea/index'
 
 // RPC endpoints can carry an API key in the path, and viem's transport errors
 // quote the full URL. Anything shown to the operator or stored on a row goes

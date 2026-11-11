@@ -7,8 +7,8 @@ import { RpcConfigError } from '@/lib/chain/connections'
 import {
   checkWalletEligibility,
   getEligibilityToken,
-} from '@/lib/eligibility'
-import { cachedEligibilityToken } from '@/lib/eligibility-token-cache'
+} from '@/lib/opensea/eligibility'
+import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { mintFailureMessage, toMessage } from '@/lib/core/error-message'
 import { traceMint } from '@/lib/mint-trace'
 import { mintForWallet } from '@/lib/mint'
@@ -46,8 +46,8 @@ import {
   buildMintTransaction,
   getDrop,
   slugFromUrl,
-} from '@/lib/opensea'
-import type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea'
+} from '@/lib/opensea/index'
+import type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { readStoredImages, type CardImage } from '@/lib/card-images'
 import { toMessage } from '@/lib/core/error-message'
-import type { CollectionInfo } from '@/lib/opensea'
+import type { CollectionInfo } from '@/lib/opensea/index'
 import type { PnlStats } from '@/lib/pnl-trades'
 import { fetchEthUsdtPrice } from '@/lib/chain/price'
 import { QUOTE_WINDOW_MS } from '@/lib/chain/price-window'

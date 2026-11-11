@@ -1,5 +1,5 @@
-import { buildMintTransaction } from '@/lib/opensea'
-import type { MintTransaction } from '@/lib/opensea'
+import { buildMintTransaction } from '@/lib/opensea/index'
+import type { MintTransaction } from '@/lib/opensea/index'
 import { sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
 import type { StoredWallet } from '@/lib/wallet/wallets'

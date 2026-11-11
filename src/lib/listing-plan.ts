@@ -6,15 +6,15 @@ import {
   splitConsideration,
   toSeaportParameters,
   typedDataForLeaf,
-} from '@/lib/seaport'
+} from '@/lib/opensea/seaport'
 import type {
   OfferItem,
   OrderComponentsLeaf,
   OrderFees,
   OrderTypedData,
   SeaportParameters,
-} from '@/lib/seaport'
-import type { CollectionFee, ListingActionEnvelope } from '@/lib/opensea'
+} from '@/lib/opensea/seaport'
+import type { CollectionFee, ListingActionEnvelope } from '@/lib/opensea/index'
 
 // OpenSea rounds the end time it echoes back; a plan that demanded an exact
 // match would reject its own request.

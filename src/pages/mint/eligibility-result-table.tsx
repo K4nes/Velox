@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { EligibilityTableState, StageColumn } from '@/lib/eligibility'
+import type { EligibilityTableState, StageColumn } from '@/lib/opensea/eligibility'
 import type { Marketplace } from '@/lib/snapshots'
 
 export function EligibilityResultSummary({

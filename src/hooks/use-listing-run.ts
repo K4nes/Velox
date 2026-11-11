@@ -23,8 +23,8 @@ import type {
   RunStepState,
   RunSummary,
 } from '@/lib/listing-run'
-import { requestListingActions } from '@/lib/opensea'
-import type { CollectionInfo } from '@/lib/opensea'
+import { requestListingActions } from '@/lib/opensea/index'
+import type { CollectionInfo } from '@/lib/opensea/index'
 import { WALLET_CONCURRENCY } from '@/lib/chain/tx'
 import { listWallets } from '@/lib/wallet/wallets'
 
