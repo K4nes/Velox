@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { resolveScanWallets } from '@/lib/inventory/holdings'
-import { scanFailureMessage } from '@/lib/core/error-message'
+import { scanFailureMessage } from '@/lib/opensea/failure-message'
 import { failureLine } from '@/lib/core/run-engine'
 import { scanPortfolio } from '@/lib/inventory/portfolio'
 import type {

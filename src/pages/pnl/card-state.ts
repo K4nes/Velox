@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { readStoredImages, type CardImage } from '@/lib/card/card-images'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import type { PnlStats } from '@/lib/pnl/pnl-trades'
 import { fetchEthUsdtPrice } from '@/lib/chain/price'

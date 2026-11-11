@@ -6,7 +6,8 @@ import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
-import { mintFailureMessage, toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
+import { mintFailureMessage } from '@/lib/opensea/failure-message'
 import { traceMint } from '@/lib/mint/mint-trace'
 import {
   mintForWallet,

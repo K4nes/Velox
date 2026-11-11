@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { assembleOfferBook } from '@/lib/offers/instant-sell'
 import type { OfferBook, OfferLadder } from '@/lib/offers/instant-sell'
 import { getCollectionOffers } from '@/lib/opensea/index'

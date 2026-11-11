@@ -25,7 +25,7 @@ import type {
   Issue,
   RpcConnection,
 } from '@/lib/chain/connections'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { ConnectionDetail } from './settings/connection-detail'
 import { ConnectionsList } from './settings/connections-list'
 

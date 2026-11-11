@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { SETTLE_CONCURRENCY, WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { addressKey, sameAddress } from '@/lib/wallet/address'
 import { stepById, withStep } from '@/lib/core/run-progress'
