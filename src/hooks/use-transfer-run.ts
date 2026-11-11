@@ -3,21 +3,21 @@ import { toast } from 'sonner'
 import { useRunGate } from '@/hooks/use-run-gate'
 import { resolveEnsAddress } from '@/lib/chain/ens'
 import { toMessage } from '@/lib/core/error-message'
-import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer-run'
+import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer/transfer-run'
 import type {
   TransferRunProgress,
   TransferRunSummary,
   TransferStepState,
-} from '@/lib/transfer-run'
+} from '@/lib/transfer/transfer-run'
 import {
   buildTransferPlan,
   explainTransferBlockers,
   parseDestination,
-} from '@/lib/transfer-plan'
+} from '@/lib/transfer/transfer-plan'
 import type {
   DestinationResolution,
   TransferSelection,
-} from '@/lib/transfer-plan'
+} from '@/lib/transfer/transfer-plan'
 import { listWallets } from '@/lib/wallet/wallets'
 
 const RESOLVE_DEBOUNCE_MS = 400

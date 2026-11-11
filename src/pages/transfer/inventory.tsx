@@ -20,8 +20,8 @@ import {
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import type { TransferScanRow } from '@/hooks/use-transfer-scan'
 import { shortAddress } from '@/lib/core/format'
-import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer-run'
-import type { TransferStepState } from '@/lib/transfer-run'
+import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer/transfer-run'
+import type { TransferStepState } from '@/lib/transfer/transfer-run'
 
 function StatusCell({
   step,

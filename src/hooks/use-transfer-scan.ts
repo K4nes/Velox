@@ -6,8 +6,8 @@ import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { probeStandards } from '@/lib/chain/token-standard'
 import type { StandardProbe } from '@/lib/chain/token-standard'
-import { selectedTransfers } from '@/lib/transfer-plan'
-import type { TransferSelection } from '@/lib/transfer-plan'
+import { selectedTransfers } from '@/lib/transfer/transfer-plan'
+import type { TransferSelection } from '@/lib/transfer/transfer-plan'
 
 export type TransferScanRow = {
   token: HeldToken
