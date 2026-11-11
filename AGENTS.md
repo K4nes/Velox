@@ -10,9 +10,17 @@ Velox is a single-page operator console for NFT work across stored EVM wallets: 
 PnL, portfolio, bulk sell, instant sell, transfer, swap. React 19 + TypeScript + Vite 8,
 Tailwind 4, shadcn/Animate UI components vendored into `src/components/ui/`.
 
-There is no backend service. `server/` is a Vite plugin that mounts `/api/auth/*`
-(OpenSea SIWE) and `/api/price/eth-usdt` (CoinMarketCap) on the dev and preview servers,
-and nothing else. All wallet signing happens in the browser with keys from IndexedDB.
+There is no backend service. `server/` is a Vite plugin that mounts three routes on the dev
+and preview servers, and nothing else:
+
+- `/api/auth/nonce` returns an OpenSea SIWE message for an address.
+- `/api/auth/token` verifies the signed message, mints an OpenSea token scoped
+  `read:eligibility` with a one-day life, exchanges it for a short-lived access token, and
+  revokes the minted token in a `finally`. The long-lived credential never reaches the
+  browser.
+- `/api/price/eth-usdt` returns the CoinMarketCap ETH/USDT quote.
+
+All wallet signing happens in the browser with keys from IndexedDB.
 
 ## Commands
 
@@ -23,8 +31,12 @@ and nothing else. All wallet signing happens in the browser with keys from Index
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
+| `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
+| `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Needs the `E2E_*` values in `.env.e2e.local`. |
+| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Needs the same values as `test:e2e:live`. |
 
-No test runner exists. Do not add one unprompted, and do not claim tests ran.
+A test runner exists: the `e2e` package drives a headless browser. Do not claim a suite ran
+unless you ran it.
 
 ## Verify
 
@@ -33,54 +45,63 @@ Cheapest check that settles the change, in order:
 1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
-4. A browser run of the page — only when the task asks for it, or when the change cannot
+4. `npm run test:e2e` — the suite that covers the touched page.
+5. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
 
 ## Layout
 
 | Path | Holds |
 | --- | --- |
-| `src/router.tsx` | The whole route table, with `handle.title` per route. |
+| `src/config/routes.tsx` | The route table: `path`, `title`, icon and element per route. `src/router.tsx` builds the data router from it. |
 | `src/pages/` | Route components; the path mirrors the URL. Feature components colocate in `src/pages/<feature>/`. |
 | `src/components/ui/` | Vendored shadcn + Animate UI primitives. |
 | `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`. |
-| `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `summary-row`, `token-image`). |
+| `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `body-message`, `summary-row`, `run-status-cell`, `tx-hash-link`, `token-image`), plus the `dither-kit/` chart primitives, `lightswind/` toggle and `theme/` provider. |
 | `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage. |
 | `src/hooks/` | Long-running flows and their run state (scans, listings, mints, swaps). |
-| `src/config/` | Chains, nav groups, swap assets. |
+| `src/config/` | Chains, routes, nav groups, swap assets. |
+| `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored
 
-**Routes.** Add the route to `src/router.tsx` with its `handle.title`, and create the page
-file at the matching path. The title renders once, in `app-header`; never repeat it as an
-`h1` in the page body.
+**Routes.** Add the route to `src/config/routes.tsx` with its `title`, and create the page
+file at the matching path. `src/router.tsx` derives `handle: { title }` from the table, so
+an entry written into the router by hand is not a route. The title renders once, in
+`app-header`; never repeat it as an `h1` in the page body.
 
-**Navigation.** Sidebar entries come from `src/config/nav.ts`. Active state is derived from
-`useLocation`, never hardcoded.
+**Navigation.** Sidebar entries derive from the route table: `src/config/nav.ts` maps
+`routeTable`, so a new route reaches the sidebar without a second edit. Active state is
+derived from `useLocation`, never hardcoded.
 
 **Vendored components.** A look that belongs to one page is a `className` at the call site.
 Edit a file in `src/components/ui/` only when the change must hold for every instance.
 `npx shadcn add` and `npx @animate-ui/cli animate` overwrite files from the registry; diff
 every reported overwrite and re-apply the local edits.
 
-**`src/lib/chain/connection-model.ts` stays free of runtime imports.** It is written to be
-type-stripped and loaded by plain Node without the `@/` alias. Adding a runtime import
-breaks that.
+**`src/lib/chain/connection-model.ts` stays free of runtime imports.** It holds types and
+pure resolvers, so a type-stripped copy loads without a bundler or the `@/` alias. A
+runtime import ends that. The rule holds even though nothing loads it that way today.
 
 **Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
-migration inside the `versionchange` transaction. PnL records carry a `v` field that
-readers branch on; bump it when a stored field changes meaning. localStorage holds theme,
-active chain and the card image cache only.
+step in the `migrations` table in `src/lib/db/db-migrations.ts`. Those steps run from
+`request.onupgradeneeded`, keyed by the version that brings a profile up to them.
+`db.onversionchange` is a different handler: it closes this connection when another tab
+upgrades the database. PnL records carry `v` on their nested `breakdown`. Readers test that
+it is present (`'v' in stored`) to tell the current split from the legacy `invested` shape,
+so a bump alone changes nothing at runtime; a new shape needs a new branch. localStorage
+holds theme, active chain and the card image cache only.
 
 **Secrets.** Wallet private keys never leave the browser and are only used to sign
 locally. Provider API keys come from the browser store; the CoinMarketCap key may travel
 to `/api/price/eth-usdt` in a header, and nothing else should. Do not log either kind. A
 new route under `server/` needs a reason the browser cannot handle on its own.
 
-**Chains.** `src/config/chains.ts` is the chain list. A new chain needs an entry there, an
-RPC connection, and swap asset refs when it participates in swap.
+**Chains.** `src/config/chains.ts` is the chain list. A new chain needs an entry there and
+an RPC connection. Its native and wrapped swap options derive from that entry; add
+`src/config/swap-assets.ts` entries only for extra tokens beyond the wrapped native.
 
 **Layout target.** Pages are designed for 1024px and wider. Below that only chrome
 collapses. Read `RULES.md` before changing page shell, panel headers, tables or rails; the
