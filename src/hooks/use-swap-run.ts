@@ -3,13 +3,13 @@ import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
 import { toMessage } from '@/lib/core/error-message'
-import type { SwapBatch } from '@/lib/swap-batch'
-import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
+import type { SwapBatch } from '@/lib/swap/swap-batch'
+import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap/swap-run'
 import type {
   SwapRunProgress,
   SwapRunSummary,
   SwapWalletState,
-} from '@/lib/swap-run'
+} from '@/lib/swap/swap-run'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useSwapRun(input: {

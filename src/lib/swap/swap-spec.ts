@@ -8,7 +8,7 @@ import {
   defaultAsset,
 } from '@/config/swap-assets'
 import type { SwapAssetOption } from '@/config/swap-assets'
-import type { SwapBatch } from '@/lib/swap-batch'
+import type { SwapBatch } from '@/lib/swap/swap-batch'
 
 export type SwapAmountInput =
   | { readonly kind: 'fixed'; readonly text: string }

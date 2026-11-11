@@ -16,11 +16,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { shortAddress } from '@/lib/core/format'
-import { amountFor, formatSwapAmount, parseFixedAmount } from '@/lib/swap-spec'
-import type { SwapAmounts } from '@/lib/swap-spec'
-import { SWAP_WALLET_TONE, swapWalletLabel } from '@/lib/swap-run'
-import type { SwapWalletState } from '@/lib/swap-run'
-import type { SwapBatch } from '@/lib/swap-batch'
+import { amountFor, formatSwapAmount, parseFixedAmount } from '@/lib/swap/swap-spec'
+import type { SwapAmounts } from '@/lib/swap/swap-spec'
+import { SWAP_WALLET_TONE, swapWalletLabel } from '@/lib/swap/swap-run'
+import type { SwapWalletState } from '@/lib/swap/swap-run'
+import type { SwapBatch } from '@/lib/swap/swap-batch'
 
 function StatusCell({ state }: { state: SwapWalletState | undefined }) {
   if (!state) {

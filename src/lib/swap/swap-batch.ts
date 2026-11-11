@@ -1,8 +1,8 @@
 import { assetKey, assetOptions } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/core/async'
 import { readTokenBalance } from '@/lib/chain/erc20'
-import { amountFor, parseFixedAmount } from '@/lib/swap-spec'
-import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
+import { amountFor, parseFixedAmount } from '@/lib/swap/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
 import { clientFor } from '@/lib/chain/tx'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 

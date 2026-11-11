@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
-import { quoteSwap } from '@/lib/relay'
-import type { SwapOperation } from '@/lib/relay'
-import type { SwapBatchJob } from '@/lib/swap-batch'
-import { specKey } from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+import { quoteSwap } from '@/lib/swap/relay'
+import type { SwapOperation } from '@/lib/swap/relay'
+import type { SwapBatchJob } from '@/lib/swap/swap-batch'
+import { specKey } from '@/lib/swap/swap-spec'
+import type { SwapSpec } from '@/lib/swap/swap-spec'
 
 export type SwapPreview = {
   readonly operation: SwapOperation

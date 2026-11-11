@@ -20,8 +20,8 @@ import {
   withOriginAsset,
   withOriginChain,
   withSlippage,
-} from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+} from '@/lib/swap/swap-spec'
+import type { SwapSpec } from '@/lib/swap/swap-spec'
 
 export function SwapComposer({
   groups,
