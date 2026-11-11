@@ -42,8 +42,8 @@ import {
   recordUsd,
   recordsInMonth,
   type PnlRecord,
-} from '@/lib/pnl-records'
-import { formatEth } from '@/lib/pnl-trades'
+} from '@/lib/pnl/pnl-records'
+import { formatEth } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
 
 const sortOptions = ['Newest First', 'Oldest First']

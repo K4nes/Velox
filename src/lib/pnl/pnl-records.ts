@@ -1,5 +1,5 @@
 import { getAll, get, put, remove } from '@/lib/db/db'
-import { formatEth, type PnlStats } from '@/lib/pnl-trades'
+import { formatEth, type PnlStats } from '@/lib/pnl/pnl-trades'
 
 // Bump `v` when a stored field changes meaning; readers branch on it.
 export type PnlBreakdown = {
