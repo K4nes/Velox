@@ -1,5 +1,5 @@
 import { encodeFunctionData } from 'viem'
-import { toMessage } from '@/lib/error-message'
+import { toMessage } from '@/lib/core/error-message'
 import { clientFor, sendTransaction, waitForReceipt } from '@/lib/tx'
 import type { StoredWallet } from '@/lib/wallets'
 

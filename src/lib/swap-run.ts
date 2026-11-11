@@ -4,8 +4,8 @@ import type { PrivateKeyAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import type { SwapAssetOption } from '@/config/swap-assets'
-import { mapLimit } from '@/lib/async'
-import { toMessage } from '@/lib/error-message'
+import { mapLimit } from '@/lib/core/async'
+import { toMessage } from '@/lib/core/error-message'
 import { notifyIndexer, pollSwapIntent, quoteSwap } from '@/lib/relay'
 import type {
   SwapIntentStatus,
@@ -14,7 +14,7 @@ import type {
   SwapTxStep,
 } from '@/lib/relay'
 import type { SwapBatch, SwapBatchJob } from '@/lib/swap-batch'
-import { withStep } from '@/lib/run-progress'
+import { withStep } from '@/lib/core/run-progress'
 import {
   BroadcastError,
   WALLET_CONCURRENCY,

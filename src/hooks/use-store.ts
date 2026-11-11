@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { toMessage } from '@/lib/error-message'
+import { toMessage } from '@/lib/core/error-message'
 
 type Loaded<T> = {
   version: number

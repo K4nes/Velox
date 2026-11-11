@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { ARM_TICK_MS, armWait } from '@/lib/arm-schedule'
-import { mapLimit } from '@/lib/async'
+import { mapLimit } from '@/lib/core/async'
 import { RpcConfigError } from '@/lib/connections'
 import {
   checkWalletEligibility,
   getEligibilityToken,
 } from '@/lib/eligibility'
 import { cachedEligibilityToken } from '@/lib/eligibility-token-cache'
-import { mintFailureMessage, toMessage } from '@/lib/error-message'
+import { mintFailureMessage, toMessage } from '@/lib/core/error-message'
 import { traceMint } from '@/lib/mint-trace'
 import { mintForWallet } from '@/lib/mint'
 import {

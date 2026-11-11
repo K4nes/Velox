@@ -7,8 +7,8 @@ import {
   claimRunSlot,
   releaseRunSlot,
   runKindLabel,
-} from '@/lib/run-slot'
-import type { RunKind, RunSlot } from '@/lib/run-slot'
+} from '@/lib/core/run-slot'
+import type { RunKind, RunSlot } from '@/lib/core/run-slot'
 
 export type RunSession = {
   live: () => boolean

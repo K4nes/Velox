@@ -7,8 +7,8 @@ import {
   ContractFunctionZeroDataError,
   isAddress,
 } from 'viem'
-import { mapLimit } from '@/lib/async'
-import { toMessage } from '@/lib/error-message'
+import { mapLimit } from '@/lib/core/async'
+import { toMessage } from '@/lib/core/error-message'
 import { clientFor } from '@/lib/tx'
 
 export type TokenStandard = 'erc721' | 'erc1155'

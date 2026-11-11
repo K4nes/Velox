@@ -5,8 +5,8 @@ import {
   getNftRankBatch,
 } from '@/lib/opensea'
 import type { CollectionInfo, CollectionStats } from '@/lib/opensea'
-import { mapLimit } from '@/lib/async'
-import { scanFailureMessage } from '@/lib/error-message'
+import { mapLimit } from '@/lib/core/async'
+import { scanFailureMessage } from '@/lib/core/error-message'
 import { scanHeldTokens } from '@/lib/holdings'
 import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/holdings'
 import { fetchEthUsdtPrice } from '@/lib/price'
