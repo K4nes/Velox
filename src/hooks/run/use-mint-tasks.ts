@@ -5,20 +5,20 @@ import { ARM_TICK_MS, armWait } from '@/lib/mint/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
-import {
-  checkWalletEligibility,
-  getEligibilityToken,
-} from '@/lib/opensea/eligibility'
-import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
+import { checkWalletEligibility } from '@/lib/opensea/eligibility'
 import { mintFailureMessage, toMessage } from '@/lib/core/error-message'
 import { traceMint } from '@/lib/mint/mint-trace'
-import { mintForWallet } from '@/lib/mint'
 import {
-  callTransaction,
-  chainTime,
-  estimateGasFor,
-  waitForReceipt,
-} from '@/lib/chain/tx'
+  mintForWallet,
+  mintQuantityFor,
+  mintReadiness,
+  pinnedGasLimitOf,
+  prepareKeyFor,
+  prepareMintEntries,
+  stageConfirmed,
+} from '@/lib/mint/run-mint'
+import type { PreparedMint } from '@/lib/mint/run-mint'
+import { chainTime, waitForReceipt } from '@/lib/chain/tx'
 import {
   createTask,
   gweiToWei,
@@ -27,7 +27,6 @@ import {
   mergeCheckedRows,
   mintableRow,
   placeholderTask,
-  quantityCeiling,
   quantityMaxFor,
   reachedChain,
   rowsFromCheck,
@@ -42,31 +41,10 @@ import type {
   TaskPatch,
   WalletRun,
 } from '@/lib/mint/mint-task'
-import {
-  buildMintTransaction,
-  getDrop,
-  slugFromUrl,
-} from '@/lib/opensea/index'
-import type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea/index'
+import { getDrop, slugFromUrl } from '@/lib/opensea/index'
+import type { DropInfo } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
-
-type PreparedMintEntry = {
-  walletId: string
-  from: `0x${string}`
-  transaction: MintTransaction
-  gasLimit?: bigint
-}
-
-type PreparedMint = {
-  key: string
-  entries: PreparedMintEntry[]
-}
-
-type Readiness = {
-  candidates: number
-  entries: PreparedMintEntry[]
-}
 
 const READINESS_FALLBACK_ATTEMPTS = 4
 
@@ -363,28 +341,6 @@ export function useMintTasks() {
     }
   }
 
-  const mintQuantityFor = (
-    task: Task,
-    walletMax: number,
-    stage: DropStage | null
-  ): number | null => {
-    const ceiling = quantityCeiling(walletMax, stage)
-    const requested = Number.parseInt(task.quantity, 10)
-    const quantity = ceiling > 0 ? Math.min(requested, ceiling) : requested
-    return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
-  }
-
-  // Everything that must match for prepared calldata to still describe this
-  // fire. A stage or quantity change rebuilds rather than signing stale data.
-  const prepareKeyFor = (task: Task, quantity: number): string =>
-    [
-      task.stageUuid,
-      quantity,
-      task.gasLimit,
-      task.maxFee,
-      task.priorityFee,
-    ].join('|')
-
   // `prepared` carries a check that just landed, so an armed run mints from the
   // rows it computed instead of the ones React has not committed yet.
   // `preparedMint` carries calldata built before the open; a stage or quantity
@@ -608,76 +564,6 @@ export function useMintTasks() {
     updateTask(realActive.id, { arm: null })
   }
 
-  // Live OpenSea answers 409 NOT_MINTING before a stage opens, so this open-time
-  // batch is the real path. It builds every mintable wallet's calldata in one
-  // round trip, then the commit reuses those entries instead of fetching again.
-  async function readinessForRows(
-    task: Task,
-    drop: DropInfo,
-    quantity: number,
-    rows: WalletRun[],
-    preparedMint?: PreparedMint
-  ): Promise<Readiness> {
-    const mintable = rows.filter(
-      (row) =>
-        task.wallets.includes(row.walletId) &&
-        mintableRow(row, task.stageUuid)
-    )
-    const prepared =
-      preparedMint?.key === prepareKeyFor(task, quantity)
-        ? new Map(
-            preparedMint.entries.map((entry) => [entry.walletId, entry])
-          )
-        : null
-    const entries = await Promise.all(
-      mintable.map(async (row) => {
-        const cached = prepared?.get(row.walletId)
-        if (cached) return cached
-        try {
-          const transaction = await buildMintTransaction(
-            drop.slug,
-            row.address,
-            quantity
-          )
-          return {
-            walletId: row.walletId,
-            from: row.address as `0x${string}`,
-            transaction,
-          }
-        } catch {
-          return null
-        }
-      })
-    )
-    return {
-      candidates: mintable.length,
-      entries: entries.filter(
-        (entry): entry is PreparedMintEntry => entry !== null
-      ),
-    }
-  }
-
-  async function stageReady(
-    chainSlug: string,
-    entries: PreparedMintEntry[]
-  ): Promise<boolean> {
-    // No calldata means no evidence. The caller retries with backoff instead of
-    // treating a failed build as a successful readiness check.
-    if (entries.length === 0) return false
-    const results = await Promise.allSettled(
-      entries.map((entry) =>
-        callTransaction({
-          chainSlug,
-          from: entry.from,
-          to: entry.transaction.to as `0x${string}`,
-          data: entry.transaction.data as `0x${string}`,
-          value: BigInt(entry.transaction.value),
-        })
-      )
-    )
-    return results.some((result) => result.status === 'fulfilled')
-  }
-
   async function prepareArmed(
     taskId: string,
     arm: { stageUuid: string; startMs: number }
@@ -724,65 +610,22 @@ export function useMintTasks() {
       )
       if (selected.length === 0) return
 
-      const gasLimitInput = Number.parseInt(task.gasLimit, 10)
-      const pinnedGasLimit =
-        Number.isFinite(gasLimitInput) && gasLimitInput > 0
-          ? BigInt(gasLimitInput)
-          : undefined
-      const entries: PreparedMintEntry[] = []
-
-      for (const wallet of selected) {
-        const current = tasksRef.current.find((entry) => entry.id === taskId)
-        if (
-          !current?.arm ||
-          current.arm.stageUuid !== arm.stageUuid ||
-          current.arm.startMs !== arm.startMs
-        ) {
-          return
-        }
-
-        try {
-          await cachedEligibilityToken(wallet.address, () =>
-            getEligibilityToken(wallet.privateKey)
+      const entries = await prepareMintEntries({
+        task,
+        drop: task.drop,
+        quantity,
+        wallets: selected,
+        pinnedGasLimit: pinnedGasLimitOf(task),
+        isCurrent: () => {
+          const current = tasksRef.current.find((entry) => entry.id === taskId)
+          return (
+            current?.arm !== null &&
+            current?.arm?.stageUuid === arm.stageUuid &&
+            current?.arm?.startMs === arm.startMs
           )
-        } catch {
-          // The check retries a sign-in; a failed warm must not fail prepare.
-        }
-
-        try {
-          // Measured 2026-11-09: live OpenSea answers 409 NOT_MINTING to this
-          // endpoint before a stage opens. This stays best-effort for providers
-          // that do answer; openArmed builds the same calldata at the open when
-          // it does not.
-          const transaction = await buildMintTransaction(
-            task.drop.slug,
-            wallet.address,
-            quantity
-          )
-          let gasLimit = pinnedGasLimit
-          if (gasLimit === undefined) {
-            try {
-              gasLimit = await estimateGasFor({
-                wallet,
-                chainSlug: transaction.chain,
-                to: transaction.to as `0x${string}`,
-                data: transaction.data as `0x${string}`,
-                value: BigInt(transaction.value),
-              })
-            } catch {
-              // The stage is still closed, so the commit estimates again.
-            }
-          }
-          entries.push({
-            walletId: wallet.id,
-            from: wallet.address as `0x${string}`,
-            transaction,
-            gasLimit,
-          })
-        } catch {
-          // Missing calldata falls back to the commit path.
-        }
-      }
+        },
+      })
+      if (entries === null) return
 
       const current = tasksRef.current.find((entry) => entry.id === taskId)
       if (
@@ -874,13 +717,13 @@ export function useMintTasks() {
         return
       }
 
-      const readiness = await readinessForRows(
-        latest,
-        checked.check.drop,
+      const readiness = await mintReadiness({
+        task: latest,
+        drop: checked.check.drop,
         quantity,
-        checked.check.rows,
-        preparedMintRef.current.get(taskId)
-      )
+        rows: checked.check.rows,
+        preparedMint: preparedMintRef.current.get(taskId),
+      })
       if (readiness.candidates === 0) {
         updateTask(taskId, { arm: null })
         clearArmState(taskId)
@@ -888,7 +731,7 @@ export function useMintTasks() {
         return
       }
 
-      const ready = await stageReady(drop.chain, readiness.entries)
+      const ready = await stageConfirmed(drop.chain, readiness.entries)
       if (!ready) {
         const failures = (readinessFailuresRef.current.get(taskId) ?? 0) + 1
         readinessFailuresRef.current.set(taskId, failures)
@@ -990,6 +833,14 @@ export function useMintTasks() {
       updateTask(taskId, { arm: null })
       toast.error(message)
     }
+    // A chain with no usable RPC never recovers on its own, so arming stops instead of
+    // counting down to a fire that cannot land.
+    const disarmOnRpcError = (error: unknown, taskId: string): boolean => {
+      if (!(error instanceof RpcConfigError)) return false
+      disarmTask(taskId, error.message)
+      return true
+    }
+
 
     const runArm = async (taskId: string) => {
       // One offset for the whole arm. The chain's whole-second timestamps make
@@ -1022,12 +873,7 @@ export function useMintTasks() {
             if (ms === null) return
             offsetMs = ms - Date.now()
           } catch (error) {
-            // A chain with no usable RPC never recovers on its own, so
-            // disarming beats a countdown that can never fire.
-            if (error instanceof RpcConfigError) {
-              disarmTask(task.id, error.message)
-              return
-            }
+            if (disarmOnRpcError(error, task.id)) return
             await sleep(ARM_TICK_MS)
             continue
           }
@@ -1077,10 +923,7 @@ export function useMintTasks() {
           }
         } catch (error) {
           // An RPC hiccup must not disarm anything; the next tick retries.
-          if (error instanceof RpcConfigError) {
-            disarmTask(task.id, error.message)
-            return
-          }
+          if (disarmOnRpcError(error, task.id)) return
         }
         await sleep(Math.max(0, ARM_TICK_MS - (Date.now() - tickStart)))
       }
