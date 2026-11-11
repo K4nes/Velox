@@ -1,7 +1,7 @@
 import { encodeFunctionData } from 'viem'
 import { toMessage } from '@/lib/core/error-message'
 import { clientFor, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
-import type { StoredWallet } from '@/lib/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const ZERO_BYTES32 = ('0x' + '00'.repeat(32)) as `0x${string}`

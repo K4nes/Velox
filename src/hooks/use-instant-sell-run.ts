@@ -13,7 +13,7 @@ import type {
   SellRunProgress,
   SellRunSummary,
 } from '@/lib/sell-run'
-import { listWallets } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
 
 export function useInstantSellRun(input: {
   onSold?: (keys: readonly string[]) => void

@@ -1,8 +1,8 @@
 import { useStore } from '@/hooks/use-store'
 import type { WalletGroup } from '@/components/wallet-select'
 import { getAll } from '@/lib/db/db'
-import type { FolderRecord } from '@/lib/wallet-model'
-import type { StoredWallet } from '@/lib/wallets'
+import type { FolderRecord } from '@/lib/wallet/wallet-model'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 const UNASSIGNED_ID = 'unassigned'
 

@@ -48,8 +48,8 @@ import {
   slugFromUrl,
 } from '@/lib/opensea'
 import type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea'
-import { listWallets } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 type PreparedMintEntry = {
   walletId: string

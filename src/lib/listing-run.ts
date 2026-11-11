@@ -5,8 +5,8 @@ import { toMessage } from '@/lib/core/error-message'
 import { submitListingOrder } from '@/lib/opensea'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
-import { toPrivateKeyHex } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { toPrivateKeyHex } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 import type {
   ListingPlan,
   PlannedApproval,

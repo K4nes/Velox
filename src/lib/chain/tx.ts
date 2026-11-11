@@ -13,8 +13,8 @@ import { chainBySlug } from '@/config/chains'
 import type { ChainEntry } from '@/config/chains'
 import { resolveRpcUrls } from '@/lib/chain/connections'
 import { traceMint } from '@/lib/mint-trace'
-import { toPrivateKeyHex } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { toPrivateKeyHex } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type TxGas = {
   gasLimit?: bigint

@@ -11,8 +11,8 @@ import {
   updateSnapshot,
 } from '@/lib/snapshots'
 import type { EligibilitySnapshot, EligibilitySnapshotPayload } from '@/lib/snapshots'
-import { listWallets } from '@/lib/wallets'
-import type { StoredWallet } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export function useSnapshotLibrary() {
   const { snapshots, loading, error: snapshotsError, reload } = useSnapshots()

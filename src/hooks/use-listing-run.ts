@@ -26,7 +26,7 @@ import type {
 import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
 import { WALLET_CONCURRENCY } from '@/lib/chain/tx'
-import { listWallets } from '@/lib/wallets'
+import { listWallets } from '@/lib/wallet/wallets'
 
 export function useListingRun(input: {
   selected: readonly ListingToken[]

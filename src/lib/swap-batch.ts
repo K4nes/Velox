@@ -4,7 +4,7 @@ import { readTokenBalance } from '@/lib/chain/erc20'
 import { amountFor, parseFixedAmount } from '@/lib/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
 import { clientFor } from '@/lib/chain/tx'
-import type { StoredWallet } from '@/lib/wallets'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type SwapBatchJob = {
   readonly walletId: string
