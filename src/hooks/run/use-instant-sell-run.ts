@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { toast } from 'sonner'
 
-import { useRunGate } from '@/hooks/run/use-run-gate'
-import { toMessage } from '@/lib/core/error-message'
+import { useRun } from '@/hooks/run/use-run'
 import { countFailed, failureLine } from '@/lib/core/run-engine'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import {
@@ -10,10 +9,7 @@ import {
   soldKeys,
   summarizeSell,
 } from '@/lib/offers/sell-run'
-import type {
-  SellRunProgress,
-  SellRunSummary,
-} from '@/lib/offers/sell-run'
+import type { SellRunProgress, SellRunSummary } from '@/lib/offers/sell-run'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useInstantSellRun(input: {
@@ -27,77 +23,45 @@ export function useInstantSellRun(input: {
   start: (targets: readonly SellTarget[]) => Promise<void>
   reset: () => void
 } {
-  const gate = useRunGate('sale')
-  const { setError } = gate
-  const [progress, setProgress] = useState<SellRunProgress | null>(null)
+  const run = useRun<SellRunProgress>({
+    kind: 'sale',
+    onSettled: input.onSettled,
+    onFinish: (progress) => {
+      const keys = soldKeys(progress)
+      if (keys.length > 0) input.onSold?.(keys)
+
+      const failed = countFailed(progress.steps)
+      if (failed > 0) {
+        toast.error(failureLine(failed, progress.steps.length, 'offers'))
+      }
+    },
+  })
 
   const summary = useMemo(
-    () => (progress ? summarizeSell(progress) : null),
-    [progress]
+    () => (run.progress ? summarizeSell(run.progress) : null),
+    [run.progress]
   )
-
-  function reset() {
-    setProgress(null)
-    setError(null)
-  }
 
   async function start(targets: readonly SellTarget[]) {
     if (targets.length === 0) return
 
-    const session = await gate.begin()
-    if (!session) return
-
-    const { live, shouldAbort } = session
-    const publish = (next: SellRunProgress) => {
-      if (live()) setProgress(next)
-    }
-
-    setProgress(null)
-
-    try {
+    await run.start(async ({ publish, shouldAbort }) => {
       const wallets = await listWallets()
-      const outcome = await runSellTargets({
+      return runSellTargets({
         targets,
         wallets,
         onProgress: publish,
         shouldAbort,
       })
-
-      if (!live()) return
-
-      if (outcome.error) {
-        setError(outcome.error)
-        toast.error(outcome.error)
-        return
-      }
-
-      const keys = soldKeys(outcome.progress)
-      if (keys.length > 0) input.onSold?.(keys)
-
-      const failed = countFailed(outcome.progress.steps)
-      if (failed > 0) {
-        toast.error(
-          failureLine(failed, outcome.progress.steps.length, 'offers')
-        )
-      }
-    } catch (failure) {
-      if (!live()) return
-      const message = toMessage(failure)
-      setError(message)
-      toast.error(message)
-    } finally {
-      const alive = live()
-      session.end()
-      if (alive) input.onSettled?.()
-    }
+    })
   }
 
   return {
-    running: gate.running,
-    progress,
-    error: gate.error,
+    running: run.running,
+    progress: run.progress,
+    error: run.error,
     summary,
     start,
-    reset,
+    reset: run.reset,
   }
 }
