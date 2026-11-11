@@ -20,7 +20,7 @@ import {
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import { formatAmount, formatExpiry, shortAddress } from '@/lib/core/format'
 import type { CollectionOffer, UncoveredReason } from '@/lib/instant-sell'
-import type { HeldToken } from '@/lib/holdings'
+import type { HeldToken } from '@/lib/inventory/holdings'
 import { SELL_STEP_LABEL, SELL_STEP_TONE } from '@/lib/sell-run'
 import type { SellStepState } from '@/lib/sell-run'
 

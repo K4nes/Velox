@@ -1,15 +1,15 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
-import { resolveScanWallets } from '@/lib/holdings'
+import { resolveScanWallets } from '@/lib/inventory/holdings'
 import { scanFailureMessage } from '@/lib/core/error-message'
-import { scanPortfolio } from '@/lib/portfolio'
+import { scanPortfolio } from '@/lib/inventory/portfolio'
 import type {
   PortfolioScanResult,
   PortfolioScanState,
   PortfolioTableState,
-} from '@/lib/portfolio'
-import { resolveScanTarget } from '@/lib/scan-target'
+} from '@/lib/inventory/portfolio'
+import { resolveScanTarget } from '@/lib/inventory/scan-target'
 
 export function describeTable(
   state: PortfolioScanState,
