@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import { useBulkSellScan } from '@/hooks/use-bulk-sell-scan'
 import { useCollectionOffers } from '@/hooks/use-collection-offers'
-import { useInstantSellRun } from '@/hooks/use-instant-sell-run'
+import { useInstantSellRun } from '@/hooks/run/use-instant-sell-run'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import {
   explainSalesBlockers,
