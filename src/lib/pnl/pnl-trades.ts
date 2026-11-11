@@ -1,3 +1,5 @@
+import { mapLimit } from '@/lib/core/async'
+
 const MAX_PAGES = 5
 const REQUEST_TIMEOUT_MS = 15_000
 const FLOW_CONCURRENCY = 4
@@ -279,26 +281,6 @@ function splitEvenly(total: bigint, count: number): bigint[] {
   return shares
 }
 
-async function mapPool<T, R>(
-  items: readonly T[],
-  limit: number,
-  run: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let next = 0
-
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const index = next
-      next += 1
-      results[index] = await run(items[index])
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
-  return results
-}
-
 export async function fetchCollectionTrades(
   explorerApi: string,
   contract: string,
@@ -361,7 +343,7 @@ export async function fetchCollectionTrades(
       sides.set(key, (sides.get(key) ?? 0) + 1)
     }
 
-    const grouped = await mapPool([...groups.values()], FLOW_CONCURRENCY, async (group) => {
+    const grouped = await mapLimit([...groups.values()], FLOW_CONCURRENCY, async (group) => {
       const read = await flowsFor(group.hash)
       const flow = moneyFlow(wallet, read.flows)
       const amount = groupAmount(group.side, flow)
