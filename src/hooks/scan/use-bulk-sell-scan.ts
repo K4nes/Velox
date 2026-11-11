@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useHoldingsScan } from '@/hooks/use-holdings-scan'
+import { useHoldingsScan } from '@/hooks/scan/use-holdings-scan'
 import { useSelection } from '@/hooks/use-selection'
 import type { ListingToken } from '@/lib/listings/listing-plan'
 

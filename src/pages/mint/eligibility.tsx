@@ -12,7 +12,7 @@ import {
 } from './eligibility-result-table'
 import { SnapshotCard, SnapshotDetail } from './snapshot-card'
 import { WalletSelect } from '@/components/wallet-select'
-import { useEligibilityCheck } from '@/hooks/use-eligibility-check'
+import { useEligibilityCheck } from '@/hooks/scan/use-eligibility-check'
 import { useSnapshotLibrary } from '@/hooks/use-snapshot-library'
 import { useWalletGroups } from '@/hooks/use-wallets'
 
