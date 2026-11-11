@@ -1,4 +1,4 @@
-import { useStore } from '@/hooks/use-store'
+import { useStore } from '@/hooks/data/use-store'
 import type { WalletGroup } from '@/components/wallet-select'
 import { getAll } from '@/lib/db/db'
 import type { FolderRecord } from '@/lib/wallet/wallet-model'

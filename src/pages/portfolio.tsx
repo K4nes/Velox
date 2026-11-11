@@ -24,7 +24,7 @@ import {
 import { TokenImage } from '@/components/token-image'
 import { WalletSelect } from '@/components/wallet-select'
 import { usePortfolioScan } from '@/hooks/scan/use-portfolio-scan'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 import {
   countRarityTiers,
   portfolioStats,

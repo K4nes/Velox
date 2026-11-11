@@ -7,7 +7,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import { useBulkSellScan } from '@/hooks/scan/use-bulk-sell-scan'
 import { useListingRun } from '@/hooks/run/use-listing-run'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { Inventory } from '@/pages/bulk-sell/inventory'
 import { ListingRail } from '@/pages/bulk-sell/listing-rail'
 

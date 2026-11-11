@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { chainBySlug, chains } from '@/config/chains'
-import { useWalletBalances } from '@/hooks/use-wallet-balances'
+import { useWalletBalances } from '@/hooks/data/use-wallet-balances'
 import { getAll, put, remove } from '@/lib/db/db'
 import { toMessage } from '@/lib/core/error-message'
 import {

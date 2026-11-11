@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useHoldingsScan } from '@/hooks/scan/use-holdings-scan'
 import { useSelection } from '@/hooks/use-selection'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { probeStandards } from '@/lib/chain/token-standard'

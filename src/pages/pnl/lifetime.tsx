@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { usePnlRecords } from '@/hooks/use-pnl-records'
+import { usePnlRecords } from '@/hooks/data/use-pnl-records'
 import {
   formatUsd,
   lifetimeView,

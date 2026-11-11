@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useSnapshots } from '@/hooks/use-snapshots'
+import { useSnapshots } from '@/hooks/data/use-snapshots'
 import { get } from '@/lib/db/db'
 import { checkEligibility } from '@/lib/opensea/eligibility'
 import { toMessage } from '@/lib/core/error-message'

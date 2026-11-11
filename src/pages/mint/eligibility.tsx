@@ -13,8 +13,8 @@ import {
 import { SnapshotCard, SnapshotDetail } from './snapshot-card'
 import { WalletSelect } from '@/components/wallet-select'
 import { useEligibilityCheck } from '@/hooks/scan/use-eligibility-check'
-import { useSnapshotLibrary } from '@/hooks/use-snapshot-library'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useSnapshotLibrary } from '@/hooks/data/use-snapshot-library'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 
 export function MintEligibilityPage() {
   const library = useSnapshotLibrary()

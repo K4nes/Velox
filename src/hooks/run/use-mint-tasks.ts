@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { ARM_TICK_MS, armWait } from '@/lib/mint/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
 import { RpcConfigError } from '@/lib/chain/connections'

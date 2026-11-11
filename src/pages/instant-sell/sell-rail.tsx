@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import type { OffersState } from '@/hooks/use-collection-offers'
+import type { OffersState } from '@/hooks/data/use-collection-offers'
 import { formatAmount, formatExpiry } from '@/lib/core/format'
 import type {
   OfferLadder,
