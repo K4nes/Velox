@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { useRunGate } from '@/hooks/use-run-gate'
+import { useRunGate } from '@/hooks/run/use-run-gate'
 import { toMessage } from '@/lib/core/error-message'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import {

@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { useSwapBatch } from '@/hooks/use-swap-batch'
 import { useSwapPreview } from '@/hooks/use-swap-preview'
-import { useSwapRun } from '@/hooks/use-swap-run'
+import { useSwapRun } from '@/hooks/run/use-swap-run'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import {
   defaultSwapSpec,

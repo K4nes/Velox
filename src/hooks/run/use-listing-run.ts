@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/error-message'
-import { useRunGate } from '@/hooks/use-run-gate'
+import { useRunGate } from '@/hooks/run/use-run-gate'
 import {
   buildListingPlan,
   estimateFeeTotals,
