@@ -25,7 +25,7 @@ import type {
 } from '@/lib/listing-run'
 import { requestListingActions } from '@/lib/opensea'
 import type { CollectionInfo } from '@/lib/opensea'
-import { WALLET_CONCURRENCY } from '@/lib/tx'
+import { WALLET_CONCURRENCY } from '@/lib/chain/tx'
 import { listWallets } from '@/lib/wallets'
 
 export function useListingRun(input: {

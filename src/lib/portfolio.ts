@@ -9,7 +9,7 @@ import { mapLimit } from '@/lib/core/async'
 import { scanFailureMessage } from '@/lib/core/error-message'
 import { scanHeldTokens } from '@/lib/holdings'
 import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/holdings'
-import { fetchEthUsdtPrice } from '@/lib/price'
+import { fetchEthUsdtPrice } from '@/lib/chain/price'
 
 export type RarityState =
   | { status: 'pending' }

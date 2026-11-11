@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { ARM_TICK_MS, armWait } from '@/lib/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
-import { RpcConfigError } from '@/lib/connections'
+import { RpcConfigError } from '@/lib/chain/connections'
 import {
   checkWalletEligibility,
   getEligibilityToken,
@@ -18,7 +18,7 @@ import {
   estimateGasFor,
   waitForReceipt,
   WALLET_CONCURRENCY,
-} from '@/lib/tx'
+} from '@/lib/chain/tx'
 import {
   createTask,
   gweiToWei,

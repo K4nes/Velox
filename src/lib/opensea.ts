@@ -1,6 +1,6 @@
 import { formatUnits } from 'viem'
-import { resolveKeys } from '@/lib/connections'
-import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/http'
+import { resolveKeys } from '@/lib/chain/connections'
+import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import { traceMint } from '@/lib/mint-trace'
 import { offerEconomics } from '@/lib/instant-sell'
 import type { CollectionOffer } from '@/lib/instant-sell'

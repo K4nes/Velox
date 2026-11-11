@@ -1,6 +1,6 @@
 import { mainnet } from 'viem/chains'
 import { getEnsAddress, normalize } from 'viem/ens'
-import { clientFor } from '@/lib/tx'
+import { clientFor } from '@/lib/chain/tx'
 
 export async function resolveEnsAddress(
   name: string

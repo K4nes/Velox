@@ -1,6 +1,6 @@
 import { encodeFunctionData } from 'viem'
 import { toMessage } from '@/lib/core/error-message'
-import { clientFor, sendTransaction, waitForReceipt } from '@/lib/tx'
+import { clientFor, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import type { StoredWallet } from '@/lib/wallets'
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'

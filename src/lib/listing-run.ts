@@ -4,7 +4,7 @@ import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/error-message'
 import { submitListingOrder } from '@/lib/opensea'
 import { stepById, withStep } from '@/lib/core/run-progress'
-import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/tx'
+import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 import type {

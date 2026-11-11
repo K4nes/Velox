@@ -3,8 +3,8 @@ import { readStoredImages, type CardImage } from '@/lib/card-images'
 import { toMessage } from '@/lib/core/error-message'
 import type { CollectionInfo } from '@/lib/opensea'
 import type { PnlStats } from '@/lib/pnl-trades'
-import { fetchEthUsdtPrice } from '@/lib/price'
-import { QUOTE_WINDOW_MS } from '@/lib/price-window'
+import { fetchEthUsdtPrice } from '@/lib/chain/price'
+import { QUOTE_WINDOW_MS } from '@/lib/chain/price-window'
 import type { Format, ImagePosition } from './card-preview'
 
 export const MAX_IMAGES = 3

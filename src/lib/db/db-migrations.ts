@@ -1,5 +1,5 @@
 import { chains } from '@/config/chains'
-import { seedPlan } from '@/lib/connection-model'
+import { seedPlan } from '@/lib/chain/connection-model'
 
 export type UpgradeContext = {
   /** The version the profile sat at before this upgrade. */

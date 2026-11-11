@@ -15,14 +15,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import type { Credential, Endpoint, RpcProvider } from '@/lib/connections'
+import type { Credential, Endpoint, RpcProvider } from '@/lib/chain/connections'
 import {
   endpointAcceptsKey,
   endpointTemplate,
   endpointUrlTemplate,
   hasUsableCredentials,
   providerChains,
-} from '@/lib/connections'
+} from '@/lib/chain/connections'
 
 type EndpointsSectionProps = {
   provider: RpcProvider

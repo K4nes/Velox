@@ -20,7 +20,7 @@ import {
   WALLET_CONCURRENCY,
   sendTransaction,
   waitForReceiptOutcome,
-} from '@/lib/tx'
+} from '@/lib/chain/tx'
 import { toPrivateKeyHex } from '@/lib/wallets'
 import type { StoredWallet } from '@/lib/wallets'
 

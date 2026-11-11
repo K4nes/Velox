@@ -21,8 +21,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import type { Credential } from '@/lib/connections'
-import type { ProbeResult } from '@/lib/connection-probes'
+import type { Credential } from '@/lib/chain/connections'
+import type { ProbeResult } from '@/lib/chain/connection-probes'
 
 type KeysSectionProps = {
   testable: boolean

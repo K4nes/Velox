@@ -1,4 +1,4 @@
-import { resolveKeys } from '@/lib/connections'
+import { resolveKeys } from '@/lib/chain/connections'
 
 export type EthUsdtPrice = { price: number; updatedAt: string }
 
