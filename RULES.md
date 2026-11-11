@@ -32,6 +32,7 @@ Animate UI has no primitive for every component (`button`, `card`, `input`,
 | `components/layout/` | page chrome: `app-layout`, `app-header`, `app-sidebar` | wraps every route |
 | `components/theme/` | `theme-provider` | app-wide provider |
 | `components/lightswind/` | `toggle-theme` | different vendor, not read by the animate CLI |
+| `components/dither-kit/` | dithered chart primitives (`area-chart`, `tooltip`, `sparkline`, …) | different vendor; imported by the PnL pages |
 | `pages/` | route components | mirrors the URL structure |
 | `pages/<feature>/` | a page's own components | colocate while there is one consumer |
 | `components/<name>.tsx` | a shared component used by several pages (e.g. `wallet-select.tsx`) | not in `ui/`, not in `layout/` |
@@ -63,14 +64,19 @@ wrapping one file in its own folder adds depth for nothing.
 
 ### Routes live in one table
 
-`src/router.tsx` uses `createBrowserRouter`. A data router is required: `handle` and
-`useMatches` (used by `app-header` to read the page title) do not work with
-`<BrowserRouter>`.
+`src/config/routes.tsx` holds the single route table: every entry carries a `path`, a
+`title`, an icon and an element. `src/router.tsx` builds the router from that table with
+`createBrowserRouter` and derives `handle: { title }` per route, and `config/nav.ts` derives
+the sidebar from the same table. A route written into `router.tsx` by hand is not a route;
+the file maps the table.
 
-Each route carries its title:
+A data router is required: `handle` and `useMatches` (used by `app-header` to read the page
+title) do not work with `<BrowserRouter>`.
+
+Each entry carries its title:
 
 ```tsx
-{ path: 'mint/tasks', element: <MintTasksPage />, handle: { title: 'Tasks' } }
+{ path: '/mint/tasks', title: 'Tasks', icon: ListChecks, element: <MintTasksPage /> }
 ```
 
 ### Layout is a route layout
@@ -126,7 +132,8 @@ body goes below 11px, and no display size is introduced above the stat tile's 18
 - Container: `flex flex-1 flex-col gap-4 p-6`. Three page kinds differ, each listed under
   Deliberate exceptions: the `mint/tasks` workspace, the 404 page and the `settings`
   master/detail page.
-- The title lives on the route (`handle.title`) and renders once, in `app-header`.
+- The title lives on the route entry in `src/config/routes.tsx` and renders once, in
+  `app-header`.
   Never repeat it as an `h1` in the body.
 - Target is 1024px and up. Below that only the chrome collapses — the shell, the scan bar
   and the table + rail split. Dense stat grids may still step at `sm`/`md`.
@@ -228,7 +235,8 @@ Do not normalise these:
   height only at `xl` (`xl:h-[calc(100svh-3rem)]`). Below `xl`, inside the 1024px target,
   the panes stack on purpose and the page scrolls; the left list gets a fixed height so its
   own body still scrolls.
-- `mint/tasks`: the task list, the collection bar and the inventory table have no header bar.
+- `mint/tasks`: the task list, the collection bar and the run table
+  (`src/pages/mint/run-table.tsx`) have no header bar.
 - `mint/tasks`: the Mint Stage picker lists every stage in the drop, on purpose. OpenSea picks
   the stage server-side, so the picker is how the operator targets the stage they mean to mint
   and reads that stage's price and cap. It is a configuration choice, not a claim about which
@@ -259,12 +267,14 @@ Do not normalise these:
   as a bar under the URL. Do not reintroduce `Another task is minting` or `Drop is not minting`.
 - `mint/tasks` is a workspace, not a document: `min-h-[calc(100svh-3rem)] flex-col p-6`,
   `lg:h-[calc(100svh-3rem)] lg:min-h-0 lg:overflow-hidden` - no `flex-1`, no `gap-4`.
-- The 404 page renders `<div className="p-6">` around its Return link, and takes its title
-  from the route.
-- Empty states keep their page copy and their height. Icon-and-copy states use the shared
-  `EmptyState` in `src/components/`; `bulk-sell` still inlines its own. Tables whose empty
-  body is a single muted centred row (`portfolio`, `mint/tasks`, `mint/eligibility`,
-  `wallet-profiles`) keep that shape.
+- The 404 page renders `<div className="p-6">` around its `Go to Tasks` link, and takes its
+  title from the route.
+- Empty states keep their page copy and their height. Use the shared components in
+  `src/components/`: `BodyMessage` for an icon-and-copy message inside a batch inventory
+  card body (`bulk-sell`, `instant-sell`, `transfer`), because it brings its own centring
+  box, and `EmptyState` for a bare icon-and-copy column that the call site centres. Tables
+  whose empty body is a single muted centred row (`portfolio`, `mint/tasks`,
+  `mint/eligibility`, `wallet-profiles`) keep that shape.
 
 ## Theme
 
@@ -277,10 +287,12 @@ in `wallet-profiles`.
 
 Cheap checks first, stop at the first rung that settles it:
 
-1. read the diff
+1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
-4. browser test — **only when asked**
+4. `npm run test:e2e` — the suite that covers the touched page.
+5. A browser run of the page — only when the task asks for it, or when the change cannot
+   be settled any cheaper.
 
 ## E2E live data and mocks
 
