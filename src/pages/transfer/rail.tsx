@@ -11,12 +11,12 @@ import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import type { TransferSelectionGroup } from '@/hooks/use-transfer-scan'
 import { shortAddress } from '@/lib/core/format'
-import type { TransferRunSummary } from '@/lib/transfer-run'
-import { destinationLabel } from '@/lib/transfer-plan'
+import type { TransferRunSummary } from '@/lib/transfer/transfer-run'
+import { destinationLabel } from '@/lib/transfer/transfer-plan'
 import type {
   DestinationResolution,
   TransferSelection,
-} from '@/lib/transfer-plan'
+} from '@/lib/transfer/transfer-plan'
 
 export function TransferRail({
   groups,

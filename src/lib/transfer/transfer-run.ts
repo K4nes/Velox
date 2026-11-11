@@ -12,7 +12,7 @@ import {
 import type {
   TransferPlan,
   PlannedTransferWallet,
-} from '@/lib/transfer-plan'
+} from '@/lib/transfer/transfer-plan'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
