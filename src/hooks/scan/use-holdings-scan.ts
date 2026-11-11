@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { resolveScanWallets, scanHeldTokens } from '@/lib/inventory/holdings'
 import { scanFailureMessage, toMessage } from '@/lib/core/error-message'
+import { failureLine } from '@/lib/core/run-engine'
 import type { HeldToken, WalletScan } from '@/lib/inventory/holdings'
 import { getCollection, slugFromUrl } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
@@ -84,7 +85,12 @@ export function useHoldingsScan() {
       const failed = result.scans.filter((scan) => scan.error !== null)
       if (failed.length > 0) {
         toast.error(
-          `${failed.length} of ${result.scans.length} wallets failed — ${failed[0]?.error ?? ''}`
+          failureLine(
+            failed.length,
+            result.scans.length,
+            'wallets',
+            failed[0]?.error ?? null
+          )
         )
       }
     } catch (failure) {

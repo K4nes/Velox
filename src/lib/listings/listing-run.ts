@@ -4,6 +4,7 @@ import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/error-message'
 import { submitListingOrder } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
+import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import { WALLET_CONCURRENCY, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -37,14 +38,7 @@ export type RunStepState = {
   | { kind: 'order'; status: 'failed'; error: string }
 )
 
-export type ListingRunProgress = {
-  steps: readonly RunStepState[]
-}
-
-export type ListingRunOutcome = {
-  progress: ListingRunProgress
-  error: string | null
-}
+export type ListingRunProgress = RunProgress<RunStepState>
 
 export type RunSummary = {
   total: number
@@ -85,7 +79,7 @@ export async function runListingPlan(input: {
   wallets: readonly StoredWallet[]
   onProgress?: (progress: ListingRunProgress) => void
   shouldAbort?: () => boolean
-}): Promise<ListingRunOutcome> {
+}): Promise<RunOutcome<ListingRunProgress>> {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
   )

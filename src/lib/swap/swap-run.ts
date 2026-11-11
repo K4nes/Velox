@@ -15,6 +15,7 @@ import type {
 } from '@/lib/swap/relay'
 import type { SwapBatch, SwapBatchJob } from '@/lib/swap/swap-batch'
 import { withStep } from '@/lib/core/run-progress'
+import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import {
   BroadcastError,
   WALLET_CONCURRENCY,
@@ -80,14 +81,8 @@ export type SwapWalletState = {
   | { readonly status: 'skipped'; readonly reason: string }
 )
 
-export type SwapRunProgress = {
-  readonly steps: readonly SwapWalletState[]
+export type SwapRunProgress = RunProgress<SwapWalletState> & {
   readonly to: SwapAssetOption
-}
-
-export type SwapRunOutcome = {
-  readonly progress: SwapRunProgress
-  readonly error: string | null
 }
 
 export type SwapRunSummary = {
@@ -152,7 +147,7 @@ export async function runSwapPlan(input: {
   wallets: readonly StoredWallet[]
   onProgress?: (progress: SwapRunProgress) => void
   shouldAbort?: () => boolean
-}): Promise<SwapRunOutcome> {
+}): Promise<RunOutcome<SwapRunProgress>> {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.id, wallet] as const)
   )

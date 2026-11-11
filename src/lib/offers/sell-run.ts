@@ -10,6 +10,7 @@ import { toMessage } from '@/lib/core/error-message'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
+import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -40,9 +41,7 @@ export type SellStepState = {
   | { status: 'failed'; error: string }
 )
 
-export type SellRunProgress = {
-  steps: readonly SellStepState[]
-}
+export type SellRunProgress = RunProgress<SellStepState>
 
 export type SellRunSummary = {
   total: number
@@ -80,7 +79,7 @@ export async function runSellTargets(input: {
   wallets: readonly StoredWallet[]
   onProgress?: (progress: SellRunProgress) => void
   shouldAbort?: () => boolean
-}): Promise<{ progress: SellRunProgress; error: string | null }> {
+}): Promise<RunOutcome<SellRunProgress>> {
   const records = new Map(
     input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
   )
