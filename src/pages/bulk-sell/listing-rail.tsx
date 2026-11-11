@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { formatAmount } from '@/lib/format'
+import { formatAmount } from '@/lib/core/format'
 import { listingDurationOptions } from '@/lib/listing-plan'
 import type { PlanFeeTotals } from '@/lib/listing-plan'
 import type { RunSummary } from '@/lib/listing-run'

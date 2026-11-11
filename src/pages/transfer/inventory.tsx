@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import type { TransferScanRow } from '@/hooks/use-transfer-scan'
-import { shortAddress } from '@/lib/format'
+import { shortAddress } from '@/lib/core/format'
 import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer-run'
 import type { TransferStepState } from '@/lib/transfer-run'
 

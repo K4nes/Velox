@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { toMessage } from '@/lib/error-message'
+import { toMessage } from '@/lib/core/error-message'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { checkEligibility } from '@/lib/eligibility'
 import type { EligibilityTableState } from '@/lib/eligibility'

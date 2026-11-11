@@ -10,7 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import type { TransferSelectionGroup } from '@/hooks/use-transfer-scan'
-import { shortAddress } from '@/lib/format'
+import { shortAddress } from '@/lib/core/format'
 import type { TransferRunSummary } from '@/lib/transfer-run'
 import { destinationLabel } from '@/lib/transfer-plan'
 import type {

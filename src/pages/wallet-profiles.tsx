@@ -24,7 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { chainBySlug, chains } from '@/config/chains'
 import { useWalletBalances } from '@/hooks/use-wallet-balances'
 import { getAll, put, remove } from '@/lib/db'
-import { toMessage } from '@/lib/error-message'
+import { toMessage } from '@/lib/core/error-message'
 import {
   importWallets,
   listWallets,

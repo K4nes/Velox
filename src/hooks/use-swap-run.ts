@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
-import { toMessage } from '@/lib/error-message'
+import { toMessage } from '@/lib/core/error-message'
 import type { SwapBatch } from '@/lib/swap-batch'
 import { runSwapPlan, summarizeSwapRun, walletStates } from '@/lib/swap-run'
 import type {

@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
-import { shortAddress } from '@/lib/format'
+import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/holdings'
 import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listing-run'
 import type { RunStepState } from '@/lib/listing-run'

@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { shortAddress } from '@/lib/format'
+import { shortAddress } from '@/lib/core/format'
 import { amountFor, formatSwapAmount, parseFixedAmount } from '@/lib/swap-spec'
 import type { SwapAmounts } from '@/lib/swap-spec'
 import { SWAP_WALLET_TONE, swapWalletLabel } from '@/lib/swap-run'
