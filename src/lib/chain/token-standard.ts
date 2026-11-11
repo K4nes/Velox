@@ -8,7 +8,7 @@ import {
   isAddress,
 } from 'viem'
 import { mapLimit } from '@/lib/core/async'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { clientFor } from '@/lib/chain/tx'
 
 export type TokenStandard = 'erc721' | 'erc1155'

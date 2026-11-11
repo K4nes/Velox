@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { resolveSwapBatch } from '@/lib/swap/swap-batch'
 import type { SwapBatch } from '@/lib/swap/swap-batch'
 import { amountFor, amountKey, specKey } from '@/lib/swap/swap-spec'

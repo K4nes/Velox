@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { useSnapshots } from '@/hooks/data/use-snapshots'
 import { get } from '@/lib/db/db'
 import { checkEligibility } from '@/lib/opensea/eligibility'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import {
   buildSnapshotPayload,
   deleteSnapshot,

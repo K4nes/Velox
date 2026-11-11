@@ -5,7 +5,7 @@ import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import type { SwapAssetOption } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/core/async'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { notifyIndexer, pollSwapIntent, quoteSwap } from '@/lib/swap/relay'
 import type {
   SwapIntentStatus,

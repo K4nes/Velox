@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useRun } from '@/hooks/run/use-run'
 import { resolveEnsAddress } from '@/lib/chain/ens'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import {
   runTransferPlan,
   spentUnits,

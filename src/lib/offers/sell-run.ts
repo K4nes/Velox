@@ -6,7 +6,7 @@ import {
   ensureOperatorApproved,
 } from '@/lib/offers/approval'
 import { buildFulfillmentCall } from '@/lib/offers/fulfillment'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea/index'
 import { sameAddress, addressKey } from '@/lib/wallet/address'

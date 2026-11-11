@@ -1,6 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import {
   getCollection,
   getDrop,

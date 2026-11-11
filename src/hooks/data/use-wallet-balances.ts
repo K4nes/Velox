@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRead } from '@/hooks/use-live-read'
 import { balanceKey, type BalanceKey, type BalanceMap } from '@/lib/wallet/balance-key'
 import { fetchBalances } from '@/lib/wallet/balances'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 
 type BalanceErrors = Record<string, { message: string; addresses: string[] }>
 

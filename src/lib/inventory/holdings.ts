@@ -1,5 +1,5 @@
 import { mapLimit } from '@/lib/core/async'
-import { scanFailureMessage } from '@/lib/core/error-message'
+import { scanFailureMessage } from '@/lib/opensea/failure-message'
 import { getAccountNfts } from '@/lib/opensea/index'
 
 export type ScanWallet = { id: string; label: string; address: string }

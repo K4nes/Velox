@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/run/use-run-gate'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import type { RunOutcome } from '@/lib/core/run-engine'
 import type { RunKind } from '@/lib/core/run-slot'
 

@@ -1,5 +1,5 @@
 import { slugFromUrl } from '@/lib/opensea/index'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 

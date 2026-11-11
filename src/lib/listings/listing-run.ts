@@ -1,7 +1,7 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
-import { toMessage } from '@/lib/core/error-message'
+import { toMessage } from '@/lib/core/message'
 import { submitListingOrder } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
