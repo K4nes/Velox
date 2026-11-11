@@ -1,9 +1,9 @@
 import { useState } from 'react'
 
-import { useSwapBatch } from '@/hooks/use-swap-batch'
-import { useSwapPreview } from '@/hooks/use-swap-preview'
+import { useSwapBatch } from '@/hooks/data/use-swap-batch'
+import { useSwapPreview } from '@/hooks/data/use-swap-preview'
 import { useSwapRun } from '@/hooks/run/use-swap-run'
-import { useWalletGroups } from '@/hooks/use-wallets'
+import { useWalletGroups } from '@/hooks/data/use-wallets'
 import {
   defaultSwapSpec,
   explainSwapBlockers,

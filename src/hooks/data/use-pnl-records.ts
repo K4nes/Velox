@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useStore } from '@/hooks/use-store'
+import { useStore } from '@/hooks/data/use-store'
 import { deletePnlRecord, listPnlRecords } from '@/lib/pnl/pnl-records'
 import type { PnlRecord } from '@/lib/pnl/pnl-records'
 
