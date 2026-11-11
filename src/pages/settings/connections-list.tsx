@@ -13,8 +13,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { Connection } from '@/lib/connections'
-import { connectionIsReady, connectionSummary } from '@/lib/connections'
+import type { Connection } from '@/lib/chain/connections'
+import { connectionIsReady, connectionSummary } from '@/lib/chain/connections'
 import { ProviderMark } from './provider-mark'
 
 type ConnectionsListProps = {

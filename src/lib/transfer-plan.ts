@@ -2,7 +2,7 @@ import { encodeFunctionData, getAddress, isAddress, parseUnits } from 'viem'
 import { normalize } from 'viem/ens'
 import { chainBySlug } from '@/config/chains'
 import type { HeldToken } from '@/lib/holdings'
-import type { StandardProbe, TokenStandard } from '@/lib/token-standard'
+import type { StandardProbe, TokenStandard } from '@/lib/chain/token-standard'
 
 export type ParsedDestination =
   | { kind: 'empty' }

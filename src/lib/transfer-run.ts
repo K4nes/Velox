@@ -8,7 +8,7 @@ import {
   WALLET_CONCURRENCY,
   sendTransaction,
   waitForReceiptOutcome,
-} from '@/lib/tx'
+} from '@/lib/chain/tx'
 import type {
   TransferPlan,
   PlannedTransferWallet,

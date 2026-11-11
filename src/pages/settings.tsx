@@ -7,8 +7,8 @@ import {
   probeCmcKey,
   probeOpenSeaKey,
   probeRpcEndpoint,
-} from '@/lib/connection-probes'
-import type { ProbeResult } from '@/lib/connection-probes'
+} from '@/lib/chain/connection-probes'
+import type { ProbeResult } from '@/lib/chain/connection-probes'
 import {
   ConnectionError,
   deleteConnection,
@@ -17,14 +17,14 @@ import {
   expandEndpoint,
   listConnections,
   saveConnection,
-} from '@/lib/connections'
+} from '@/lib/chain/connections'
 import type {
   Connection,
   Credential,
   EndpointProbe,
   Issue,
   RpcConnection,
-} from '@/lib/connections'
+} from '@/lib/chain/connections'
 import { toMessage } from '@/lib/core/error-message'
 import { ConnectionDetail } from './settings/connection-detail'
 import { ConnectionsList } from './settings/connections-list'

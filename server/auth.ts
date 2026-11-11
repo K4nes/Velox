@@ -1,4 +1,4 @@
-import { OPENSEA_BASE_URL, httpExchange, readErrorBody } from '../src/lib/http.ts'
+import { OPENSEA_BASE_URL, httpExchange, readErrorBody } from '../src/lib/chain/http.ts'
 import { buildSiweMessage, parseSiweMessage } from './siwe.ts'
 
 export const AUTH_PATHS: readonly string[] = ['/api/auth/nonce', '/api/auth/token']

@@ -1,7 +1,7 @@
 import { chainByChainId, chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import { relayCurrency } from '@/config/swap-assets'
-import { httpExchange } from '@/lib/http'
+import { httpExchange } from '@/lib/chain/http'
 import type { SwapSpec } from '@/lib/swap-spec'
 
 export type SwapOperation = 'wrap' | 'unwrap' | 'swap'

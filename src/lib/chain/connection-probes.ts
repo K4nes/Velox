@@ -1,5 +1,5 @@
-import { OPENSEA_BASE_URL, httpExchange, readErrorBody } from '@/lib/http'
-import { PriceRequestError, fetchEthUsdtProbe } from '@/lib/price'
+import { OPENSEA_BASE_URL, httpExchange, readErrorBody } from '@/lib/chain/http'
+import { PriceRequestError, fetchEthUsdtProbe } from '@/lib/chain/price'
 
 export type ProbeResult =
   | { ok: true; latencyMs: number; warning: string | null; detail: string }

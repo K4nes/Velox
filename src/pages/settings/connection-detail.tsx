@@ -11,14 +11,14 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import type { Connection, Credential, Issue } from '@/lib/connections'
+import type { Connection, Credential, Issue } from '@/lib/chain/connections'
 import {
   connectionIsReady,
   connectionSummary,
   endpointAcceptsKey,
   endpointIsCallable,
-} from '@/lib/connections'
-import type { ProbeResult } from '@/lib/connection-probes'
+} from '@/lib/chain/connections'
+import type { ProbeResult } from '@/lib/chain/connection-probes'
 import { EndpointsSection } from './endpoints-section'
 import { KeysSection } from './keys-section'
 import { ProviderMark } from './provider-mark'

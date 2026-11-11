@@ -1,5 +1,5 @@
-import { httpExchange, type HttpOutcome } from '../src/lib/http.ts'
-import { QUOTE_WINDOW_MS } from '../src/lib/price-window.ts'
+import { httpExchange, type HttpOutcome } from '../src/lib/chain/http.ts'
+import { QUOTE_WINDOW_MS } from '../src/lib/chain/price-window.ts'
 
 export const PRICE_PATHS: readonly string[] = ['/api/price/eth-usdt']
 

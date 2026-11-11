@@ -4,17 +4,17 @@ import {
   pickKeys,
   pickRpcUrls,
   validateConnection,
-} from '@/lib/connection-model'
+} from '@/lib/chain/connection-model'
 import type {
   Connection,
   DataService,
   Issue,
   RpcConnection,
-} from '@/lib/connection-model'
+} from '@/lib/chain/connection-model'
 
 // One import site for the page: the model's types and pure helpers ride along
 // with the storage calls.
-export * from '@/lib/connection-model'
+export * from '@/lib/chain/connection-model'
 
 export class ConnectionError extends Error {
   readonly issues: Issue[]
