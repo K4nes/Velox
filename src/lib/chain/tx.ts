@@ -22,8 +22,6 @@ export type TxGas = {
   maxPriorityFeePerGas?: bigint
 }
 
-export const WALLET_CONCURRENCY = 2
-
 // The hash is computed before the send, so a transport failure still tells the
 // caller which transaction may have reached the node.
 export class BroadcastError extends Error {

@@ -1,3 +1,5 @@
+import { addressKey } from '@/lib/wallet/address'
+
 declare const balanceKeyBrand: unique symbol
 
 // A cached balance is keyed by its chain and its address together. Only
@@ -8,5 +10,5 @@ export type BalanceKey = string & { readonly [balanceKeyBrand]: true }
 export type BalanceMap = Map<BalanceKey, bigint>
 
 export function balanceKey(chainSlug: string, address: string): BalanceKey {
-  return `${chainSlug}:${address.toLowerCase()}` as BalanceKey
+  return `${chainSlug}:${addressKey(address)}` as BalanceKey
 }

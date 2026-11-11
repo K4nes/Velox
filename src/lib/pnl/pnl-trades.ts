@@ -1,8 +1,8 @@
 import { mapLimit } from '@/lib/core/async'
+import { FLOW_CONCURRENCY } from '@/lib/core/concurrency'
 
 const MAX_PAGES = 5
 const REQUEST_TIMEOUT_MS = 15_000
-const FLOW_CONCURRENCY = 4
 const WEI = 10n ** 18n
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 

@@ -14,11 +14,12 @@ import type {
   SwapTxStep,
 } from '@/lib/swap/relay'
 import type { SwapBatch, SwapBatchJob } from '@/lib/swap/swap-batch'
+import { SETTLE_CONCURRENCY, WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { sameAddress } from '@/lib/wallet/address'
 import { withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import {
   BroadcastError,
-  WALLET_CONCURRENCY,
   sendTransaction,
   waitForReceiptOutcome,
 } from '@/lib/chain/tx'
@@ -95,8 +96,6 @@ export type SwapRunSummary = {
   readonly skipped: number
   readonly received: bigint
 }
-
-const SETTLE_CONCURRENCY = 4
 
 type Broadcast = {
   ref: SwapTxRef
@@ -211,7 +210,7 @@ export async function runSwapPlan(input: {
       return
     }
 
-    if (account.address.toLowerCase() !== job.address.toLowerCase()) {
+    if (!sameAddress(account.address, job.address)) {
       commit({
         ...base(job),
         status: 'failed',

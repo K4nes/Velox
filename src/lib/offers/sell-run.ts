@@ -9,6 +9,8 @@ import { buildFulfillmentCall } from '@/lib/offers/fulfillment'
 import { toMessage } from '@/lib/core/error-message'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea/index'
+import { sameAddress, addressKey } from '@/lib/wallet/address'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'
@@ -72,8 +74,6 @@ export const SELL_STEP_TONE: Record<SellStepStatus, string> = {
   failed: 'text-destructive',
 }
 
-const WALLET_CONCURRENCY = 2
-
 export async function runSellTargets(input: {
   targets: readonly SellTarget[]
   wallets: readonly StoredWallet[]
@@ -81,7 +81,7 @@ export async function runSellTargets(input: {
   shouldAbort?: () => boolean
 }): Promise<RunOutcome<SellRunProgress>> {
   const records = new Map(
-    input.wallets.map((wallet) => [wallet.address.toLowerCase(), wallet])
+    input.wallets.map((wallet) => [addressKey(wallet.address), wallet])
   )
 
   let progress: SellRunProgress = {
@@ -100,7 +100,7 @@ export async function runSellTargets(input: {
   input.onProgress?.(progress)
 
   for (const target of input.targets) {
-    if (!records.has(target.address.toLowerCase())) {
+    if (!records.has(addressKey(target.address))) {
       return {
         progress,
         error: `No saved wallet matches ${target.address}`,
@@ -134,7 +134,7 @@ export async function runSellTargets(input: {
 
   const byOwner = new Map<string, SellTarget[]>()
   for (const target of input.targets) {
-    const owner = target.address.toLowerCase()
+    const owner = addressKey(target.address)
     const group = byOwner.get(owner) ?? []
     group.push(target)
     byOwner.set(owner, group)
@@ -149,15 +149,15 @@ export async function runSellTargets(input: {
   ): Promise<void> {
     let accountAddress: string
     try {
-      accountAddress = privateKeyToAccount(
-        toPrivateKeyHex(record.privateKey)
-      ).address.toLowerCase()
+      accountAddress = addressKey(
+        privateKeyToAccount(toPrivateKeyHex(record.privateKey)).address
+      )
     } catch (error) {
       failAll(targets, toMessage(error))
       return
     }
 
-    if (accountAddress !== owner) {
+    if (!sameAddress(accountAddress, owner)) {
       failAll(
         targets,
         `Stored key signs as ${accountAddress}, not ${owner}`

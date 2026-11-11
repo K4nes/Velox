@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { ARM_TICK_MS, armWait } from '@/lib/mint/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
 import {
   checkWalletEligibility,
@@ -17,7 +18,6 @@ import {
   chainTime,
   estimateGasFor,
   waitForReceipt,
-  WALLET_CONCURRENCY,
 } from '@/lib/chain/tx'
 import {
   createTask,
