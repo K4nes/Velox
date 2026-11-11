@@ -19,10 +19,10 @@ import {
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
 import { formatAmount, formatExpiry, shortAddress } from '@/lib/core/format'
-import type { CollectionOffer, UncoveredReason } from '@/lib/instant-sell'
+import type { CollectionOffer, UncoveredReason } from '@/lib/offers/instant-sell'
 import type { HeldToken } from '@/lib/inventory/holdings'
-import { SELL_STEP_LABEL, SELL_STEP_TONE } from '@/lib/sell-run'
-import type { SellStepState } from '@/lib/sell-run'
+import { SELL_STEP_LABEL, SELL_STEP_TONE } from '@/lib/offers/sell-run'
+import type { SellStepState } from '@/lib/offers/sell-run'
 
 export type InventoryBlock =
   | UncoveredReason

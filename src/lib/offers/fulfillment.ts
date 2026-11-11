@@ -1,6 +1,6 @@
 import { encodeFunctionData } from 'viem'
-import { offerEconomics } from '@/lib/instant-sell'
-import type { CollectionOffer, SellTarget } from '@/lib/instant-sell'
+import { offerEconomics } from '@/lib/offers/instant-sell'
+import type { CollectionOffer, SellTarget } from '@/lib/offers/instant-sell'
 import type { OfferFulfillmentTransaction } from '@/lib/opensea/index'
 import { parseOrderComponents } from '@/lib/opensea/seaport'
 

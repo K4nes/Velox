@@ -14,9 +14,9 @@ import {
   explainSalesBlockers,
   nextOfferExpirySec,
   planSales,
-} from '@/lib/instant-sell'
-import type { SellStepState } from '@/lib/sell-run'
-import { sellStepsByToken } from '@/lib/sell-run'
+} from '@/lib/offers/instant-sell'
+import type { SellStepState } from '@/lib/offers/sell-run'
+import { sellStepsByToken } from '@/lib/offers/sell-run'
 import { Inventory } from '@/pages/instant-sell/inventory'
 import type { InventoryRow } from '@/pages/instant-sell/inventory'
 import { SellRail } from '@/pages/instant-sell/sell-rail'

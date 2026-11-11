@@ -11,8 +11,8 @@ import { formatAmount, formatExpiry } from '@/lib/core/format'
 import type {
   OfferLadder,
   SalesPlan,
-} from '@/lib/instant-sell'
-import type { SellRunSummary } from '@/lib/sell-run'
+} from '@/lib/offers/instant-sell'
+import type { SellRunSummary } from '@/lib/offers/sell-run'
 import { cn } from '@/lib/utils'
 
 function formatAge(sec: number, now: number): string {

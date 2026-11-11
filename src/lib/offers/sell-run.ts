@@ -4,10 +4,10 @@ import { mapLimit } from '@/lib/core/async'
 import {
   createApprovalCache,
   ensureOperatorApproved,
-} from '@/lib/approval'
-import { buildFulfillmentCall } from '@/lib/fulfillment'
+} from '@/lib/offers/approval'
+import { buildFulfillmentCall } from '@/lib/offers/fulfillment'
 import { toMessage } from '@/lib/core/error-message'
-import type { SellTarget } from '@/lib/instant-sell'
+import type { SellTarget } from '@/lib/offers/instant-sell'
 import { requestOfferFulfillment } from '@/lib/opensea/index'
 import { stepById, withStep } from '@/lib/core/run-progress'
 import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'

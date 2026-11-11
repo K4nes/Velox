@@ -3,16 +3,16 @@ import { toast } from 'sonner'
 
 import { useRunGate } from '@/hooks/use-run-gate'
 import { toMessage } from '@/lib/core/error-message'
-import type { SellTarget } from '@/lib/instant-sell'
+import type { SellTarget } from '@/lib/offers/instant-sell'
 import {
   runSellTargets,
   soldKeys,
   summarizeSell,
-} from '@/lib/sell-run'
+} from '@/lib/offers/sell-run'
 import type {
   SellRunProgress,
   SellRunSummary,
-} from '@/lib/sell-run'
+} from '@/lib/offers/sell-run'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useInstantSellRun(input: {
