@@ -1,4 +1,4 @@
-import { OpenSeaError } from '@/lib/opensea/index'
+import { openSeaStatus } from '@/lib/opensea/error'
 
 // RPC endpoints can carry an API key in the path, and viem's transport errors
 // quote the full URL. Anything shown to the operator or stored on a row goes
@@ -19,18 +19,17 @@ export function mintFailureMessage(
   error: unknown,
   step: 'drop' | 'eligibility'
 ): string {
-  if (error instanceof OpenSeaError) {
-    if (error.status === 0) {
-      return 'OpenSea API key is not set. Add one in Settings.'
-    }
-    if (error.status === 401) {
-      return 'OpenSea API key rejected. Update it in Settings.'
-    }
-    if (error.status === 404) {
-      return step === 'drop'
-        ? 'No drop found for this collection'
-        : 'Eligibility check failed'
-    }
+  const status = openSeaStatus(error)
+  if (status === 0) {
+    return 'OpenSea API key is not set. Add one in Settings.'
+  }
+  if (status === 401) {
+    return 'OpenSea API key rejected. Update it in Settings.'
+  }
+  if (status === 404) {
+    return step === 'drop'
+      ? 'No drop found for this collection'
+      : 'Eligibility check failed'
   }
 
   return `Check failed — ${toMessage(error)}`
@@ -42,12 +41,11 @@ export function scanFailureMessage(
   error: unknown,
   step: 'collection' | 'wallet' | 'rarity'
 ): string {
-  if (error instanceof OpenSeaError) {
-    if (error.status === 0) return toMessage(error)
-    if (error.status === 401) return 'OpenSea API key rejected'
-    if (error.status === 404 && step === 'collection') {
-      return 'Collection not found'
-    }
+  const status = openSeaStatus(error)
+  if (status === 0) return toMessage(error)
+  if (status === 401) return 'OpenSea API key rejected'
+  if (status === 404 && step === 'collection') {
+    return 'Collection not found'
   }
 
   const message = toMessage(error)

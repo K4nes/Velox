@@ -2,6 +2,7 @@ import { formatUnits } from 'viem'
 import { resolveKeys } from '@/lib/chain/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import { traceMint } from '@/lib/mint/mint-trace'
+import { OpenSeaError } from '@/lib/opensea/error'
 import { offerEconomics } from '@/lib/offers/instant-sell'
 import type { CollectionOffer } from '@/lib/offers/instant-sell'
 import {
@@ -18,18 +19,6 @@ const MAX_RETRY_WAIT_MS = 30_000
 // 429 and the 503 branch fall back to it: a 429 waits out a rate-limit bucket,
 // while a 503 is a transient failure with no bucket to wait for.
 const NO_HEADER_RETRY_WAIT_MS = 2_000
-
-export class OpenSeaError extends Error {
-  readonly status: number
-  readonly code: string
-
-  constructor(status: number, code: string, message: string) {
-    super(message)
-    this.name = 'OpenSeaError'
-    this.status = status
-    this.code = code
-  }
-}
 
 // measured 2026-11-03: 91 identifiers -> 400 "identifiers must not exceed 30 items"
 export const NFT_BATCH_MAX = 30

@@ -2,11 +2,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { toMessage } from '@/lib/core/error-message'
 import {
-  OpenSeaError,
   getCollection,
   getDrop,
   getEligibility,
 } from '@/lib/opensea/index'
+import { openSeaStatus } from '@/lib/opensea/error'
 import type { DropInfo, EligibilityResponse } from '@/lib/opensea/index'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -113,10 +113,8 @@ export async function checkWalletEligibility(
       } catch (error) {
         // A cached token can be revoked before its expiresAt. Drop it once so
         // the next check signs in again instead of failing every row.
-        if (
-          error instanceof OpenSeaError &&
-          (error.status === 401 || error.status === 403)
-        ) {
+        const status = openSeaStatus(error)
+        if (status === 401 || status === 403) {
           forgetEligibilityToken(wallet.address)
           token = await cachedEligibilityToken(wallet.address, () =>
             getEligibilityToken(wallet.privateKey)
