@@ -73,7 +73,7 @@ export function Tooltip({
           )}
         >
           {heading && (
-            <div className="mb-0.5 font-mono text-[10px] text-muted-foreground">
+            <div className="mb-0.5 font-mono text-[11px] text-muted-foreground">
               {heading}
             </div>
           )}
