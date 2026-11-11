@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
-import { toMessage } from '@/lib/core/error-message'
-import { useRunGate } from '@/hooks/run/use-run-gate'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { useRun } from '@/hooks/run/use-run'
+import { addressKey } from '@/lib/wallet/address'
 import {
   buildListingPlan,
   estimateFeeTotals,
@@ -25,7 +26,6 @@ import type {
 } from '@/lib/listings/listing-run'
 import { requestListingActions } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
-import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useListingRun(input: {
@@ -33,11 +33,16 @@ export function useListingRun(input: {
   collection: CollectionInfo | null
   onListed?: (keys: string[]) => void
 }) {
-  const gate = useRunGate('listing')
-  const { setError } = gate
   const [price, setPrice] = useState('')
   const [durationDays, setDurationDays] = useState(30)
-  const [progress, setProgress] = useState<ListingRunProgress | null>(null)
+
+  const run = useRun<ListingRunProgress>({
+    kind: 'listing',
+    onFinish: (progress) => {
+      const keys = listedKeys(progress)
+      if (keys.length > 0) input.onListed?.(keys)
+    },
+  })
 
   const decimals = input.collection?.listingCurrency.decimals ?? 18
   const priceAmount = parsePrice(price, decimals)
@@ -61,15 +66,15 @@ export function useListingRun(input: {
   })
 
   const steps = useMemo(
-    () => (progress ? tokenStates(progress) : new Map<string, RunStepState>()),
-    [progress]
+    () =>
+      run.progress
+        ? tokenStates(run.progress)
+        : new Map<string, RunStepState>(),
+    [run.progress]
   )
-  const summary: RunSummary | null = progress ? summarizeRun(progress) : null
-
-  function reset() {
-    setProgress(null)
-    setError(null)
-  }
+  const summary: RunSummary | null = run.progress
+    ? summarizeRun(run.progress)
+    : null
 
   async function start() {
     const collection = input.collection
@@ -77,27 +82,17 @@ export function useListingRun(input: {
 
     const entry = chainBySlug(collection.chain)
     if (!entry) {
-      setError('Chain not supported')
+      run.setError('Chain not supported')
       toast.error('Chain not supported')
       return
     }
 
     // The form locks while waiting for an abandoned run to settle so what the
     // operator sees is what gets signed.
-    const session = await gate.begin()
-    if (!session) return
-
-    const { live, shouldAbort } = session
-    const publish = (next: ListingRunProgress) => {
-      if (live()) setProgress(next)
-    }
-
-    setProgress(null)
-
-    try {
+    await run.start(async ({ publish, shouldAbort }) => {
       const records = await listWallets()
       const byAddress = new Map(
-        records.map((record) => [record.address.toLowerCase(), record])
+        records.map((record) => [addressKey(record.address), record])
       )
       const batches = groupListingItems(input.selected)
       // The end time goes out with the request and comes back in the plan, so
@@ -127,8 +122,6 @@ export function useListingRun(input: {
         })
       )
 
-      if (!live()) return
-
       const plan = buildListingPlan({
         collection: {
           slug: collection.slug,
@@ -150,31 +143,13 @@ export function useListingRun(input: {
         return record ? [record] : []
       })
 
-      const outcome = await runListingPlan({
+      return runListingPlan({
         plan,
         wallets,
         onProgress: publish,
         shouldAbort,
       })
-
-      if (!live()) return
-
-      if (outcome.error) {
-        setError(outcome.error)
-        toast.error(outcome.error)
-        return
-      }
-
-      const keys = listedKeys(outcome.progress)
-      if (keys.length > 0) input.onListed?.(keys)
-    } catch (failure) {
-      if (!live()) return
-      const message = toMessage(failure)
-      setError(message)
-      toast.error(message)
-    } finally {
-      session.end()
-    }
+    })
   }
 
   return {
@@ -182,14 +157,14 @@ export function useListingRun(input: {
     setPrice,
     durationDays,
     setDuration: setDurationDays,
-    running: gate.running,
-    progress,
-    error: gate.error,
+    running: run.running,
+    progress: run.progress,
+    error: run.error,
     tokenStates: steps,
     summary,
     blockedReason,
     estimatedTotals,
     start,
-    reset,
+    reset: run.reset,
   }
 }

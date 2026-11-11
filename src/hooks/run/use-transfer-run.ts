@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { useRunGate } from '@/hooks/run/use-run-gate'
+import { useRun } from '@/hooks/run/use-run'
 import { resolveEnsAddress } from '@/lib/chain/ens'
 import { toMessage } from '@/lib/core/error-message'
-import { runTransferPlan, spentUnits, summarizeTransferRun, tokenStates } from '@/lib/transfer/transfer-run'
+import {
+  runTransferPlan,
+  spentUnits,
+  summarizeTransferRun,
+  tokenStates,
+} from '@/lib/transfer/transfer-run'
 import type {
   TransferRunProgress,
   TransferRunSummary,
@@ -29,15 +34,12 @@ export function useTransferRun(input: {
   onSpent: (spent: Map<string, number>) => void
   onDeselect: (keys: string[]) => void
 }) {
-  const gate = useRunGate('transfer')
-  const { setError } = gate
   const [destinationText, setDestinationText] = useState('')
   const [resolved, setResolved] = useState<{
     name: string
     address: `0x${string}` | null
     error: string | null
   } | null>(null)
-  const [progress, setProgress] = useState<TransferRunProgress | null>(null)
   const [history, setHistory] = useState<Map<string, TransferStepState>>(
     new Map()
   )
@@ -117,46 +119,11 @@ export function useTransferRun(input: {
     chain: input.chain,
   })
 
-  const steps = useMemo(() => {
-    const merged = new Map(history)
-    if (progress) {
-      for (const [key, step] of tokenStates(progress)) merged.set(key, step)
-    }
-    return merged
-  }, [history, progress])
-  const summary: TransferRunSummary | null = progress
-    ? summarizeTransferRun(progress)
-    : null
-
-  function changeDestination(text: string) {
-    setDestinationText(text)
-  }
-
-  function pickWallet(id: string) {
-    const wallet = input.wallets.find((entry) => entry.id === id)
-    if (wallet) setDestinationText(wallet.address)
-  }
-
-  function reset() {
-    setProgress(null)
-    setHistory(new Map())
-    setError(null)
-  }
-
-  async function start() {
-    const target = destination.status === 'ready' ? destination.destination : null
-    const chain = input.chain
-    const selections = input.selections
-
-    if (target === null || chain === null || selections.length === 0) return
-
-    const session = await gate.begin()
-    if (!session) return
-
-    const { live, shouldAbort } = session
-    const publish = (next: TransferRunProgress) => {
-      if (!live()) return
-      setProgress(next)
+  const run = useRun<TransferRunProgress>({
+    kind: 'transfer',
+    clear: () => setHistory(new Map()),
+    // The table keeps the rows that already landed when a later run starts.
+    onProgress: (next) =>
       setHistory((previous) => {
         const merged = new Map(previous)
         let changed = false
@@ -174,11 +141,68 @@ export function useTransferRun(input: {
           }
         }
         return changed ? merged : previous
-      })
-    }
-    setProgress(null)
+      }),
+    onFinish: (progress) => {
+      const result = summarizeTransferRun(progress)
+      const spent = spentUnits(progress)
+      input.onSpent(spent)
+      input.onDeselect([...spent.keys()])
 
-    try {
+      const parts: string[] = []
+      if (result.sent > 0) parts.push(`${result.sent} sent`)
+      if (result.unknown > 0) parts.push(`${result.unknown} unconfirmed`)
+      if (result.failed > 0) parts.push(`${result.failed} failed`)
+      const line = parts.join(', ')
+
+      if (result.failed > 0) {
+        let firstError = ''
+        for (const step of progress.steps) {
+          if (step.status === 'failed') {
+            firstError = step.error
+            break
+          }
+        }
+        toast.error(`${line} — ${firstError}`)
+        return
+      }
+
+      if (result.unknown > 0) {
+        toast.warning(`${line}, check the explorer`)
+        return
+      }
+
+      if (result.sent > 0) toast.success(line)
+    },
+  })
+
+  const steps = useMemo(() => {
+    const merged = new Map(history)
+    if (run.progress) {
+      for (const [key, step] of tokenStates(run.progress)) merged.set(key, step)
+    }
+    return merged
+  }, [history, run.progress])
+  const summary: TransferRunSummary | null = run.progress
+    ? summarizeTransferRun(run.progress)
+    : null
+
+  function changeDestination(text: string) {
+    setDestinationText(text)
+  }
+
+  function pickWallet(id: string) {
+    const wallet = input.wallets.find((entry) => entry.id === id)
+    if (wallet) setDestinationText(wallet.address)
+  }
+
+  async function start() {
+    const target = destination.status === 'ready' ? destination.destination : null
+    const chain = input.chain
+    const selections = input.selections
+
+    if (target === null || chain === null || selections.length === 0) return
+
+    await run.start(async ({ publish, shouldAbort, live }) => {
       const plan = buildTransferPlan({
         chain,
         destination: target,
@@ -193,60 +217,23 @@ export function useTransferRun(input: {
         shouldAbort,
       })
 
-      if (!live()) return
-
-      if (outcome.error) {
-        const failedKeys = new Set(
+      // A run that stopped before the batch finished leaves no rows behind, so the table
+      // shows only what the history already kept. A superseded run keeps its rows, because
+      // a newer one may already be rendering them.
+      if (outcome.error && live()) {
+        const cleared = new Set(
           outcome.progress.steps.map((step) => step.tokenKey)
         )
         setHistory((previous) => {
           const next = new Map(previous)
-          for (const key of failedKeys) next.delete(key)
+          for (const key of cleared) next.delete(key)
           return next
         })
-        setProgress(null)
-        setError(outcome.error)
-        toast.error(outcome.error)
-        return
+        run.setProgress(null)
       }
 
-      const result = summarizeTransferRun(outcome.progress)
-      const spent = spentUnits(outcome.progress)
-      input.onSpent(spent)
-      input.onDeselect([...spent.keys()])
-
-      const parts: string[] = []
-      if (result.sent > 0) parts.push(`${result.sent} sent`)
-      if (result.unknown > 0) parts.push(`${result.unknown} unconfirmed`)
-      if (result.failed > 0) parts.push(`${result.failed} failed`)
-      const summary = parts.join(', ')
-
-      if (result.failed > 0) {
-        let firstError = ''
-        for (const step of outcome.progress.steps) {
-          if (step.status === 'failed') {
-            firstError = step.error
-            break
-          }
-        }
-        toast.error(`${summary} — ${firstError}`)
-        return
-      }
-
-      if (result.unknown > 0) {
-        toast.warning(`${summary}, check the explorer`)
-        return
-      }
-
-      if (result.sent > 0) toast.success(summary)
-    } catch (failure) {
-      if (!live()) return
-      const message = toMessage(failure)
-      setError(message)
-      toast.error(message)
-    } finally {
-      session.end()
-    }
+      return outcome
+    })
   }
 
   return {
@@ -257,9 +244,9 @@ export function useTransferRun(input: {
     destination,
     blockedReason,
     start,
-    reset,
-    running: gate.running,
-    error: gate.error,
+    reset: run.reset,
+    running: run.running,
+    error: run.error,
     summary,
     tokenStates: steps,
   }
