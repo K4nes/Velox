@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useStore } from '@/hooks/use-store'
-import { deletePnlRecord, listPnlRecords } from '@/lib/pnl-records'
-import type { PnlRecord } from '@/lib/pnl-records'
+import { deletePnlRecord, listPnlRecords } from '@/lib/pnl/pnl-records'
+import type { PnlRecord } from '@/lib/pnl/pnl-records'
 
 export function usePnlRecords(): {
   records: PnlRecord[]

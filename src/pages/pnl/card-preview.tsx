@@ -1,6 +1,6 @@
 import { useRef, type PointerEvent, type Ref } from 'react'
 import type { CardImage } from '@/lib/card-images'
-import { formatEth, toUsd, type PnlStats } from '@/lib/pnl-trades'
+import { formatEth, toUsd, type PnlStats } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
 
 export const formats = ['Landscape', 'Portrait'] as const

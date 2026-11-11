@@ -28,8 +28,8 @@ import {
   formatUsd,
   lifetimeView,
   type LifetimeCollection,
-} from '@/lib/pnl-records'
-import { formatEth } from '@/lib/pnl-trades'
+} from '@/lib/pnl/pnl-records'
+import { formatEth } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
 
 const sortOptions = ['Newest First', 'Oldest First', 'Highest PnL', 'Lowest PnL']
