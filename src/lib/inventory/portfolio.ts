@@ -7,8 +7,8 @@ import {
 import type { CollectionInfo, CollectionStats } from '@/lib/opensea/index'
 import { mapLimit } from '@/lib/core/async'
 import { scanFailureMessage } from '@/lib/core/error-message'
-import { scanHeldTokens } from '@/lib/holdings'
-import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/holdings'
+import { scanHeldTokens } from '@/lib/inventory/holdings'
+import type { CollapsedWallet, ScanWallet, WalletScan } from '@/lib/inventory/holdings'
 import { fetchEthUsdtPrice } from '@/lib/chain/price'
 
 export type RarityState =

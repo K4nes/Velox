@@ -32,14 +32,14 @@ import {
   rarityTierOf,
   searchHoldings,
   sortHoldings,
-} from '@/lib/portfolio'
-import type { CollapsedWallet, WalletScan } from '@/lib/holdings'
+} from '@/lib/inventory/portfolio'
+import type { CollapsedWallet, WalletScan } from '@/lib/inventory/holdings'
 import type {
   HoldingSort,
   RarityTier,
   RarityTierFilter,
   ScanningHolding,
-} from '@/lib/portfolio'
+} from '@/lib/inventory/portfolio'
 import { cn } from '@/lib/utils'
 
 const TIER_FILTERS: readonly { key: RarityTierFilter; label: string }[] = [

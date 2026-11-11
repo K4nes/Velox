@@ -1,12 +1,12 @@
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useLiveRead } from '@/hooks/use-live-read'
-import { resolveScanWallets, scanHeldTokens } from '@/lib/holdings'
+import { resolveScanWallets, scanHeldTokens } from '@/lib/inventory/holdings'
 import { scanFailureMessage, toMessage } from '@/lib/core/error-message'
-import type { HeldToken, WalletScan } from '@/lib/holdings'
+import type { HeldToken, WalletScan } from '@/lib/inventory/holdings'
 import { getCollection, slugFromUrl } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
-import { resolveScanTarget } from '@/lib/scan-target'
+import { resolveScanTarget } from '@/lib/inventory/scan-target'
 
 export type HoldingsScanState =
   | { status: 'idle' }
