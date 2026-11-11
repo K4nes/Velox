@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/use-wallets'
-import { ARM_TICK_MS, armWait } from '@/lib/arm-schedule'
+import { ARM_TICK_MS, armWait } from '@/lib/mint/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
 import { RpcConfigError } from '@/lib/chain/connections'
 import {
@@ -10,7 +10,7 @@ import {
 } from '@/lib/opensea/eligibility'
 import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { mintFailureMessage, toMessage } from '@/lib/core/error-message'
-import { traceMint } from '@/lib/mint-trace'
+import { traceMint } from '@/lib/mint/mint-trace'
 import { mintForWallet } from '@/lib/mint'
 import {
   callTransaction,
@@ -33,7 +33,7 @@ import {
   rowsFromCheck,
   stageStatusFor,
   taskView,
-} from '@/lib/mint-task'
+} from '@/lib/mint/mint-task'
 import type {
   CheckResult,
   RunStatus,
@@ -41,7 +41,7 @@ import type {
   TaskListItem,
   TaskPatch,
   WalletRun,
-} from '@/lib/mint-task'
+} from '@/lib/mint/mint-task'
 import {
   buildMintTransaction,
   getDrop,

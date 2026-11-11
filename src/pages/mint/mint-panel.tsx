@@ -20,8 +20,8 @@ import {
   countdownLabel,
   ethLabel,
   mintModes,
-} from '@/lib/mint-task'
-import type { Task, TaskPatch, TaskView } from '@/lib/mint-task'
+} from '@/lib/mint/mint-task'
+import type { Task, TaskPatch, TaskView } from '@/lib/mint/mint-task'
 import { cn } from '@/lib/utils'
 
 type MintPanelProps = {

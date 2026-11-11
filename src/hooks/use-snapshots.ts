@@ -1,6 +1,6 @@
 import { useStore } from '@/hooks/use-store'
-import { listSnapshots } from '@/lib/snapshots'
-import type { EligibilitySnapshot } from '@/lib/snapshots'
+import { listSnapshots } from '@/lib/mint/snapshots'
+import type { EligibilitySnapshot } from '@/lib/mint/snapshots'
 
 export function useSnapshots(): {
   snapshots: EligibilitySnapshot[]

@@ -4,7 +4,7 @@ import { Plus, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-import type { TaskListItem, TaskStatus } from '@/lib/mint-task'
+import type { TaskListItem, TaskStatus } from '@/lib/mint/mint-task'
 
 type TaskListProps = {
   items: TaskListItem[]

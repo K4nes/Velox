@@ -8,8 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { MINT_COLUMNS, RUN_LABEL, RUN_TONE } from '@/lib/mint-task'
-import type { RunStatus, WalletRun } from '@/lib/mint-task'
+import { MINT_COLUMNS, RUN_LABEL, RUN_TONE } from '@/lib/mint/mint-task'
+import type { RunStatus, WalletRun } from '@/lib/mint/mint-task'
 import { cn } from '@/lib/utils'
 
 type RunTableProps = {

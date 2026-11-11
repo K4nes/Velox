@@ -4,8 +4,8 @@ import { useLiveRead } from '@/hooks/use-live-read'
 import { checkEligibility } from '@/lib/opensea/eligibility'
 import type { EligibilityTableState } from '@/lib/opensea/eligibility'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
-import { buildSnapshotPayload, marketplaceFromSource } from '@/lib/snapshots'
-import type { EligibilitySnapshotPayload } from '@/lib/snapshots'
+import { buildSnapshotPayload, marketplaceFromSource } from '@/lib/mint/snapshots'
+import type { EligibilitySnapshotPayload } from '@/lib/mint/snapshots'
 
 export function useEligibilityCheck(onResetSaveError: () => void) {
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])

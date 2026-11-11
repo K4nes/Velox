@@ -9,8 +9,8 @@ import {
   deleteSnapshot,
   saveSnapshot,
   updateSnapshot,
-} from '@/lib/snapshots'
-import type { EligibilitySnapshot, EligibilitySnapshotPayload } from '@/lib/snapshots'
+} from '@/lib/mint/snapshots'
+import type { EligibilitySnapshot, EligibilitySnapshotPayload } from '@/lib/mint/snapshots'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
