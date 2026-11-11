@@ -1,7 +1,6 @@
 import { Gavel, RefreshCw } from 'lucide-react'
 
 import { EmptyState } from '@/components/empty-state'
-import { SummaryRow } from '@/components/summary-row'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -21,6 +20,17 @@ function formatAge(sec: number, now: number): string {
   if (diff < 60) return 'just now'
   if (diff >= 3_600) return `${Math.floor(diff / 3_600)}h ago`
   return `${Math.floor(diff / 60)}m ago`
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+        {label}
+      </dt>
+      <dd className="text-[13px] font-medium tabular-nums">{value}</dd>
+    </div>
+  )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -100,7 +110,7 @@ export function SellRail({
 
         <Separator />
 
-        <div className="flex flex-col gap-3">
+        <dl className="flex flex-col gap-3">
           <SummaryRow
             label="Gross proceeds"
             value={`${formatAmount(plan.totals.grossWei, decimals)} ${symbol}`}
@@ -113,7 +123,7 @@ export function SellRail({
                 : `0 ${symbol}`
             }
           />
-        </div>
+        </dl>
 
         <Separator />
 
