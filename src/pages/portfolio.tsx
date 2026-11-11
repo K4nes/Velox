@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { TokenImage } from '@/components/token-image'
 import { WalletSelect } from '@/components/wallet-select'
-import { usePortfolioScan } from '@/hooks/use-portfolio-scan'
+import { usePortfolioScan } from '@/hooks/scan/use-portfolio-scan'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import {
   countRarityTiers,

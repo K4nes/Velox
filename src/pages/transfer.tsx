@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import { useTransferRun } from '@/hooks/run/use-transfer-run'
-import { useTransferScan } from '@/hooks/use-transfer-scan'
+import { useTransferScan } from '@/hooks/scan/use-transfer-scan'
 import { Inventory } from '@/pages/transfer/inventory'
 import { TransferRail } from '@/pages/transfer/rail'
 

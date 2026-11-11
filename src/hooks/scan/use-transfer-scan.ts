@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useHoldingsScan } from '@/hooks/use-holdings-scan'
+import { useHoldingsScan } from '@/hooks/scan/use-holdings-scan'
 import { useSelection } from '@/hooks/use-selection'
 import { useWalletGroups } from '@/hooks/use-wallets'
 import { shortAddress } from '@/lib/core/format'

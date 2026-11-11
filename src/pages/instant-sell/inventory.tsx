@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { HoldingsScanState } from '@/hooks/use-holdings-scan'
+import type { HoldingsScanState } from '@/hooks/scan/use-holdings-scan'
 import { formatAmount, formatExpiry, shortAddress } from '@/lib/core/format'
 import type { CollectionOffer, UncoveredReason } from '@/lib/offers/instant-sell'
 import type { HeldToken } from '@/lib/inventory/holdings'
