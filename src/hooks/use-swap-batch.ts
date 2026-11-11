@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { toMessage } from '@/lib/core/error-message'
-import { resolveSwapBatch } from '@/lib/swap-batch'
-import type { SwapBatch } from '@/lib/swap-batch'
-import { amountFor, amountKey, specKey } from '@/lib/swap-spec'
-import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
+import { resolveSwapBatch } from '@/lib/swap/swap-batch'
+import type { SwapBatch } from '@/lib/swap/swap-batch'
+import { amountFor, amountKey, specKey } from '@/lib/swap/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
 import { listWallets } from '@/lib/wallet/wallets'
 
 const DEBOUNCE_MS = 300

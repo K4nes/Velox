@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 import type { SwapPreview } from '@/hooks/use-swap-preview'
-import type { SwapBatch } from '@/lib/swap-batch'
-import type { SwapRunSummary } from '@/lib/swap-run'
-import { formatSwapAmount, routeLabel } from '@/lib/swap-spec'
-import type { SwapSpec } from '@/lib/swap-spec'
+import type { SwapBatch } from '@/lib/swap/swap-batch'
+import type { SwapRunSummary } from '@/lib/swap/swap-run'
+import { formatSwapAmount, routeLabel } from '@/lib/swap/swap-spec'
+import type { SwapSpec } from '@/lib/swap/swap-spec'
 
 const OPERATION_LABEL: Record<SwapPreview['operation'], string> = {
   wrap: 'Wrap',

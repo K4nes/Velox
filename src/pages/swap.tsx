@@ -9,8 +9,8 @@ import {
   explainSwapBlockers,
   withAmountText,
   withMaxAmount,
-} from '@/lib/swap-spec'
-import type { SwapAmounts, SwapSpec } from '@/lib/swap-spec'
+} from '@/lib/swap/swap-spec'
+import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
 import { SwapComposer } from '@/pages/swap/composer'
 import { SwapRail } from '@/pages/swap/rail'
 import { SwapWallets } from '@/pages/swap/wallets'
