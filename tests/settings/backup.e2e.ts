@@ -51,7 +51,7 @@ test('export writes one JSON document and a fresh store restores it', async ({
   await seedVelox(browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [openseaConnection('e2e-opensea-1234')],
+    connections: [openseaConnection('backup-key-1234')],
     pnlRecords: [record],
   })
   await app.open('/settings')
@@ -80,7 +80,7 @@ test('export writes one JSON document and a fresh store restores it', async ({
   ])
   expect(backup.pnlRecords.map((row) => row.id)).toEqual([record.id])
   const openSea = backup.connections.find((row) => row.id === 'opensea')
-  expect(openSea?.credentials[0]?.value).toBe('e2e-opensea-1234')
+  expect(openSea?.credentials[0]?.value).toBe('backup-key-1234')
 
   // A fresh install: the same stores, emptied, so the restore has nothing to
   // merge with except the connections migration seeded.
