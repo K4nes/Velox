@@ -6,12 +6,12 @@ use serde_json::Value;
 // A sign-in is four upstream calls and can wait out a 15s deadline, so it runs
 // off the thread that paints the window.
 #[tauri::command]
-async fn sign_in_nonce(address: String) -> Value {
+async fn auth_nonce(address: String) -> Value {
   run(move || auth::nonce(&auth::Upstream::default(), &address)).await
 }
 
 #[tauri::command]
-async fn sign_in_token(message: String, signature: String) -> Value {
+async fn auth_token(message: String, signature: String) -> Value {
   run(move || auth::token(&auth::Upstream::default(), &message, &signature)).await
 }
 
@@ -26,7 +26,7 @@ async fn run(task: impl FnOnce() -> auth::Reply + Send + 'static) -> Value {
 
 pub fn run_app() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![sign_in_nonce, sign_in_token])
+    .invoke_handler(tauri::generate_handler![auth_nonce, auth_token])
     .run(tauri::generate_context!())
     .expect("failed to start Velox");
 }
