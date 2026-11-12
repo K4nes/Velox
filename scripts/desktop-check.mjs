@@ -40,12 +40,26 @@ async function connect() {
   const socket = new WebSocket(page.webSocketDebuggerUrl)
   let nextId = 0
   const pending = new Map()
+  const violations = []
+  const events = []
+  const waitForEvent = (method) =>
+    new Promise((resolve) => events.push({ method, resolve }))
 
   socket.addEventListener('message', (event) => {
     let message
     try {
       message = JSON.parse(event.data)
     } catch {
+      return
+    }
+    if (message.method === 'Log.entryAdded') {
+      const text = message.params?.entry?.text ?? ''
+      if (text.includes('Content Security Policy')) violations.push(text)
+      return
+    }
+    const waiting = events.findIndex((entry) => entry.method === message.method)
+    if (waiting !== -1) {
+      events.splice(waiting, 1)[0].resolve()
       return
     }
     const settle = pending.get(message.id)
@@ -58,6 +72,10 @@ async function connect() {
     socket.addEventListener('open', resolve, { once: true })
     socket.addEventListener('error', reject, { once: true })
   })
+  // CSP refusals reach the Log domain, and only for entries after it is enabled,
+  // so the listener starts here rather than after the first navigation.
+  socket.send(JSON.stringify({ id: (nextId += 1), method: 'Log.enable' }))
+  socket.send(JSON.stringify({ id: (nextId += 1), method: 'Page.enable' }))
 
   const evaluate = async (expression) => {
     nextId += 1
@@ -80,10 +98,20 @@ async function connect() {
     return reply.result?.result?.value
   }
 
-  return { evaluate, close: () => socket.close() }
+  // The policy applies to the document's own load, so a refusal at first paint is
+  // only observable when the page loads after the Log domain is on.
+  const reload = async () => {
+    const loaded = waitForEvent('Page.loadEventFired')
+    socket.send(JSON.stringify({ id: (nextId += 1), method: 'Page.reload' }))
+    await loaded
+    // The first render lands after the load event, and the checks read it.
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  }
+
+  return { evaluate, reload, violations, close: () => socket.close() }
 }
 
-async function drive(evaluate) {
+async function drive(evaluate, violations) {
   const page = await evaluate(`({
     origin: location.origin,
     path: location.pathname,
@@ -139,7 +167,48 @@ async function drive(evaluate) {
   check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
 
+  await securityCheck(evaluate, violations)
   await priceCheck(evaluate)
+}
+
+// The app declares its own ACL manifest, so a registered command the capability
+// does not grant has to be refused before its handler runs. `core:window:destroy`
+// is such a command, and the label it is aimed at names no window, so nothing
+// breaks if the gate ever stops applying. The image probe uses the host a
+// Settings provider mark comes from.
+async function securityCheck(evaluate, violations) {
+  const refused = await evaluate(`(async () => {
+    try {
+      const reply = await window.__TAURI_INTERNALS__.invoke('plugin:window|destroy', {
+        label: 'no-such-window'
+      })
+      return { resolved: JSON.stringify(reply) }
+    } catch (failure) {
+      return { rejected: String(failure) }
+    }
+  })()`)
+  check(
+    'a command the capability does not grant is rejected',
+    refused.rejected?.includes('not allowed') === true,
+    refused.rejected ?? `resolved with ${refused.resolved}`
+  )
+
+  const mark = await evaluate(`new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve('loaded')
+    image.onerror = () => resolve('failed')
+    setTimeout(() => resolve('timed out'), 8000)
+    image.src = 'https://api.iconify.design/token-branded/ankr.svg'
+  })`)
+  // This check is about the policy, not the network: a machine with no route
+  // passes when nothing was refused, and the detail says which case it was.
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const refusedByPolicy = violations.some((text) => text.includes('api.iconify.design'))
+  check(
+    'the policy allows the provider-mark host',
+    mark === 'loaded' || !refusedByPolicy,
+    refusedByPolicy ? 'refused by the policy' : mark
+  )
 }
 
 async function priceCheck(evaluate) {
@@ -259,7 +328,13 @@ if (phase !== 'drive' && phase !== 'restart') {
 let session
 try {
   session = await connect()
-  await (phase === 'restart' ? restart(session.evaluate) : drive(session.evaluate))
+  await session.reload()
+  await (phase === 'restart' ? restart(session.evaluate) : drive(session.evaluate, session.violations))
+  check(
+    'the console shows no content-security violation',
+    session.violations.length === 0,
+    session.violations.join(' | ') || 'none'
+  )
 } catch (failure) {
   console.error(`FAIL ${failure.message}`)
   process.exit(1)
