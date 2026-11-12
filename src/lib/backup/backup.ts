@@ -203,6 +203,10 @@ function checkConnection(row: Record<string, unknown>): string | null {
     ) {
       return 'has an endpoint with no chain or url'
     }
+    // The endpoint pane reads `probe.status` on anything except null.
+    if (row.endpoints.some((endpoint) => !isProbe(endpoint.probe))) {
+      return 'has an endpoint with no probe state'
+    }
   }
   // The provider list is sorted by this, and a missing value leaves the order
   // undefined instead of failing.
@@ -221,7 +225,11 @@ function checkPnlRecord(row: Record<string, unknown>): string | null {
   if (typeof row.day !== 'string') return 'has no day'
   if (typeof row.contract !== 'string') return 'has no contract'
   if (!Array.isArray(row.wallets)) return 'has no wallet list'
-  if (typeof row.netPnl !== 'string') return 'has no net PnL'
+  if (!row.wallets.every((wallet) => typeof wallet === 'string')) {
+    return 'has a wallet list that is not addresses'
+  }
+  // The monthly table converts this with BigInt while it renders.
+  if (!isAmount(row.netPnl)) return 'has a net PnL that is not an amount'
   // A missing quote formats as `$NaN` on the monthly table, and a missing
   // completeness flag claims a partial read was complete.
   if (row.ethPriceUsd !== null && typeof row.ethPriceUsd !== 'number') {
@@ -230,13 +238,53 @@ function checkPnlRecord(row: Record<string, unknown>): string | null {
   if (typeof row.truncated !== 'boolean' || typeof row.unpriced !== 'boolean') {
     return 'has no read completeness flags'
   }
-  if (
-    row.breakdown !== undefined &&
-    row.breakdown !== null &&
-    !isRecord(row.breakdown)
-  ) {
-    return 'has a breakdown that is not an object'
+  if (row.breakdown !== undefined) {
+    const problem = checkBreakdown(row.breakdown)
+    if (problem !== null) return problem
   }
   if (typeof row.createdAt !== 'number') return 'has no creation time'
   return null
+}
+
+// The split is versioned and readers branch on `v` being present, so both
+// shapes are checked for the amounts and counts they hand to BigInt.
+function checkBreakdown(value: unknown): string | null {
+  if (!isRecord(value)) return 'has a breakdown that is not an object'
+
+  if ('v' in value) {
+    if (value.v !== 2) return 'has an unknown breakdown version'
+    if (
+      !isAmount(value.realized) ||
+      !isAmount(value.spent) ||
+      !isAmount(value.basis)
+    ) {
+      return 'has a breakdown with no amounts'
+    }
+  } else if (!isAmount(value.realized) || !isAmount(value.invested)) {
+    return 'has a breakdown with no amounts'
+  }
+
+  if (!isCount(value.held) || !isCount(value.sold)) {
+    return 'has a breakdown with no counts'
+  }
+  return null
+}
+
+function isAmount(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  try {
+    BigInt(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isProbe(value: unknown): boolean {
+  if (value === null) return true
+  return isRecord(value) && (value.status === 'ok' || value.status === 'fail')
 }

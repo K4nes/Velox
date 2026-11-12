@@ -369,6 +369,79 @@ function backupDocument(fields: BackupFields = {}): string {
   })
 }
 
+test('values the pages cannot read are refused', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Value Check')
+  const wallet = walletRow({
+    label: 'value',
+    privateKey: generatePrivateKey(),
+    folderId: folder.id,
+  })
+  const record = pnlRecordFixture({ name: 'Value Collection' })
+
+  // The endpoint pane reads `probe.status` on anything that is not null, so an
+  // endpoint without the key has to be refused rather than applied.
+  const noProbe: Record<string, unknown> = { ...robinhoodRpc(RPC_URL) }
+  noProbe.endpoints = (noProbe.endpoints as Record<string, unknown>[]).map(
+    (endpoint) => {
+      const copy: Record<string, unknown> = { ...endpoint }
+      delete copy.probe
+      return copy
+    },
+  )
+
+  const input = browser.locator('input[type=file]')
+  await app.open('/settings')
+
+  await input.setInputFiles(
+    await writeBackupFile(
+      'bad-amount.json',
+      backupDocument({
+        folders: [folder],
+        wallets: [wallet],
+        pnlRecords: [{ ...record, netPnl: 'oops' }],
+      }),
+    ),
+  )
+  await expect(
+    screen.getByText(/net PnL that is not an amount/),
+  ).toBeVisible()
+
+  await input.setInputFiles(
+    await writeBackupFile(
+      'bad-breakdown.json',
+      backupDocument({
+        folders: [folder],
+        wallets: [wallet],
+        pnlRecords: [{ ...record, breakdown: null }],
+      }),
+    ),
+  )
+  await expect(
+    screen.getByText(/breakdown that is not an object/),
+  ).toBeVisible()
+
+  await input.setInputFiles(
+    await writeBackupFile(
+      'bad-probe.json',
+      backupDocument({
+        folders: [folder],
+        wallets: [wallet],
+        connections: [noProbe],
+      }),
+    ),
+  )
+  await expect(
+    screen.getByText(/endpoint with no probe state/),
+  ).toBeVisible()
+
+  await expect(screen.getByRole('button', 'Import')).not.toBeVisible()
+  expect(await rowCount(browser, 'pnl-records')).toBe(0)
+})
+
 async function writeBackupFile(name: string, text: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true })
   const path = join(BACKUP_DIR, name)

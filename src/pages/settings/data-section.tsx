@@ -22,6 +22,9 @@ type Pending = { fileName: string; backup: Backup }
 
 export function DataSection({ onImported }: DataSectionProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  // Two picks can be in flight when the operator corrects a choice fast, and
+  // only the last one may decide what the preview shows.
+  const selectionRef = useRef(0)
   const [busy, setBusy] = useState(false)
   const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,12 +43,16 @@ export function DataSection({ onImported }: DataSectionProps) {
   }
 
   async function choose(file: File) {
+    const selection = selectionRef.current + 1
+    selectionRef.current = selection
     setError(null)
     setPending(null)
     try {
       const backup = parseBackup(await file.text())
+      if (selectionRef.current !== selection) return
       setPending({ fileName: file.name, backup })
     } catch (failure) {
+      if (selectionRef.current !== selection) return
       setError(toMessage(failure))
     }
   }
