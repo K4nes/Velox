@@ -60,9 +60,9 @@ Cheapest check that settles the change, in order:
 
 CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
 `node scripts/check-version-literal.mjs`, `node scripts/check-lockfile.mjs`,
-`node scripts/check-workflow-secrets.mjs` and the PR title check, and gates
-`cargo fmt --check` and `cargo clippy -D warnings` for the crate, which settle style rather
-than behaviour.
+`node scripts/check-workflow-secrets.mjs`, `node scripts/check-workflow-width.mjs` and the PR
+title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
+settle style rather than behaviour.
 
 ## Layout
 
