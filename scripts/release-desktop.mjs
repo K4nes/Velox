@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildManifest, releaseNotes, verifyRelease } from './latest-json.mjs'
+import { verifyMinisign } from './minisign.mjs'
 
 const ROOT = join(import.meta.dirname, '..')
 const BUNDLE_DIR = join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
@@ -84,13 +85,6 @@ function locateInstaller(version) {
   if (signature === '') {
     fail(`${signaturePath} is empty`)
   }
-  // A plain `npm run build:desktop` overwrites the installer and leaves the old .sig
-  // behind, so the signature would no longer describe the bytes on disk.
-  if (statSync(installer).mtimeMs > statSync(signaturePath).mtimeMs) {
-    fail(
-      `${artifactName} was written after its signature; run npm run release:desktop to sign the current build`,
-    )
-  }
 
   return { installer, signaturePath, artifactName, signature }
 }
@@ -107,30 +101,6 @@ function readProductVersion(installer) {
     { encoding: 'utf8' },
   )
   return output.trim()
-}
-
-// The plugin checks the signature at install time; this catches a build signed by a
-// different key pair before the artifact is uploaded.
-function checkSigningKey(pubkey, signature) {
-  const publicText = Buffer.from(pubkey, 'base64').toString('utf8').split('\n')
-  if (!publicText[0].startsWith('untrusted comment: minisign public key:')) {
-    fail('plugins.updater.pubkey is not a minisign public key')
-  }
-
-  const publicKey = Buffer.from(publicText[1] ?? '', 'base64')
-  const signatureText = Buffer.from(signature, 'base64').toString('utf8').split('\n')
-  const signatureBytes = Buffer.from(signatureText[1] ?? '', 'base64')
-  if (publicKey.length < 10 || signatureBytes.length < 10) {
-    fail('plugins.updater.pubkey or the update signature is malformed')
-  }
-
-  const publicKeyId = publicKey.subarray(2, 10).toString('hex')
-  const signatureKeyId = signatureBytes.subarray(2, 10).toString('hex')
-  if (publicKeyId !== signatureKeyId) {
-    fail(
-      `the installer was signed by key ${signatureKeyId} but plugins.updater.pubkey is ${publicKeyId}`,
-    )
-  }
 }
 
 function readManifest() {
@@ -156,7 +126,16 @@ function main() {
   }
 
   const artifacts = locateInstaller(version)
-  checkSigningKey(pubkey, artifacts.signature)
+  let signed
+  try {
+    signed = verifyMinisign({
+      content: readFileSync(artifacts.installer),
+      signatureBox: artifacts.signature,
+      pubkey,
+    })
+  } catch (error) {
+    fail(describe(error))
+  }
   const artifactVersion = readProductVersion(artifacts.installer)
   const manifest = verifyOnly
     ? readManifest()
@@ -172,7 +151,7 @@ function main() {
   try {
     verifyRelease({
       manifest,
-      signature: artifacts.signature,
+      signed,
       artifactName: artifacts.artifactName,
       artifactVersion,
       endpoint,
