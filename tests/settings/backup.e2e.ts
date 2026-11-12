@@ -18,6 +18,7 @@ import { mockCollection, mockHoldings } from '../support/opensea'
 import { mockRpc, word } from '../support/rpc'
 import { scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
+import { clearVeloxStores, countVeloxRows } from '../support/db'
 
 type Page = Parameters<typeof seedVelox>[0]
 
@@ -127,9 +128,7 @@ test('a backup from a newer version is refused and writes nothing', async ({
     folderId: folder.id,
   })
 
-  await app.open('/settings')
-  await seedVelox(browser, { folders: [folder], wallets: [wallet] })
-  await app.open('/settings')
+  await seedProfile(app, browser, { folders: [folder], wallets: [wallet] })
 
   const file = await writeBackupFile('newer.json', backupDocument({ version: 2 }))
   await browser.locator('input[type=file]').setInputFiles(file)
@@ -153,9 +152,7 @@ test('a damaged document is refused and leaves the store untouched', async ({
     folderId: folder.id,
   })
 
-  await app.open('/settings')
-  await seedVelox(browser, { folders: [folder], wallets: [wallet] })
-  await app.open('/settings')
+  await seedProfile(app, browser, { folders: [folder], wallets: [wallet] })
 
   const input = browser.locator('input[type=file]')
 
@@ -192,13 +189,11 @@ test('a PnL row saved with no collection name still round-trips', async ({
     folderId: folder.id,
   })
 
-  await app.open('/settings')
-  await seedVelox(browser, {
+  await seedProfile(app, browser, {
     folders: [folder],
     wallets: [wallet],
     pnlRecords: [pnlRecordFixture({ name: '' })],
   })
-  await app.open('/settings')
 
   const download = await browser.waitForDownload(() =>
     screen.getByRole('button', 'Export').click(),
@@ -350,6 +345,18 @@ type BackupFields = {
   version?: number
 }
 
+type App = { open: (path: string) => Promise<unknown> }
+
+async function seedProfile(
+  app: App,
+  page: Page,
+  seed: Parameters<typeof seedVelox>[1],
+): Promise<void> {
+  await app.open('/settings')
+  await seedVelox(page, seed)
+  await app.open('/settings')
+}
+
 function backupDocument(fields: BackupFields = {}): string {
   return JSON.stringify({
     app: 'velox',
@@ -370,42 +377,9 @@ async function writeBackupFile(name: string, text: string): Promise<string> {
 }
 
 async function clearStores(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    const opened = Promise.withResolvers<IDBDatabase>()
-    const request = indexedDB.open('velox')
-    request.onsuccess = () => opened.resolve(request.result)
-    request.onerror = () => opened.reject(request.error)
-    const db = await opened.promise
-
-    const stores = ['folders', 'wallets', 'connections', 'pnl-records']
-    const done = Promise.withResolvers<void>()
-    const transaction = db.transaction(stores, 'readwrite')
-    for (const store of stores) {
-      transaction.objectStore(store).clear()
-    }
-    transaction.oncomplete = () => done.resolve()
-    transaction.onerror = () => done.reject(transaction.error)
-    transaction.onabort = () => done.reject(transaction.error)
-    await done.promise
-    db.close()
-  })
+  await page.evaluate(clearVeloxStores, undefined)
 }
 
 async function rowCount(page: Page, store: string): Promise<number> {
-  return page.evaluate(async (name) => {
-    const opened = Promise.withResolvers<IDBDatabase>()
-    const request = indexedDB.open('velox')
-    request.onsuccess = () => opened.resolve(request.result)
-    request.onerror = () => opened.reject(request.error)
-    const db = await opened.promise
-
-    const count = Promise.withResolvers<number>()
-    const transaction = db.transaction(name, 'readonly')
-    const countRequest = transaction.objectStore(name).count()
-    countRequest.onsuccess = () => count.resolve(countRequest.result)
-    countRequest.onerror = () => count.reject(countRequest.error)
-    const total = await count.promise
-    db.close()
-    return total
-  }, store)
+  return page.evaluate(countVeloxRows, store)
 }
