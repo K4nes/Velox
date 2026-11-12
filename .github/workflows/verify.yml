@@ -1,0 +1,38 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    # The installer build and the browser suite are both verified on Windows,
+    # so the job runs there rather than on a Linux runner it has never seen.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci
+
+      # The repo's own gates, in the order AGENTS.md documents them.
+      - run: npm run build
+      - run: npm run lint
+
+      # Two lists that used to drift by hand: the command table, and the
+      # commit subject format.
+      - run: node scripts/check-command-table.mjs
+      - name: commit subject
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-commit-subject.mjs
+
+      # Deliberately no E2E_* secrets. The mocked lane has to pass without
+      # them, and a test that quietly needs one fails here instead of on a
+      # maintainer's machine.
+      - run: npx e2e run
