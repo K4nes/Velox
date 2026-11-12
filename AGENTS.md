@@ -163,6 +163,13 @@ The desktop installer has two independent signing chains:
 `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
 `npm run build:desktop` keeps producing a plain installer with no `.sig`.
 
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds through
+`npm run release:desktop`, re-checks the artifacts with `npm run release:verify`, and opens
+a draft release holding the installer, its `.sig` and `latest.json`. It never publishes.
+The tag must equal `v` plus the package version. The job fails rather than ship unsigned
+when the updater key is missing, when `WINDOWS_CERTIFICATE` arrives without its password,
+and, once `VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent.
+
 The updater reads its own keys from `tauri-plugin-updater`'s `config.rs`: `pubkey`,
 `endpoints`, `requireSignedVersion`, `windows.installMode`. `@tauri-apps/cli`'s
 `config.schema.json` describes only `bundle.createUpdaterArtifacts`, so a key absent from the

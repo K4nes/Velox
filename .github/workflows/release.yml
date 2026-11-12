@@ -1,0 +1,137 @@
+name: release
+
+# A pushed `vX.Y.Z` tag builds the installer, signs it, and opens a draft
+# release. Nothing is published, so the updater's `latest.json` never points
+# at a half-built version: a person publishes the draft.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    # The installer and the browser suite are verified on Windows in
+    # `verify.yml`, so the release builds on the same runner.
+    runs-on: windows-latest
+    # The certificate pair stays at job level because the import step's `if:`
+    # reads it. The updater key is passed to the two steps that need it, so an
+    # install script cannot reach it.
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - run: npm ci
+
+      # Two gates before the build costs five minutes. The tag must name the
+      # version `package.json` holds, because the manifest points at
+      # `releases/download/v<version>/`; and both signing chains must be whole.
+      - name: check the tag against the package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "tag $env:GITHUB_REF_NAME does not match v$version"
+          }
+          "VELOX_VERSION=$version" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # Without the updater key no artifact is signed, and the installed app
+      # refuses an unsigned version. A half-configured certificate is a
+      # mistake, not a request to ship unsigned, so it fails here too.
+      - name: check the signing secrets
+        shell: pwsh
+        env:
+          REQUIRE_AUTHENTICODE: ${{ vars.VELOX_REQUIRE_AUTHENTICODE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw 'TAURI_SIGNING_PRIVATE_KEY is not set'
+          }
+          if ($env:WINDOWS_CERTIFICATE -and
+            -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            throw 'WINDOWS_CERTIFICATE_PASSWORD is not set'
+          }
+          $require = $env:REQUIRE_AUTHENTICODE -eq 'true'
+          if (-not $env:WINDOWS_CERTIFICATE -and $require) {
+            throw 'VELOX_REQUIRE_AUTHENTICODE needs WINDOWS_CERTIFICATE'
+          }
+
+      # The bundler signs through the Windows certificate store, so the `.pfx`
+      # is imported first. A failed import must fail the job: an empty
+      # thumbprint leaves the build unsigned without a warning.
+      - name: import the Authenticode certificate
+        if: env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:RUNNER_TEMP 'velox.pfx'
+          try {
+            $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+            [IO.File]::WriteAllBytes($path, $bytes)
+            $password = $env:WINDOWS_CERTIFICATE_PASSWORD
+            $secure = ConvertTo-SecureString $password -AsPlainText -Force
+            $import = @{
+              FilePath = $path
+              CertStoreLocation = 'Cert:\CurrentUser\My'
+              Password = $secure
+            }
+            $cert = Import-PfxCertificate @import
+          } finally {
+            Remove-Item $path -Force -ErrorAction SilentlyContinue
+          }
+          if (-not $cert.Thumbprint) {
+            throw 'the certificate has no thumbprint'
+          }
+          "VELOX_WIN_CERT_THUMBPRINT=$($cert.Thumbprint)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # The script runs the pinned CLI from `node_modules`, not a global one,
+      # and refuses a missing key, a signature it cannot verify, or a manifest
+      # whose version or URL disagrees with the artifact.
+      - name: build the installer, its signature and the manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
+            ${{ secrets.UPDATER_KEY_PASSWORD }}
+        run: npm run release:desktop
+
+      # The check a release owner runs by hand, on the bytes this job uploads.
+      - run: npm run release:verify
+
+      # The manifest already carries the CHANGELOG notes, so the release body
+      # and the update toast say the same thing. `--draft` is what keeps the
+      # updater from seeing this version.
+      - name: open the draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $bundle = 'src-tauri/target/release/bundle/nsis'
+          $name = "Velox_$($env:VELOX_VERSION)_x64-setup.exe"
+          $installer = Join-Path $bundle $name
+          $signature = "$installer.sig"
+          $manifest = Join-Path $bundle 'latest.json'
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          (Get-Content $manifest -Raw | ConvertFrom-Json).notes |
+            Out-File -FilePath $notes -Encoding utf8
+          $arguments = @(
+            'release', 'create', $tag,
+            '--draft', '--verify-tag',
+            '--title', "Velox $tag",
+            '--notes-file', $notes,
+            $installer, $signature, $manifest
+          )
+          gh @arguments
