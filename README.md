@@ -11,14 +11,17 @@
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome" /></a>
 </p>
 
-Velox is a local web console for running NFT operations across a set of EVM wallets
-without switching between tabs. Mint tasks, eligibility checks, PnL tracking, portfolio
+Velox is a console for running NFT operations across a set of EVM wallets without
+switching between tabs. It ships as a Windows desktop app, and the same code runs in a
+browser from a Vite dev server. Mint tasks, eligibility checks, PnL tracking, portfolio
 scans, bulk listings, offer sales, transfers and swaps all read the same wallet list and
 the same provider settings.
 
-It runs on your machine. Wallet keys are stored in the browser and signing happens
-locally, so there is no account, no upload and no remote backend — just a Vite app with
-three small server-side routes for the calls a browser cannot make alone.
+It runs on your machine. Wallet keys live in the app's own store and signing happens
+locally, so there is no account, no upload and no remote backend. Some calls cannot happen
+in the window alone: the sign-in chain needs an upstream cookie, and the quote needs a key
+the bundle must not carry. In the installed app those calls run as three in-app commands,
+and in the web lane they stay as routes on the dev server.
 
 ## Contents
 
@@ -37,9 +40,11 @@ three small server-side routes for the calls a browser cannot make alone.
 
 ## Requirements
 
-- Node `^20.19` or `>=22.12` (the engine range Vite 8 declares) and npm.
+- Windows, for the installed app; the installer builds for x64.
+- Node `^20.19` or `>=22.12` (the engine range Vite 8 declares) and npm, for the dev server
+  and for building.
 - Network access to OpenSea, Relay, CoinMarketCap and the RPC endpoints you configure.
-- A browser with IndexedDB. Chromium or Firefox is fine.
+- A browser with IndexedDB, for the web lane. Chromium or Firefox is fine.
 
 ## Installation
 
@@ -49,8 +54,10 @@ cd velox
 npm install
 ```
 
-There is no published npm package. The desktop build produces a Windows installer; see
-[Desktop app and updates](#desktop-app-and-updates).
+There is no published npm package. Install the Windows app from the repository's releases
+page, or build the installer from source; see
+[Desktop app and updates](#desktop-app-and-updates). The clone above is for the web lane
+and for that build.
 
 Optionally, create `.env.local` to give the dev server a fallback price key:
 
@@ -59,23 +66,29 @@ CMC_API_KEY=your_coinmarketcap_key
 ```
 
 `.env.local` is git-ignored. Stored keys are tried first; the environment key answers
-when none is stored or every stored key is rejected.
+when none is stored or every stored key is rejected. Only the dev server reads it, so an
+installed copy takes its key from Settings.
 
 ## Getting started
+
+Install the app, or run the web lane:
 
 ```bash
 npm run dev
 ```
 
-Open the printed URL (default `http://localhost:5173`). Two steps before the pages do
-anything useful:
+The dev server prints its URL (default `http://localhost:5173`). Two steps before the pages
+do anything useful:
 
 1. **Settings** — add an OpenSea API key. Most pages read OpenSea with it. Add a
    CoinMarketCap key and RPC endpoints to run the price and on-chain reads on your own
-   accounts.
+   accounts. The installed app carries no key inside it, so CoinMarketCap is the only way
+   it prices the PnL card.
 2. **Wallet Profiles** — import wallets, then pick the active chain.
 
-A fresh install opens on `/mint/tasks` with an empty wallet list.
+A fresh install opens on `/mint/tasks` with an empty wallet list. The installed app starts
+with an empty store of its own, so export the profile in the web lane and import it in the
+app to carry wallets, folders, connections and PnL records across.
 
 ## What you can do
 
@@ -103,9 +116,9 @@ Everything a user configures lives in **Settings**, not in the environment:
 | Item | Where | Notes |
 | --- | --- | --- |
 | OpenSea API key | Settings → Connections | Required by every page that reads OpenSea. Multiple keys rotate. |
-| CoinMarketCap key | Settings → Connections | Used for the ETH/USDT quote. Optional. |
+| CoinMarketCap key | Settings → Connections | Prices the ETH/USDT quote. Required in the installed app, optional in the web lane. |
 | RPC endpoints | Settings → Connections | Alchemy, Ankr or a custom URL, per chain. |
-| `CMC_API_KEY` | `.env.local` | Server-side fallback for the quote only. |
+| `CMC_API_KEY` | `.env.local` | Fallback for the quote on the dev server only. An installed copy never reads it. |
 
 ## Development
 
@@ -132,8 +145,8 @@ touched.
 - **Domain logic.** `src/lib/` holds the OpenSea, Seaport, Relay, PnL, transfer and wallet
   code. `src/hooks/` drives the long-running flows (scans, listings, mints, swaps) and
   their run state.
-- **Local API.** `server/` is a Vite plugin that mounts three routes on the dev and
-  preview servers:
+- **API calls, two lanes.** `server/` is a Vite plugin that mounts three routes on the dev
+  and preview servers:
   - `/api/auth/nonce` — the OpenSea SIWE message for an address.
   - `/api/auth/token` — verifies the signed message, mints an OpenSea token scoped
     `read:eligibility` with a one-day life, exchanges it for a short-lived access token,
@@ -143,7 +156,10 @@ touched.
 
   Each exists because it needs something the browser cannot hold: a server-side credential
   or an upstream cookie. Every other request goes from the browser straight to OpenSea,
-  Relay or an RPC endpoint.
+  Relay or an RPC endpoint. `src/lib/chain/transport.ts` owns the choice of lane: it calls
+  the route in the web lane and invokes the matching command (`auth_nonce`, `auth_token`,
+  `eth_usdt_price`) in the installed app. Both lanes return `{ status, body }`, so a caller
+  never branches on which one answered.
 - **Components.** `src/components/ui/` is the vendored shadcn and Animate UI library;
   `src/components/layout/` is page chrome; page-specific components live next to their
   page under `src/pages/<feature>/`.
@@ -163,14 +179,19 @@ text, so the Settings card asks the operator to keep it private.
 | IndexedDB `velox` | wallets (folder, label, address, private key), folders, eligibility snapshots, PnL records, provider connections |
 | `localStorage` | theme, active chain, cached card images |
 
+Both belong to whichever lane you run. The web lane keeps them in the browser profile for
+`localhost`. The installed app keeps them in its own webview profile at
+`%LOCALAPPDATA%\com.k4nes.velox`, a separate copy the browser cannot see.
+
 IndexedDB version and migrations live in `src/lib/db/`. PnL records carry a version
 field (`v`) on their nested `breakdown`; readers test that it is present, to tell the
 current split from the legacy `invested` shape.
 
 Two things to know before you put real assets in it:
 
-- **Private keys are stored unencrypted** in IndexedDB. Anyone with access to this browser
-  profile can read them. Use a dedicated profile, and wallets you are willing to expose.
+- **Private keys are stored unencrypted** in IndexedDB. Anyone with access to that browser
+  profile, or to the app's profile folder, can read them. Use a dedicated profile, and
+  wallets you are willing to expose.
 - The dev server has no authentication. It binds to localhost; do not expose it with
   `--host` or a tunnel.
 
@@ -192,6 +213,11 @@ It installs for the current user, so it needs no administrator prompt. Wallet, f
 PnL data lives in the app's IndexedDB, which survives an in-place update because the
 application identifier and the per-user install do not change. The desktop install keeps
 its own data, separate from the browser copy at `localhost`.
+
+**The uninstaller can delete the wallets.** The Windows uninstaller offers a "delete app
+data" box. That box removes `%LOCALAPPDATA%\com.k4nes.velox`, the folder that holds the
+wallets and the provider connections. Export the profile from Settings first, or leave the
+box clear.
 
 **The unsigned warning is expected.** Until an Authenticode certificate is configured,
 Windows SmartScreen shows "Windows protected your PC" with an unknown publisher. Choose

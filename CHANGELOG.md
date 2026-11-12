@@ -8,6 +8,8 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13
+
 ### Added
 
 - The installed app runs under an explicit content-security policy. It names the OpenSea,
@@ -134,7 +136,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/velox/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/K4nes/Velox/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/K4nes/velox/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/K4nes/velox/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/K4nes/velox/releases/tag/v0.1.0
