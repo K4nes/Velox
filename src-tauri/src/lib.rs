@@ -27,6 +27,8 @@ async fn run(task: impl FnOnce() -> auth::Reply + Send + 'static) -> Value {
 pub fn run_app() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![auth_nonce, auth_token])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .run(tauri::generate_context!())
         .expect("failed to start Velox");
 }
