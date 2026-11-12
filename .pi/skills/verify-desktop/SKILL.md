@@ -28,7 +28,7 @@ Confirm the shell is not elevated, then install silently.
 
 ```powershell
 ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)  # must be False
-Start-Process 'src-tauri\target\release\bundle\nsis\Velox_0.1.2_x64-setup.exe' -ArgumentList '/S' -Wait
+Start-Process 'src-tauri\target\release\bundle\nsis\Velox_<package.json version>_x64-setup.exe' -ArgumentList '/S' -Wait
 ```
 
 Done when `%LOCALAPPDATA%\Velox\Velox.exe` exists, the folder holds only `Velox.exe` and `uninstall.exe`, the Start-menu shortcut exists, the `HKCU` uninstall key reports the package version, and no `HKLM` uninstall key exists.

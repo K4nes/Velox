@@ -21,7 +21,7 @@ because the sign-in cookie cannot pass through the webview. The web lane's route
   browser.
 - `/api/price/eth-usdt` returns the CoinMarketCap ETH/USDT quote.
 
-All wallet signing happens in the browser with keys from IndexedDB.
+All wallet signing happens locally with keys from IndexedDB.
 
 ## Commands
 
@@ -73,7 +73,7 @@ settle style rather than behaviour.
 | `src/components/ui/` | Vendored shadcn + Animate UI primitives. |
 | `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`. |
 | `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `body-message`, `summary-row`, `run-status-cell`, `tx-hash-link`, `token-image`), plus the `dither-kit/` chart primitives, `lightswind/` toggle and `theme/` provider. |
-| `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage. |
+| `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage. `chain/transport.ts` is the one module that picks between a `/api/*` route and an in-app command, so a caller never branches on the lane. |
 | `src/hooks/` | Long-running flows and their run state (scans, listings, mints, swaps). |
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
