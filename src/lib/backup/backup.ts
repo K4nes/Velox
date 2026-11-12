@@ -34,7 +34,7 @@ export class BackupError extends Error {
   }
 }
 
-export async function readBackup(now = Date.now()): Promise<Backup> {
+export async function readBackup(): Promise<Backup> {
   const [folders, wallets, connections, pnlRecords] = await Promise.all([
     getAll<FolderRecord>('folders'),
     getAll<StoredWallet>('wallets'),
@@ -45,7 +45,7 @@ export async function readBackup(now = Date.now()): Promise<Backup> {
   return {
     app: APP_MARKER,
     version: BACKUP_VERSION,
-    exportedAt: now,
+    exportedAt: Date.now(),
     folders,
     wallets,
     connections,
