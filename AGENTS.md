@@ -163,6 +163,11 @@ The desktop installer has two independent signing chains:
 `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
 `npm run build:desktop` keeps producing a plain installer with no `.sig`.
 
+The updater reads its own keys from `tauri-plugin-updater`'s `config.rs`: `pubkey`,
+`endpoints`, `requireSignedVersion`, `windows.installMode`. `@tauri-apps/cli`'s
+`config.schema.json` describes only `bundle.createUpdaterArtifacts`, so a key absent from the
+schema is not a key the plugin ignores.
+
 The updater private key lives outside the repository at
 `%USERPROFILE%\.velox\velox-updater.key`, with a backup in a second offline location. Only
 the public key is committed, as `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
