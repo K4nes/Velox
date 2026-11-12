@@ -303,9 +303,9 @@ but it carries no updater signature and no manifest.
 ### Update smoke test
 
 The update runs only inside an installed copy. Build, install and persistence checks have
-their own repeatable check, `.pi/skills/verify-desktop/SKILL.md`, driven by
-`scripts/desktop-check.mjs`. The updater itself needs a newer published release, so run
-this loop by hand on a release that changes it:
+their own repeatable check, `scripts/desktop-check.mjs --phase drive` then `--phase
+restart`, run against the installed app. The updater itself needs a newer published
+release, so run this loop by hand on a release that changes it:
 
 1. Install the previous version and add a wallet, a folder and a PnL record.
 2. Publish the next version as a draft release with its installer, `.sig` and
