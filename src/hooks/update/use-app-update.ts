@@ -7,6 +7,7 @@ import type { PendingUpdate, UpdateCheck } from '@/lib/update/update-check'
 const TOAST_ID = 'app-update'
 
 let pendingCheck: Promise<UpdateCheck> | undefined
+let installing = false
 
 function checkOnce(): Promise<UpdateCheck> {
   if (!pendingCheck) {
@@ -20,6 +21,10 @@ function showProgress(version: string, ratio: number | null): void {
     id: TOAST_ID,
     description: ratio === null ? 'Downloading the update' : `${Math.round(ratio * 100)}%`,
     duration: Infinity,
+    // Sonner merges the toast with this id, so the offer's action and close button
+    // survive into the progress state unless they are cleared here.
+    action: undefined,
+    closeButton: false,
   })
 }
 
@@ -36,6 +41,7 @@ function showOffer(update: PendingUpdate, failure: string | null): void {
       onClick: (event) => {
         // Sonner dismisses a toast after an action unless the click is default-prevented.
         event.preventDefault()
+        if (installing) return
         showProgress(update.version, null)
         void installUpdate(update)
       },
@@ -46,9 +52,11 @@ function showOffer(update: PendingUpdate, failure: string | null): void {
 }
 
 async function installUpdate(update: PendingUpdate): Promise<void> {
+  installing = true
   try {
     await update.install((ratio) => showProgress(update.version, ratio))
   } catch (error) {
+    installing = false
     showOffer(update, toMessage(error))
   }
 }
