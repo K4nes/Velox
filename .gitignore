@@ -16,6 +16,10 @@ dist-ssr
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# Updater signing keys stay outside the repository
+*.key
+*.key.pub
+
 # e2e output
 .e2e/
 .e2e-live/

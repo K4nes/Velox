@@ -19,6 +19,15 @@ come from the Conventional Commit history (`COMMIT.md`).
   the token exchange run as in-app commands that keep the relay route's statuses, messages,
   cookie handling and single entitlement retry, and the web lane keeps signing in through
   its mocked route ([#74]).
+- A signed Windows installer and an in-app update. `npm run release:desktop` builds the
+  NSIS installer with its updater signature and writes `latest.json`; an installed copy
+  offers the newer version on launch and installs it in place, keeping wallets, folders
+  and PnL records (#78).
+- Authenticode signing when `VELOX_WIN_CERT_THUMBPRINT` is set. With no certificate the
+  build still produces a working installer, and the SmartScreen warning on first run is
+  expected.
+- `npm run release:verify` re-checks the artifacts and `npm run test:release` covers the
+  manifest logic.
 
 ### Fixed
 

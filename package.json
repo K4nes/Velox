@@ -12,7 +12,10 @@
     "preview": "vite preview",
     "test:e2e": "e2e run",
     "test:e2e:live": "e2e run --config e2e.live.config.ts tests/wallet-profiles/live/balance.e2e.ts tests/eligibility/live tests/pnl/live tests/portfolio/live",
-    "test:e2e:mint": "e2e run --config e2e.live.config.ts tests/mint/live"
+    "test:e2e:mint": "e2e run --config e2e.live.config.ts tests/mint/live",
+    "release:desktop": "node scripts/release-desktop.mjs",
+    "release:verify": "node scripts/release-desktop.mjs --verify-only",
+    "test:release": "node --test scripts/"
   },
   "dependencies": {
     "@animate-ui/react": "^2.0.0",
@@ -20,6 +23,8 @@
     "@fontsource-variable/inter": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.5.0",
