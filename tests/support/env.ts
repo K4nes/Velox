@@ -7,7 +7,9 @@ if (existsSync('.env.e2e.local')) {
 export function requireEnv(name: string): string {
   const value = process.env[name]
   if (value === undefined || value === '') {
-    throw new Error(`Missing ${name}; see docs/e2e-setup-plan.md section 5`)
+    throw new Error(
+      `Missing ${name}; put it in .env.e2e.local at the repo root, which is git-ignored`
+    )
   }
   return value
 }
