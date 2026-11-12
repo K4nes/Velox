@@ -118,9 +118,18 @@ async function drive(evaluate) {
 
   await signIn(evaluate)
 
-  const seeded = await evaluate(`(() => {
-    const toggle = document.querySelector('button[aria-label="Switch to dark theme"]')
-    if (toggle) toggle.click()
+  const seeded = await evaluate(`(async () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 600))
+    const toggle = () => document.querySelector('button[aria-label^="Switch to "]')
+    // The button names the theme it switches to, so a machine that already opens
+    // dark still exercises the write this check exists to prove. The storage
+    // write lands after the click commits, so the read waits for it.
+    if (document.documentElement.classList.contains('dark')) {
+      toggle()?.click()
+      await settle()
+    }
+    toggle()?.click()
+    await settle()
     localStorage.setItem(${JSON.stringify(CHAIN_KEY)}, ${JSON.stringify(CHAIN_SLUG)})
     return { theme: localStorage.getItem('theme'), chain: localStorage.getItem(${JSON.stringify(CHAIN_KEY)}) }
   })()`)
