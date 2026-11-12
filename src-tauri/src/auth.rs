@@ -4,6 +4,7 @@ use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde_json::{json, Value};
 
 use crate::siwe;
+use crate::Reply;
 
 pub const OPENSEA_BASE_URL: &str = "https://api.opensea.io/api/v2";
 const OPENSEA_TIMEOUT: Duration = Duration::from_secs(15);
@@ -23,26 +24,6 @@ impl Default for Upstream {
             base_url: OPENSEA_BASE_URL.to_string(),
             timeout: OPENSEA_TIMEOUT,
         }
-    }
-}
-
-/// The one shape both lanes hand the caller: the status a caller can act on,
-/// plus the JSON body the relay route would have sent.
-pub struct Reply {
-    pub status: u16,
-    pub body: Value,
-}
-
-impl Reply {
-    pub fn error(status: u16, message: &str) -> Reply {
-        Reply {
-            status,
-            body: json!({ "error": message }),
-        }
-    }
-
-    pub fn into_json(self) -> Value {
-        json!({ "status": self.status, "body": self.body })
     }
 }
 

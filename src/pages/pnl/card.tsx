@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ChartLine, Download, Plus, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,6 +13,7 @@ import { chainBySlug } from '@/config/chains'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { exportCard as saveCard } from '@/lib/card/card-export'
 import { persistImages, readImageFile } from '@/lib/card/card-images'
+import { quoteFailureMessage } from '@/lib/chain/price'
 import { toMessage } from '@/lib/core/message'
 import { getCollection, slugFromUrl } from '@/lib/opensea/index'
 import { backfillQuote, upsertPnlRecord } from '@/lib/pnl/pnl-records'
@@ -94,11 +96,13 @@ export function PnlCardPage() {
   // that reason has to reach the operator; the data having no value looks
   // identical otherwise.
   useEffect(() => {
-    if (quote.error === null || quote.price !== null) return
-    toast.error(`The card has no USD figure: ${quote.error}`, {
+    const failure = quote.failure
+    if (failure === null || failure.kind === 'missing-key') return
+    if (quote.price !== null) return
+    toast.error(`The card has no USD figure: ${quoteFailureMessage(failure)}`, {
       id: 'pnl-price-error',
     })
-  }, [quote.error, quote.price])
+  }, [quote.failure, quote.price])
 
   // A re-check of the same collection keeps the same request key, so the version
   // is what makes the chain read happen again. A remount finds the answer still
@@ -271,7 +275,7 @@ export function PnlCardPage() {
     try {
       const info = await getCollection(slug)
       pnlCard.setCollection(info)
-      void pnlCard.loadQuote(true)
+      void pnlCard.loadQuote()
       const chainEntry = chainBySlug(info.chain)
       if (chainEntry === undefined || chainEntry.explorerApi === '') {
         toast.error(
@@ -382,6 +386,16 @@ export function PnlCardPage() {
           Check PnL
         </Button>
       </Card>
+
+      {quote.failure?.kind === 'missing-key' && quote.price === null && (
+        <p role="status" className="text-muted-foreground text-sm">
+          Add a CoinMarketCap key in{' '}
+          <Link to="/settings" className="underline underline-offset-4">
+            Settings
+          </Link>{' '}
+          to show a USD figure.
+        </p>
+      )}
 
       {formats.map((option) => (
         <TabsContent

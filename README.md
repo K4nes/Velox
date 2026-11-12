@@ -148,9 +148,9 @@ touched.
   `src/components/layout/` is page chrome; page-specific components live next to their
   page under `src/pages/<feature>/`.
 
-`dist/` on its own is a static bundle with no `/api` routes. Sign-in works in the installed
-app, because it runs through the app's own commands; the price quote still needs the route,
-so it only works under `npm run dev` or `npm run preview` until #75.
+`dist/` on its own is a static bundle with no `/api` routes. Sign-in and the ETH/USDT quote
+both work in the installed app, because they run through the app's own commands; the `/api`
+routes remain for `npm run dev` and `npm run preview`.
 
 ## Data and security
 
@@ -175,8 +175,9 @@ Two things to know before you put real assets in it:
   `--host` or a tunnel.
 
 OpenSea keys go from the browser straight to OpenSea. The CoinMarketCap key goes to the
-local `/api/price/eth-usdt` route, which forwards it upstream. Both sit in the same
-browser database as the wallets.
+app's price command, or to the local `/api/price/eth-usdt` route under `npm run dev` and
+`npm run preview`, which forwards it upstream. Both sit in the same browser database as the
+wallets.
 
 ## Desktop app and updates
 

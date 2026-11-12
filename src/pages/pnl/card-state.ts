@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react'
 import { readStoredImages, type CardImage } from '@/lib/card/card-images'
-import { toMessage } from '@/lib/core/message'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import type { PnlStats } from '@/lib/pnl/pnl-trades'
-import { fetchEthUsdtPrice } from '@/lib/chain/price'
-import { QUOTE_WINDOW_MS } from '@/lib/chain/price-window'
+import {
+  fetchEthUsdtPrice,
+  quoteFailure,
+  type QuoteFailure,
+} from '@/lib/chain/price'
 import type { Format, ImagePosition } from './card-preview'
 
 export const MAX_IMAGES = 3
@@ -33,8 +35,7 @@ type State = {
   quote: {
     price: number | null
     loading: boolean
-    at: number
-    error: string | null
+    failure: QuoteFailure | null
   }
 }
 
@@ -49,7 +50,7 @@ let state: State = {
   version: 0,
   read: null,
   save: null,
-  quote: { price: null, loading: false, at: 0, error: null },
+  quote: { price: null, loading: false, failure: null },
 }
 
 const listeners = new Set<() => void>()
@@ -102,16 +103,9 @@ export const pnlCard = {
   markFailed(at: number) {
     set({ save: { at, price: null, failed: true } })
   },
-  async loadQuote(force = false) {
+  async loadQuote() {
     const { quote } = state
     if (quote.loading) return
-    if (
-      !force &&
-      quote.price !== null &&
-      Date.now() - quote.at < QUOTE_WINDOW_MS
-    ) {
-      return
-    }
 
     set({ quote: { ...quote, loading: true } })
     try {
@@ -120,8 +114,7 @@ export const pnlCard = {
         quote: {
           price: next.price,
           loading: false,
-          at: Date.now(),
-          error: null,
+          failure: null,
         },
       })
     } catch (failure) {
@@ -129,7 +122,7 @@ export const pnlCard = {
         quote: {
           ...state.quote,
           loading: false,
-          error: toMessage(failure),
+          failure: quoteFailure(failure),
         },
       })
     }

@@ -77,7 +77,7 @@ settle style rather than behaviour.
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
-| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs`, the sign-in chain the installed app runs. `tests/` holds its stub-upstream suite. `.pi/skills/verify-desktop/SKILL.md` checks the installed app. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `.pi/skills/verify-desktop/SKILL.md` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored
@@ -112,9 +112,9 @@ holds theme, active chain and the card image cache only.
 **Secrets.** Wallet private keys are only used to sign locally, and leave the browser only
 in the backup file the operator exports on purpose; that file is unencrypted and carries
 provider API keys too. Provider API keys come from the browser store; the CoinMarketCap
-key may also travel to `/api/price/eth-usdt` in a header, and nothing else should. Do not
-log either kind. A new route under `server/` needs a reason the browser cannot handle on
-its own.
+key may also travel to `/api/price/eth-usdt` in a header or to the `eth_usdt_price` command
+argument, and nothing else should. Do not log either kind. A new route under `server/`
+needs a reason the browser cannot handle on its own.
 
 **Chains.** `src/config/chains.ts` is the chain list. A new chain needs an entry there and
 an RPC connection. Its native and wrapped swap options derive from that entry; add

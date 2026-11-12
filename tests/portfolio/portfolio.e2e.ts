@@ -4,6 +4,7 @@ import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
 import { mockCollection, mockHoldings, mockRarityBatch } from '../support/opensea'
+import { mockPrice } from '../support/price'
 import { scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
@@ -49,12 +50,7 @@ test('a scan fills the inventory and the owned count', async ({
       })
     },
   )
-  await browser.route(/\/api\/price\/eth-usdt$/, async (route) => {
-    await route.fulfill({
-      status: 200,
-      json: { price: 2_000, updatedAt: '2026-01-01T00:00:00.000Z' },
-    })
-  })
+  await mockPrice(browser, { price: 2_000 })
 
   await app.open('/portfolio')
   await seedVelox(browser, {

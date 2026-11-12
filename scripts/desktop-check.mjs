@@ -95,9 +95,12 @@ async function drive(evaluate) {
 
   check('the document is served from the app protocol', page.origin === 'http://tauri.localhost', page.origin)
   check('the origin is a secure context', page.secure === true, String(page.secure))
+  // `ipc.localhost` is the app's own command channel, not a remote server.
+  const appOrigins = ['http://tauri.localhost', 'http://ipc.localhost']
   check(
     'every resource comes from the app, none from a server',
-    page.resourceOrigins.length === 1 && page.resourceOrigins[0] === 'http://tauri.localhost',
+    page.resourceOrigins.includes('http://tauri.localhost') &&
+      page.resourceOrigins.every((origin) => appOrigins.includes(origin)),
     page.resourceOrigins.join(', ')
   )
   check('a route rendered', page.header.length > 0 && page.path !== '/', `${page.path} ${page.header}`)
@@ -135,6 +138,64 @@ async function drive(evaluate) {
   })()`)
   check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
+
+  await priceCheck(evaluate)
+}
+
+async function priceCheck(evaluate) {
+  const reply = await evaluate(`(async () => {
+    try {
+      return await window.__TAURI_INTERNALS__.invoke('eth_usdt_price', { key: null, probe: false })
+    } catch (failure) {
+      return { rejected: String(failure) }
+    }
+  })()`)
+  check(
+    'the packaged app registers the price command and reports the missing key',
+    reply.status === 503,
+    reply.rejected ?? `status ${reply.status}`
+  )
+
+  const card = await evaluate(`(async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    const waitFor = async (read, attempts) => {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const found = read()
+        if (found !== null) return found
+        await sleep(100)
+      }
+      return null
+    }
+    let link = document.querySelector('a[href="/pnl/card"]')
+    if (link === null) {
+      // The PnL group starts closed away from /pnl, so its link is not in the
+      // document until the group opens.
+      const trigger = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'PnL')
+      trigger?.click()
+      link = await waitFor(() => document.querySelector('a[href="/pnl/card"]'), 20)
+    }
+    if (link === null) return { error: 'no /pnl/card link', path: location.pathname }
+    link.click()
+
+    const notice = await waitFor(
+      () => [...document.querySelectorAll('[role="status"]')].find((node) => node.innerText.includes('CoinMarketCap key')) ?? null,
+      50
+    )
+    if (notice === null) {
+      const seen = [...document.querySelectorAll('[role="status"]')].map((node) => node.innerText.replace(/\\s+/g, ' ').trim())
+      return { error: seen.join(' | ') || 'no notice', path: location.pathname }
+    }
+    return {
+      path: location.pathname,
+      text: notice.innerText.replace(/\\s+/g, ' ').trim(),
+      settings: notice.querySelector('a[href="/settings"]') !== null
+    }
+  })()`)
+  check(
+    'the card asks for a CoinMarketCap key and links to Settings',
+    card.text?.includes('CoinMarketCap key') === true && card.settings === true,
+    card.error ?? `${card.path} ${card.text ?? ''}`
+  )
 }
 
 // The sign-in chain lives in Rust, so only an invoke from the window proves the

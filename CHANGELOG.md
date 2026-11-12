@@ -10,6 +10,10 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Added
 
+- The PnL card prices its USD figure in the installed app. The operator's CoinMarketCap
+  key reaches an in-app command that keeps the route's statuses, caches a quote per key
+  for a minute, and bypasses the cache for a probe. With no key the card asks for one and
+  links to Settings instead of reporting a request error ([#75]).
 - Settings exports wallets, folders, provider connections and PnL records as one versioned
   JSON file and imports it back, so a fresh install starts with the operator's data. The
   import previews the counts it found, refuses a document from a newer version or a damaged
@@ -138,4 +142,5 @@ consolidated into a single entry.
 [#35]: https://github.com/K4nes/velox/pull/35
 [#42]: https://github.com/K4nes/velox/pull/42
 [#74]: https://github.com/K4nes/Velox/issues/74
+[#75]: https://github.com/K4nes/Velox/issues/75
 [#76]: https://github.com/K4nes/Velox/issues/76
