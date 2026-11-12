@@ -23,6 +23,10 @@ jobs:
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # This job holds `contents: write`, so the checkout token has no
+          # business sitting in `.git/config` where an install script reads it.
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 26
