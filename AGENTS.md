@@ -153,12 +153,11 @@ with the next patch version.
 
 ### Desktop release
 
-The desktop installer has two independent signing chains:
+The installer carries two independent signing chains, which README describes under "Two
+signing chains". The rules that bind work here:
 
-- Authenticode signs the installer and `Velox.exe` for the Windows prompt. It is optional;
-  without a certificate the SmartScreen warning is expected behaviour.
-- The updater key signs the installer and binds it to the version. The installed app checks
-  that signature before it installs an update.
+- Authenticode is optional. Without a certificate the SmartScreen warning is expected.
+- The updater key is mandatory. `requireSignedVersion` refuses an unsigned version.
 
 `src-tauri/tauri.release.conf.json` is an overlay that turns on
 `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
@@ -167,6 +166,7 @@ The desktop installer has two independent signing chains:
 Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which runs
 `npm run release:desktop -- --draft` and leaves the installer, its `.sig` and `latest.json`
 in a draft release. It never publishes.
+
 The tag must equal `v` plus the package version. The job fails rather than ship unsigned
 when the updater key is missing, when `WINDOWS_CERTIFICATE` arrives without its password,
 and, once `VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent.
