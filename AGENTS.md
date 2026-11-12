@@ -11,9 +11,8 @@ PnL, portfolio, bulk sell, instant sell, transfer, swap. React 19 + TypeScript +
 Tailwind 4, shadcn/Animate UI components vendored into `src/components/ui/`.
 
 There is no backend service. `server/` is a Vite plugin that mounts three routes on the dev
-and preview servers, and the installed app reaches the same two upstreams through its own
-commands, because neither the sign-in cookie nor the provider key can pass through the
-webview. The web lane's routes:
+and preview servers, and the installed app signs in to OpenSea through its own commands,
+because the sign-in cookie cannot pass through the webview. The web lane's routes:
 
 - `/api/auth/nonce` returns an OpenSea SIWE message for an address.
 - `/api/auth/token` verifies the signed message, mints an OpenSea token scoped

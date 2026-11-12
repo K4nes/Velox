@@ -146,8 +146,9 @@ touched.
   `src/components/layout/` is page chrome; page-specific components live next to their
   page under `src/pages/<feature>/`.
 
-`dist/` on its own is a static bundle with no `/api` routes. Sign-in and the price quote
-only work under `npm run dev` or `npm run preview`.
+`dist/` on its own is a static bundle with no `/api` routes. Sign-in works in the installed
+app, because it runs through the app's own commands; the price quote still needs the route,
+so it only works under `npm run dev` or `npm run preview` until #75.
 
 ## Data and security
 
