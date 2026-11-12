@@ -19,7 +19,7 @@ export function signInToken(input: {
   return relay('/api/auth/token', input, 'auth_token')
 }
 
-export const PRICE_PATH = '/api/price/eth-usdt'
+const PRICE_PATH = '/api/price/eth-usdt'
 
 export function requestEthUsdtPrice(input: {
   key: string | null
