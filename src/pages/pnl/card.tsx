@@ -275,7 +275,7 @@ export function PnlCardPage() {
     try {
       const info = await getCollection(slug)
       pnlCard.setCollection(info)
-      void pnlCard.loadQuote(true)
+      void pnlCard.loadQuote()
       const chainEntry = chainBySlug(info.chain)
       if (chainEntry === undefined || chainEntry.explorerApi === '') {
         toast.error(

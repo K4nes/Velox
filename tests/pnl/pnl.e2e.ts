@@ -43,6 +43,34 @@ test('the PnL card renders the live ETH/USDT quote', async ({
   expect(price.keys).toEqual(['deterministic-key'])
 })
 
+test('a rotated key refetches the quote for the new key', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await mockPrice(browser, { price: 2_000 })
+
+  await app.open('/pnl/monthly')
+  await seedVelox(browser, {
+    connections: [coinmarketcapConnection('first-key')],
+  })
+  await app.open('/pnl/card')
+  await expect(screen.getByText('ETH/USDT $2,000.00')).toBeVisible()
+
+  const rotated = await mockPrice(browser, { price: 3_000 })
+  await seedVelox(browser, {
+    connections: [coinmarketcapConnection('rotated-key')],
+  })
+
+  await browser.locator('a[href="/pnl/monthly"]').first().click()
+  await expect(browser).toHaveURL('/pnl/monthly')
+  await browser.locator('a[href="/pnl/card"]').first().click()
+  await expect(browser).toHaveURL('/pnl/card')
+
+  await expect(screen.getByText('ETH/USDT $3,000.00')).toBeVisible()
+  expect(rotated.keys).toEqual(['rotated-key'])
+})
+
 test('no key asks for one instead of a request error', async ({
   app,
   browser,

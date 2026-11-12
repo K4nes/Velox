@@ -7,7 +7,6 @@ import {
   quoteFailure,
   type QuoteFailure,
 } from '@/lib/chain/price'
-import { QUOTE_WINDOW_MS } from '@/lib/chain/price-window'
 import type { Format, ImagePosition } from './card-preview'
 
 export const MAX_IMAGES = 3
@@ -36,7 +35,6 @@ type State = {
   quote: {
     price: number | null
     loading: boolean
-    at: number
     failure: QuoteFailure | null
   }
 }
@@ -52,7 +50,7 @@ let state: State = {
   version: 0,
   read: null,
   save: null,
-  quote: { price: null, loading: false, at: 0, failure: null },
+  quote: { price: null, loading: false, failure: null },
 }
 
 const listeners = new Set<() => void>()
@@ -105,16 +103,9 @@ export const pnlCard = {
   markFailed(at: number) {
     set({ save: { at, price: null, failed: true } })
   },
-  async loadQuote(force = false) {
+  async loadQuote() {
     const { quote } = state
     if (quote.loading) return
-    if (
-      !force &&
-      quote.price !== null &&
-      Date.now() - quote.at < QUOTE_WINDOW_MS
-    ) {
-      return
-    }
 
     set({ quote: { ...quote, loading: true } })
     try {
@@ -123,7 +114,6 @@ export const pnlCard = {
         quote: {
           price: next.price,
           loading: false,
-          at: Date.now(),
           failure: null,
         },
       })
