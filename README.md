@@ -238,8 +238,8 @@ Only the public key is committed. Never copy, print or commit the private key;
 5. Check the installed update once per release that changes it (see below).
 
 `npm run release:verify` repeats the checks on the existing artifacts without rebuilding.
-It refuses a `latest.json` whose version, signed version, file name or URL disagree with
-the installer.
+It verifies the signature against the installer bytes, then refuses a `latest.json` whose
+version, signed version, file name or URL disagree with them.
 
 An installed copy checks the endpoint in `tauri.conf.json`
 (`releases/latest/download/latest.json`) on launch. When a newer version is published it
@@ -249,8 +249,10 @@ but it carries no updater signature and no manifest.
 
 ### Update smoke test
 
-The update runs only inside an installed copy, so check it by hand on a release that
-changes the updater:
+The update runs only inside an installed copy. Build, install and persistence checks have
+their own repeatable check, `.pi/skills/verify-desktop/SKILL.md`, driven by
+`scripts/desktop-check.mjs`. The updater itself needs a newer published release, so run
+this loop by hand on a release that changes it:
 
 1. Install the previous version and add a wallet, a folder and a PnL record.
 2. Publish the next version as a draft release with its installer, `.sig` and
