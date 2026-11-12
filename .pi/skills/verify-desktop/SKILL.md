@@ -46,7 +46,7 @@ Start-Sleep -Seconds 9
 node scripts/desktop-check.mjs --phase drive
 ```
 
-Done when all eleven checks read `PASS`. It also toggles the theme, seeds the chain and opens the PnL card so the next step has something to survive. The sign-in check invokes both sign-in commands from the window: the nonce call passes on its shape whether or not OpenSea is reachable, and the token call with a malformed message must answer 400, which proves both commands are registered and that the `message` and `signature` payload keys deserialize. The last two checks invoke `eth_usdt_price` with no key and expect a 503, then open `/pnl/card` and look for the inline notice that links to Settings. A real operator sign-in on the eligibility page against the live service is a manual check in #72, not this script.
+Done when all fourteen checks read `PASS`. It also toggles the theme, seeds the chain and opens the PnL card so the next step has something to survive. The sign-in check invokes both sign-in commands from the window: the nonce call passes on its shape whether or not OpenSea is reachable, and the token call with a malformed message must answer 400, which proves both commands are registered and that the `message` and `signature` payload keys deserialize. The last two checks invoke `eth_usdt_price` with no key and expect a 503, then open `/pnl/card` and look for the inline notice that links to Settings. Two checks cover the webview's own boundary: `core:window:destroy` is a registered command the capability does not grant and must be refused as `not allowed`, and the provider-mark host must load without a policy refusal. The page is reloaded before any of this, because a violation at first paint is invisible to a console listener that attaches later. A real operator sign-in on the eligibility page against the live service is a manual check in #72, not this script.
 
 ## 4. Restart for real
 
@@ -58,7 +58,7 @@ Start-Sleep -Seconds 3
 node scripts/desktop-check.mjs --phase restart
 ```
 
-Done when all four checks read `PASS`, including the theme applying before any interaction and the wallet profile page showing the currency of the stored chain.
+Done when all five checks read `PASS`, including the theme applying before any interaction, the wallet profile page showing the currency of the stored chain, and no policy refusal on the reloaded page.
 
 ## 5. Leave the machine as you found it
 
@@ -73,4 +73,4 @@ Done when the install folder, the shortcut and the `HKCU` key are gone and `dist
 
 ## Report
 
-One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `11/11 checks passed in phase "drive"` and `4/4 checks passed in phase "restart"`.
+One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `14/14 checks passed in phase "drive"` and `5/5 checks passed in phase "restart"`.
