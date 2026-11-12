@@ -76,9 +76,6 @@ pub fn nonce(upstream: &Upstream, address: &str) -> Reply {
 }
 
 pub fn token(upstream: &Upstream, message: &str, signature: &str) -> Reply {
-    if message.is_empty() || signature.is_empty() {
-        return Reply::error(400, "message and signature are required");
-    }
     let Some(fields) = siwe::parse(message) else {
         return Reply::error(400, "message does not match the OpenSea sign-in layout");
     };

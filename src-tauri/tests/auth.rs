@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use velox_lib::auth::{self, Reply, Upstream};
+use velox_lib::siwe;
 
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 const SIGNATURE: &str = "0xsigned";
@@ -417,9 +418,22 @@ fn bad_input_never_reaches_the_upstream() {
         "message does not match the OpenSea sign-in layout"
     );
 
-    let unsigned = auth::token(&upstream, "velox deterministic sign-in", "");
-    assert_eq!(unsigned.status, 400);
-    assert_eq!(unsigned.body["error"], "message and signature are required");
-
     assert!(stub.seen().is_empty(), "a bad request reached OpenSea");
+}
+
+#[test]
+fn an_empty_signature_reaches_the_upstream() {
+    let stub = Stub::start(scripted);
+
+    // The web lane forwards whatever signature string it is handed and lets the
+    // provider refuse it, so the command must not answer with a message of its
+    // own: the parse passes and the verify call still arrives.
+    let message = siwe::build(ADDRESS, 1, "nonce-1", &siwe::iso8601(1_700_000_000_000));
+    auth::token(&stub.upstream(2_000), &message, "");
+
+    assert_eq!(
+        stub.calls("POST", "/auth/siwe/verify").len(),
+        1,
+        "an empty signature did not reach OpenSea"
+    );
 }
