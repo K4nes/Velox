@@ -152,8 +152,8 @@ only work under `npm run dev` or `npm run preview`.
 ## Data and security
 
 Nothing leaves the browser except the requests a page makes and the backup the operator
-chooses to download. That file holds private keys in plain text, so the Settings card asks
-the operator to keep it private.
+chooses to download. That file holds wallet private keys and provider API keys in plain
+text, so the Settings card asks the operator to keep it private.
 
 | Store | Contents |
 | --- | --- |

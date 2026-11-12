@@ -96,9 +96,9 @@ export function DataSection({ onImported }: DataSectionProps) {
       <div className="flex flex-col gap-2 px-4 py-3">
         <p className="text-xs text-muted-foreground">
           Wallets, folders, provider connections and PnL records travel in one
-          JSON file. The file holds private keys, so keep it where no one else
-          can read it. An import replaces the rows it shares with this install
-          and keeps the rest.
+          JSON file. The file holds wallet private keys and provider API keys, so
+          keep it where no one else can read it. An import replaces the rows it
+          shares with this install and keeps the rest.
         </p>
 
         {error !== null ? (
