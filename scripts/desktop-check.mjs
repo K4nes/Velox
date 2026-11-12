@@ -40,12 +40,18 @@ async function connect() {
   const socket = new WebSocket(page.webSocketDebuggerUrl)
   let nextId = 0
   const pending = new Map()
+  const violations = []
 
   socket.addEventListener('message', (event) => {
     let message
     try {
       message = JSON.parse(event.data)
     } catch {
+      return
+    }
+    if (message.method === 'Log.entryAdded') {
+      const text = message.params?.entry?.text ?? ''
+      if (text.includes('Content Security Policy')) violations.push(text)
       return
     }
     const settle = pending.get(message.id)
@@ -58,6 +64,9 @@ async function connect() {
     socket.addEventListener('open', resolve, { once: true })
     socket.addEventListener('error', reject, { once: true })
   })
+  // CSP refusals reach the Log domain, and only for entries after it is enabled,
+  // so the listener starts here rather than after the first navigation.
+  socket.send(JSON.stringify({ id: (nextId += 1), method: 'Log.enable' }))
 
   const evaluate = async (expression) => {
     nextId += 1
@@ -80,7 +89,7 @@ async function connect() {
     return reply.result?.result?.value
   }
 
-  return { evaluate, close: () => socket.close() }
+  return { evaluate, violations, close: () => socket.close() }
 }
 
 async function drive(evaluate) {
@@ -139,7 +148,38 @@ async function drive(evaluate) {
   check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
 
+  await security(evaluate)
   await priceCheck(evaluate)
+}
+
+// The app declares its own ACL manifest, so a command no capability grants has
+// to be refused before its handler runs. The probe names a command the app does
+// not register, which is what a stray script reaching the IPC layer would try.
+// The image probe uses the host a Settings provider mark comes from, so a policy
+// that dropped img-src shows up as a failed load and a console entry.
+async function security(evaluate) {
+  const refused = await evaluate(`(async () => {
+    try {
+      const reply = await window.__TAURI_INTERNALS__.invoke('not_a_command')
+      return { resolved: JSON.stringify(reply) }
+    } catch (failure) {
+      return { rejected: String(failure) }
+    }
+  })()`)
+  check(
+    'a command no capability grants is rejected',
+    refused.rejected?.includes('not allowed') === true,
+    refused.rejected ?? `resolved with ${refused.resolved}`
+  )
+
+  const mark = await evaluate(`new Promise((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve('loaded')
+    image.onerror = () => resolve('failed')
+    setTimeout(() => resolve('timed out'), 8000)
+    image.src = 'https://api.iconify.design/token-branded/ankr.svg'
+  })`)
+  check('the policy allows the provider-mark host', mark === 'loaded', mark)
 }
 
 async function priceCheck(evaluate) {
@@ -260,6 +300,11 @@ let session
 try {
   session = await connect()
   await (phase === 'restart' ? restart(session.evaluate) : drive(session.evaluate))
+  check(
+    'the console shows no content-security violation',
+    session.violations.length === 0,
+    session.violations.join(' | ') || 'none'
+  )
 } catch (failure) {
   console.error(`FAIL ${failure.message}`)
   process.exit(1)
