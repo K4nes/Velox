@@ -1,193 +1,23 @@
-// The stub upstream is a plain TCP listener: the chain's promise is about
-// cookies, statuses and call counts, so the tests script what each path answers
-// and read back what actually arrived.
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+mod support;
 
-use velox_lib::auth::{self, Reply, Upstream};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use support::{Act, Seen, Stub};
+use velox_lib::auth::{self, Upstream};
 use velox_lib::siwe;
+use velox_lib::Reply;
 
 const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
 const SIGNATURE: &str = "0xsigned";
 const SET_COOKIE: &str = "oa=session-1; Path=/; HttpOnly";
 const COOKIE_SENT: &str = "oa=session-1";
 
-#[derive(Clone)]
-struct Seen {
-    method: String,
-    path: String,
-    cookie: String,
-    body: String,
-}
-
-enum Act {
-    Reply {
-        status: u16,
-        json: &'static str,
-        set_cookie: Option<&'static str>,
-    },
-    Hang,
-    Close,
-}
-
-struct Stub {
-    base_url: String,
-    log: Arc<Mutex<Vec<Seen>>>,
-    stop: Arc<AtomicBool>,
-}
-
-impl Stub {
-    fn start(route: impl Fn(&Seen) -> Act + Send + Sync + 'static) -> Stub {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind the stub");
-        let port = listener.local_addr().expect("read the stub address").port();
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let stop = Arc::new(AtomicBool::new(false));
-        let route = Arc::new(route);
-
-        {
-            let (log, stop) = (log.clone(), stop.clone());
-            std::thread::spawn(move || {
-                for stream in listener.incoming() {
-                    if stop.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let Ok(stream) = stream else { break };
-                    let (log, route) = (log.clone(), route.clone());
-                    std::thread::spawn(move || handle(stream, log, route));
-                }
-            });
-        }
-
-        Stub {
-            base_url: format!("http://127.0.0.1:{port}"),
-            log,
-            stop,
-        }
-    }
-
-    fn upstream(&self, timeout_ms: u64) -> Upstream {
-        Upstream {
-            base_url: self.base_url.clone(),
-            timeout: Duration::from_millis(timeout_ms),
-        }
-    }
-
-    fn seen(&self) -> Vec<Seen> {
-        self.log.lock().expect("read the log").clone()
-    }
-
-    fn calls(&self, method: &str, path: &str) -> Vec<Seen> {
-        self.seen()
-            .into_iter()
-            .filter(|seen| seen.method == method && seen.path == path)
-            .collect()
-    }
-
-    fn paths(&self) -> Vec<String> {
-        self.seen().into_iter().map(|seen| seen.path).collect()
-    }
-
-    fn wait_for(&self, method: &str, path: &str) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while Instant::now() < deadline {
-            if !self.calls(method, path).is_empty() {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        false
-    }
-}
-
-impl Drop for Stub {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        let _ = TcpStream::connect(self.base_url.trim_start_matches("http://"));
-    }
-}
-
-fn handle(
-    stream: TcpStream,
-    log: Arc<Mutex<Vec<Seen>>>,
-    route: Arc<dyn Fn(&Seen) -> Act + Send + Sync>,
-) {
-    let Ok(mut writer) = stream.try_clone() else {
-        return;
-    };
-    let mut reader = BufReader::new(stream);
-
-    let mut request_line = String::new();
-    if reader.read_line(&mut request_line).is_err() {
-        return;
-    }
-    let mut parts = request_line.split_whitespace();
-    let method = parts.next().unwrap_or_default().to_string();
-    let path = parts.next().unwrap_or_default().to_string();
-
-    let mut length = 0usize;
-    let mut cookie = String::new();
-    loop {
-        let mut line = String::new();
-        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-            break;
-        }
-        let line = line.trim_end();
-        if line.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            match name.to_ascii_lowercase().as_str() {
-                "content-length" => length = value.trim().parse().unwrap_or(0),
-                "cookie" => cookie = value.trim().to_string(),
-                _ => {}
-            }
-        }
-    }
-
-    let mut body = vec![0; length];
-    if length > 0 && reader.read_exact(&mut body).is_err() {
-        return;
-    }
-
-    let seen = Seen {
-        method,
-        path,
-        cookie,
-        body: String::from_utf8_lossy(&body).to_string(),
-    };
-    log.lock().expect("record the request").push(seen.clone());
-
-    match route(&seen) {
-        Act::Reply {
-            status,
-            json,
-            set_cookie,
-        } => {
-            let reason = match status {
-                200 => "OK",
-                400 => "Bad Request",
-                500 => "Internal Server Error",
-                _ => "Unknown",
-            };
-            let mut head = format!(
-        "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n",
-        json.len()
-      );
-            if let Some(cookie) = set_cookie {
-                head.push_str(&format!("set-cookie: {cookie}\r\n"));
-            }
-            head.push_str("\r\n");
-            head.push_str(json);
-            let _ = writer.write_all(head.as_bytes());
-            let _ = writer.flush();
-        }
-        // A provider that never answers, and one that drops the socket: the chain
-        // must tell those apart from a refusal.
-        Act::Hang => std::thread::sleep(Duration::from_secs(2)),
-        Act::Close => {}
+fn upstream(stub: &Stub, timeout_ms: u64) -> Upstream {
+    Upstream {
+        base_url: stub.base_url().to_string(),
+        timeout: Duration::from_millis(timeout_ms),
     }
 }
 
@@ -246,7 +76,7 @@ fn sign_in(upstream: &Upstream) -> Reply {
 #[test]
 fn one_cookie_carries_the_whole_chain() {
     let stub = Stub::start(scripted);
-    let upstream = stub.upstream(2_000);
+    let upstream = upstream(&stub, 2_000);
 
     let nonce = auth::nonce(&upstream, ADDRESS);
     assert_eq!(nonce.status, 200);
@@ -332,7 +162,7 @@ fn an_entitlement_rejection_retries_exactly_once() {
         }
     });
 
-    let reply = sign_in(&stub.upstream(2_000));
+    let reply = sign_in(&upstream(&stub, 2_000));
 
     assert_eq!(reply.status, 200, "sign-in failed: {:?}", reply.body);
     let attempts = stub.calls("POST", "/auth/tokens");
@@ -360,7 +190,7 @@ fn a_second_entitlement_rejection_does_not_retry() {
         scripted(seen)
     });
 
-    let reply = sign_in(&stub.upstream(2_000));
+    let reply = sign_in(&upstream(&stub, 2_000));
 
     assert_eq!(reply.status, 502);
     let message = reply.body["error"].as_str().expect("an error message");
@@ -372,12 +202,12 @@ fn a_second_entitlement_rejection_does_not_retry() {
 #[test]
 fn a_timeout_and_a_dropped_connection_are_distinct() {
     let silent = Stub::start(|_: &Seen| Act::Hang);
-    let timed_out = auth::nonce(&silent.upstream(60), ADDRESS);
+    let timed_out = auth::nonce(&upstream(&silent, 60), ADDRESS);
     assert_eq!(timed_out.status, 504);
     assert_eq!(timed_out.body["error"], "OpenSea did not respond in time");
 
     let dropped = Stub::start(|_: &Seen| Act::Close);
-    let failed = auth::nonce(&dropped.upstream(2_000), ADDRESS);
+    let failed = auth::nonce(&upstream(&dropped, 2_000), ADDRESS);
     assert_eq!(failed.status, 502);
     assert_eq!(failed.body["error"], "OpenSea request failed");
 }
@@ -395,7 +225,7 @@ fn a_failed_revoke_leaves_the_sign_in_alone() {
         scripted(seen)
     });
 
-    let reply = sign_in(&stub.upstream(2_000));
+    let reply = sign_in(&upstream(&stub, 2_000));
 
     assert_eq!(reply.status, 200, "sign-in failed: {:?}", reply.body);
     assert_eq!(reply.body["token"], "access-token-1");
@@ -405,7 +235,7 @@ fn a_failed_revoke_leaves_the_sign_in_alone() {
 #[test]
 fn bad_input_never_reaches_the_upstream() {
     let stub = Stub::start(scripted);
-    let upstream = stub.upstream(2_000);
+    let upstream = upstream(&stub, 2_000);
 
     let empty = auth::nonce(&upstream, "");
     assert_eq!(empty.status, 400);
@@ -429,7 +259,7 @@ fn an_empty_signature_reaches_the_upstream() {
     // provider refuse it, so the command must not answer with a message of its
     // own: the parse passes and the verify call still arrives.
     let message = siwe::build(ADDRESS, 1, "nonce-1", &siwe::iso8601(1_700_000_000_000));
-    auth::token(&stub.upstream(2_000), &message, "");
+    auth::token(&upstream(&stub, 2_000), &message, "");
 
     assert_eq!(
         stub.calls("POST", "/auth/siwe/verify").len(),

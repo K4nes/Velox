@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from 'react'
 import { readStoredImages, type CardImage } from '@/lib/card/card-images'
-import { toMessage } from '@/lib/core/message'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import type { PnlStats } from '@/lib/pnl/pnl-trades'
-import { fetchEthUsdtPrice } from '@/lib/chain/price'
+import {
+  fetchEthUsdtPrice,
+  quoteFailure,
+  type QuoteFailure,
+} from '@/lib/chain/price'
 import { QUOTE_WINDOW_MS } from '@/lib/chain/price-window'
 import type { Format, ImagePosition } from './card-preview'
 
@@ -34,7 +37,7 @@ type State = {
     price: number | null
     loading: boolean
     at: number
-    error: string | null
+    failure: QuoteFailure | null
   }
 }
 
@@ -49,7 +52,7 @@ let state: State = {
   version: 0,
   read: null,
   save: null,
-  quote: { price: null, loading: false, at: 0, error: null },
+  quote: { price: null, loading: false, at: 0, failure: null },
 }
 
 const listeners = new Set<() => void>()
@@ -121,7 +124,7 @@ export const pnlCard = {
           price: next.price,
           loading: false,
           at: Date.now(),
-          error: null,
+          failure: null,
         },
       })
     } catch (failure) {
@@ -129,7 +132,7 @@ export const pnlCard = {
         quote: {
           ...state.quote,
           loading: false,
-          error: toMessage(failure),
+          failure: quoteFailure(failure),
         },
       })
     }

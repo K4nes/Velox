@@ -19,6 +19,21 @@ export function signInToken(input: {
   return relay('/api/auth/token', input, 'auth_token')
 }
 
+export const PRICE_PATH = '/api/price/eth-usdt'
+
+export function requestEthUsdtPrice(input: {
+  key: string | null
+  probe: boolean
+}): Promise<TransportReply> {
+  if (isTauri()) return invoke<TransportReply>('eth_usdt_price', input)
+  return fetch(input.probe ? `${PRICE_PATH}?probe=1` : PRICE_PATH, {
+    headers: input.key === null ? undefined : { 'x-cmc-api-key': input.key },
+  }).then(async (response) => ({
+    status: response.status,
+    body: await response.json().catch(() => null),
+  }))
+}
+
 // An installed app has no dev server behind it, and the sign-in chain needs a
 // cookie the webview cannot read, so the same call runs as a Tauri command in
 // Rust.
