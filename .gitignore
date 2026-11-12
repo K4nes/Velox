@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+
 # e2e output
 .e2e/
 .e2e-live/
