@@ -40,12 +40,13 @@ jobs:
 
       - run: npm run lint
 
-      # Four things that used to drift by hand: the command table, a version
-      # literal typed into `src/`, the lock against the manifest, and the commit
-      # subject format.
+      # Five things that used to drift by hand: the command table, a version
+      # literal typed into `src/`, the lock against the manifest, the commit
+      # subject format, and a secret placed where every step can read it.
       - run: node scripts/check-command-table.mjs
       - run: node scripts/check-version-literal.mjs
       - run: node scripts/check-lockfile.mjs
+      - run: node scripts/check-workflow-secrets.mjs
       - name: commit subject
         if: github.event_name == 'pull_request'
         env:
