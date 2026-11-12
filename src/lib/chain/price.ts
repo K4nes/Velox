@@ -21,6 +21,7 @@ const COPY: Record<QuoteFailure['kind'], string> = {
 // status and the copy is fixed here. The retry flag belongs to the same table,
 // so a new status cannot be classified in one place and retried in another.
 const STATUS: Record<number, { kind: QuoteFailure['kind']; retry: boolean }> = {
+  400: { kind: 'rejected', retry: false },
   401: { kind: 'rejected', retry: true },
   403: { kind: 'rejected', retry: true },
   429: { kind: 'rate-limited', retry: true },
@@ -70,7 +71,7 @@ export async function fetchEthUsdtPrice(): Promise<EthUsdtPrice> {
     if (
       storedFailure !== null &&
       failure instanceof PriceRequestError &&
-      failure.status === 503
+      STATUS[failure.status]?.kind === 'missing-key'
     ) {
       throw storedFailure
     }
