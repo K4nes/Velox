@@ -3,7 +3,7 @@
   "productName": "Velox",
   "mainBinaryName": "Velox",
   "version": "../package.json",
-  "identifier": "com.velox.console",
+  "identifier": "com.k4nes.velox",
   "build": {
     "frontendDist": "../dist",
     "beforeBuildCommand": "npm run build"
