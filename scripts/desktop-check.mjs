@@ -116,6 +116,8 @@ async function drive(evaluate) {
     `${moved.path} ${moved.header}`
   )
 
+  await signIn(evaluate)
+
   const seeded = await evaluate(`(() => {
     const toggle = document.querySelector('button[aria-label="Switch to dark theme"]')
     if (toggle) toggle.click()
@@ -124,6 +126,28 @@ async function drive(evaluate) {
   })()`)
   check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
+}
+
+// The sign-in chain lives in Rust now, so the only proof that the packaged app
+// can reach it is an invoke from the window. The nonce call needs no signature
+// and reaches OpenSea, so an offline machine still passes on the shape and
+// shows the status it got.
+async function signIn(evaluate) {
+  const reply = await evaluate(`(async () => {
+    try {
+      const answer = await window.__TAURI_INTERNALS__.invoke('sign_in_nonce', {
+        address: '0x0000000000000000000000000000000000000000'
+      })
+      return { status: answer?.status, message: answer?.body?.message ?? answer?.body?.error ?? '' }
+    } catch (failure) {
+      return { rejected: String(failure) }
+    }
+  })()`)
+  check(
+    'the packaged app answers the sign-in command',
+    typeof reply.status === 'number' && reply.message.length > 0,
+    reply.status === undefined ? reply.rejected : `${reply.status} ${reply.message.slice(0, 48)}`
+  )
 }
 
 async function restart(evaluate) {

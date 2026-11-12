@@ -46,7 +46,7 @@ Start-Sleep -Seconds 9
 node scripts/desktop-check.mjs --phase drive
 ```
 
-Done when all eight checks read `PASS`. It also toggles the theme and seeds the chain so the next step has something to survive.
+Done when all nine checks read `PASS`. It also toggles the theme and seeds the chain so the next step has something to survive. The ninth check invokes a sign-in command from the window: that is the only place the Rust chain is reachable, and it is the check that proves the packaged app has no server behind it. It reaches OpenSea, so offline it still passes on the shape and reports the status it got.
 
 ## 4. Restart for real
 
