@@ -1,6 +1,7 @@
 // `/auth/siwe/verify` accepts only this exact message, so the layout below is
-// OpenSea's sign-in format, not a local choice. `parse` rejects anything that
-// deviates from it before the request is forwarded.
+// OpenSea's sign-in format, not a local choice. `parse` checks the fixed lines,
+// the header, statement, URI, version and line count, before the request is
+// forwarded.
 const DOMAIN: &str = "opensea.io";
 const ACCOUNT_TYPE: &str = "Ethereum";
 const STATEMENT: &str = "Click to sign in and accept the Platform Terms of Service (https://opensea.io/tos) and Privacy Policy (https://opensea.io/privacy).";

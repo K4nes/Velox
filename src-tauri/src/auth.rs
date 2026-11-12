@@ -245,8 +245,8 @@ fn settle(outcome: Outcome) -> Result<Accepted, Reply> {
     }
 }
 
-// Rendered headers carry attributes, so only the name=value pairs belong in a
-// request Cookie header.
+// A Set-Cookie value carries attributes such as Path and HttpOnly, so only its
+// name=value pair belongs in a request Cookie header.
 fn cookie_header(response: &Response) -> String {
     response
         .headers()

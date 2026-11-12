@@ -55,8 +55,8 @@ export async function getEligibilityToken(
   )
 }
 
-// Every failure the chain reports arrives as a status plus a message, so a
-// broken sign-in reads the same in the browser lane and the installed app.
+// A refused reply carries `error` when the chain had a message to give, and the
+// status explains the rest.
 async function readAuth<T>(reply: Promise<TransportReply>): Promise<T> {
   const { status, body } = await reply
   const failure = body as { error?: string } | null

@@ -137,11 +137,11 @@ async function drive(evaluate) {
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
 }
 
-// The sign-in chain lives in Rust now, so the only proof that the packaged app
-// can reach it is an invoke from the window. The nonce call reaches OpenSea, so
-// an offline machine still passes on the shape and shows the status it got. The
-// token call carries a malformed message: it stops in Rust, which is what proves
-// the payload keys the adaptor sends deserialize.
+// The sign-in chain lives in Rust, so only an invoke from the window proves the
+// packaged app can reach it. The nonce call reaches OpenSea, so an offline
+// machine still passes on the shape and shows the status it got. The token call
+// carries a malformed message and stops in Rust, which proves the payload keys
+// `signInToken` sends deserialize.
 async function signIn(evaluate) {
   const reply = await evaluate(`(async () => {
     try {
