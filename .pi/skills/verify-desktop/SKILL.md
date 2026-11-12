@@ -20,7 +20,7 @@ Two facts that decide a verdict before anything runs.
 npm run build:desktop
 ```
 
-Done when the command exits 0 and `src-tauri/target/release/bundle/nsis/` holds exactly one `Velox_<package.json version>_x64-setup.exe`.
+Done when the command exits 0 and `src-tauri/target/release/bundle/nsis/` holds `Velox_<package.json version>_x64-setup.exe`. Installers from earlier versions may sit beside it, because the bundler never cleans that directory; the version in the name is what selects the current one.
 
 ## 2. Install without elevation
 
