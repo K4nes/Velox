@@ -1,5 +1,11 @@
 {
   "identifier": "default",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "process:allow-restart"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "allow-auth-nonce",
+    "allow-auth-token",
+    "allow-eth-usdt-price"
+  ]
 }
