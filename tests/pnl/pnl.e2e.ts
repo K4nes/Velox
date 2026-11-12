@@ -5,6 +5,12 @@ import { pnlRecordFixture } from '../support/fixtures/pnl'
 import { mockPrice } from '../support/price'
 import { seedVelox } from '../support/seed'
 
+declare global {
+  interface Window {
+    __consoleErrors?: string[]
+  }
+}
+
 test('a seeded PnL record renders on monthly and lifetime', async ({
   app,
   browser,
@@ -102,14 +108,24 @@ test('a rejected key reports the refusal without the key', async ({
   browser,
   screen,
 }) => {
+  const key = 'bad-key-123'
   await mockPrice(browser, {
     status: 401,
-    body: { error: 'bad-key-123 is not a valid key' },
+    body: { error: `${key} is not a valid key` },
+  })
+  await browser.addInitScript(() => {
+    const errors: string[] = []
+    window.__consoleErrors = errors
+    const original = console.error
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((arg) => String(arg)).join(' '))
+      original(...args)
+    }
   })
 
   await app.open('/pnl/monthly')
   await seedVelox(browser, {
-    connections: [coinmarketcapConnection('bad-key-123')],
+    connections: [coinmarketcapConnection(key)],
   })
   await app.open('/pnl/card')
 
@@ -118,7 +134,9 @@ test('a rejected key reports the refusal without the key', async ({
       'The card has no USD figure: CoinMarketCap rejected the key',
     ),
   ).toBeVisible()
-  await expect(browser.locator('body')).not.toContainText('bad-key-123')
+  await expect(browser.locator('body')).not.toContainText(key)
+  const logged = await browser.evaluate(() => window.__consoleErrors ?? [])
+  expect(logged.join('\n')).not.toContain(key)
 })
 
 test('a rejected saved key outranks the missing-key fallback', async ({
