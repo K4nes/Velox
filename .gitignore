@@ -31,3 +31,6 @@ src-tauri/gen/schemas/
 *.njsproj
 *.sln
 *.sw?
+
+# Agent scratch inside the project, as AGENTS.md allows
+.pi/tmp/
