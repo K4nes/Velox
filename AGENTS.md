@@ -29,6 +29,7 @@ All wallet signing happens in the browser with keys from IndexedDB.
 | `npm install` | Install dependencies. |
 | `npm run dev` | Dev server; the only mode with hot reload and the full app. |
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
+| `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |

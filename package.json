@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:desktop": "tauri build",
     "lint": "oxlint",
     "preview": "vite preview",
     "test:e2e": "e2e run",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@e2e-dev/web": "^0.15.5",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
     "@types/node": "^24.13.3",

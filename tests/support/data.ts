@@ -4,17 +4,6 @@ import type { FolderRow, WalletRow } from './seed'
 
 export const FIXED_NOW = 1_760_000_000_000
 
-export function secondWallet(privateKey: string, folderId: string): WalletRow {
-  return {
-    id: 'wallet-second',
-    folderId,
-    label: 'second',
-    address: privateKeyToAccount(privateKey as `0x${string}`).address,
-    privateKey,
-    createdAt: FIXED_NOW,
-  }
-}
-
 /**
  * Wallets for the deterministic mint run. The keys are generated per run, so no
  * committed fixture can sign a transaction that reaches a real chain; the ids

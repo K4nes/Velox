@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Rust / Tauri build output
+src-tauri/target/
+src-tauri/gen/schemas/
+
 # e2e output
 .e2e/
 .e2e-live/
@@ -27,3 +31,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Agent scratch inside the project, as AGENTS.md allows
+.pi/tmp/

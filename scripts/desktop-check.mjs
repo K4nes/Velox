@@ -1,0 +1,166 @@
+// Drives a running packaged app over the WebView2 debugging port and asserts
+// what a user would see. Two phases, because persistence needs a new process.
+//
+//   node scripts/desktop-check.mjs --phase drive     after the first launch
+//   node scripts/desktop-check.mjs --phase restart   after a kill and relaunch
+//
+// The app must be started with
+//   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>
+const DEFAULT_PORT = 9222
+
+const args = process.argv.slice(2)
+const phaseFlag = args.indexOf('--phase')
+const phase = phaseFlag === -1 ? 'drive' : args[phaseFlag + 1]
+const portFlag = args.indexOf('--port')
+const port = portFlag === -1 ? DEFAULT_PORT : Number(args[portFlag + 1])
+
+const CHAIN_KEY = 'wallet-chain'
+const CHAIN_SLUG = 'ape_chain'
+const CHAIN_SYMBOL = 'APE'
+
+const results = []
+
+function check(name, ok, detail) {
+  results.push({ name, ok, detail })
+  console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` (${detail})` : ''}`)
+}
+
+async function connect() {
+  let pages
+  try {
+    pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json()
+  } catch (failure) {
+    throw new Error(
+      `no debugging port on ${port}. Start the app with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=${port} (${failure.message})`
+    )
+  }
+  const page = pages.find((target) => target.type === 'page')
+  if (!page) throw new Error(`no page target on ${port}`)
+
+  const socket = new WebSocket(page.webSocketDebuggerUrl)
+  let nextId = 0
+  const pending = new Map()
+
+  socket.addEventListener('message', (event) => {
+    let message
+    try {
+      message = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    const settle = pending.get(message.id)
+    if (settle) {
+      pending.delete(message.id)
+      settle(message)
+    }
+  })
+  await new Promise((resolve, reject) => {
+    socket.addEventListener('open', resolve, { once: true })
+    socket.addEventListener('error', reject, { once: true })
+  })
+
+  const evaluate = async (expression) => {
+    nextId += 1
+    const id = nextId
+    const reply = await new Promise((resolve) => {
+      pending.set(id, resolve)
+      socket.send(
+        JSON.stringify({
+          id,
+          method: 'Runtime.evaluate',
+          params: { expression, returnByValue: true, awaitPromise: true },
+        })
+      )
+    })
+    if (reply.result?.exceptionDetails) {
+      throw new Error(
+        `expression threw: ${reply.result.exceptionDetails.exception?.description ?? 'unknown'}`
+      )
+    }
+    return reply.result?.result?.value
+  }
+
+  return { evaluate, close: () => socket.close() }
+}
+
+async function drive(evaluate) {
+  const page = await evaluate(`({
+    origin: location.origin,
+    path: location.pathname,
+    secure: isSecureContext,
+    resourceOrigins: [...new Set(performance.getEntriesByType('resource').map((entry) => new URL(entry.name).origin))],
+    header: document.querySelector('header')?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
+    navHrefs: [...document.querySelectorAll('a[href^="/"]')].map((link) => link.getAttribute('href'))
+  })`)
+
+  check('the document is served from the app protocol', page.origin === 'http://tauri.localhost', page.origin)
+  check('the origin is a secure context', page.secure === true, String(page.secure))
+  check(
+    'every resource comes from the app, none from a server',
+    page.resourceOrigins.length === 1 && page.resourceOrigins[0] === 'http://tauri.localhost',
+    page.resourceOrigins.join(', ')
+  )
+  check('a route rendered', page.header.length > 0 && page.path !== '/', `${page.path} ${page.header}`)
+  check('the sidebar offers navigation', page.navHrefs.length >= 5, `${page.navHrefs.length} links`)
+
+  const moved = await evaluate(`(async () => {
+    const link = document.querySelector('a[href="/swap"]')
+    if (!link) return { error: 'no /swap link' }
+    link.click()
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    return { path: location.pathname, header: document.querySelector('header')?.innerText.replace(/\\s+/g, ' ').trim() ?? '' }
+  })()`)
+  check(
+    'navigation changes the route',
+    moved.path === '/swap' && moved.header.length > 0,
+    `${moved.path} ${moved.header}`
+  )
+
+  const seeded = await evaluate(`(() => {
+    const toggle = document.querySelector('button[aria-label="Switch to dark theme"]')
+    if (toggle) toggle.click()
+    localStorage.setItem(${JSON.stringify(CHAIN_KEY)}, ${JSON.stringify(CHAIN_SLUG)})
+    return { theme: localStorage.getItem('theme'), chain: localStorage.getItem(${JSON.stringify(CHAIN_KEY)}) }
+  })()`)
+  check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
+  check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
+}
+
+async function restart(evaluate) {
+  const fresh = await evaluate(`({
+    dark: document.documentElement.classList.contains('dark'),
+    theme: localStorage.getItem('theme'),
+    chain: localStorage.getItem(${JSON.stringify(CHAIN_KEY)})
+  })`)
+  check('the stored theme applied before any interaction', fresh.dark === true, String(fresh.dark))
+  check('the theme survived the restart', fresh.theme === 'dark', String(fresh.theme))
+  check('the chain survived the restart', fresh.chain === CHAIN_SLUG, String(fresh.chain))
+
+  const shown = await evaluate(`(async () => {
+    history.pushState({}, '', '/wallet-profiles')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    return document.body.innerText.match(/TOTAL BALANCE[^A-Z]*([A-Z]+)/)?.[1] ?? ''
+  })()`)
+  check('the app read the stored chain', shown === CHAIN_SYMBOL, shown || 'no balance shown')
+}
+
+if (phase !== 'drive' && phase !== 'restart') {
+  console.error(`unknown phase "${phase}": use --phase drive or --phase restart`)
+  process.exit(2)
+}
+
+let session
+try {
+  session = await connect()
+  await (phase === 'restart' ? restart(session.evaluate) : drive(session.evaluate))
+} catch (failure) {
+  console.error(`FAIL ${failure.message}`)
+  process.exit(1)
+} finally {
+  session?.close()
+}
+
+const failed = results.filter((result) => !result.ok)
+console.log(`\n${results.length - failed.length}/${results.length} checks passed in phase "${phase}"`)
+process.exit(failed.length === 0 ? 0 : 1)
