@@ -51,14 +51,17 @@ Cheapest check that settles the change, in order:
 1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
-4. `npm run test:e2e` — the suite that covers the touched page.
-5. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
+4. `npm run test:release` — the release manifest, signature and lockfile logic in `scripts/`.
+5. `npm run test:e2e` — the suite that covers the touched page.
+6. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
    runs. `npm run build` has to have produced `dist/` first.
-6. A browser run of the page — only when the task asks for it, or when the change cannot
+7. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
 
-CI also gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which settle
-style rather than behaviour.
+CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
+`node scripts/check-version-literal.mjs`, `node scripts/check-lockfile.mjs` and the PR title
+check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
+settle style rather than behaviour.
 
 ## Layout
 
