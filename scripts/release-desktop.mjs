@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildManifest, releaseNotes, verifyRelease } from './latest-json.mjs'
 import { verifyMinisign } from './minisign.mjs'
+import { draftReleaseCommand, installerName } from './release-command.mjs'
 
 const ROOT = join(import.meta.dirname, '..')
 const BUNDLE_DIR = join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
@@ -71,7 +72,7 @@ function build(version) {
 }
 
 function locateInstaller(version) {
-  const artifactName = `Velox_${version}_x64-setup.exe`
+  const artifactName = installerName(version)
   const installer = join(BUNDLE_DIR, artifactName)
   if (!existsSync(installer)) {
     fail(`no ${artifactName} in ${BUNDLE_DIR}; build it before writing the manifest`)
@@ -113,9 +114,16 @@ function readManifest() {
 
 function main() {
   const verifyOnly = process.argv.includes('--verify-only')
+  const draft = process.argv.includes('--draft')
   const version = readVersion()
   const notes = releaseNotes(readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8'), version)
   const { pubkey, endpoint, binary } = readConfig()
+  const command = draftReleaseCommand({ version, bundleDir: BUNDLE_DIR, notes })
+
+  if (process.argv.includes('--dry-run')) {
+    console.log(JSON.stringify(command))
+    return
+  }
 
   if (!verifyOnly) {
     build(version)
@@ -165,6 +173,18 @@ function main() {
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
   }
 
+  if (draft) {
+    publishDraft({
+      command,
+      signed,
+      artifactName: artifacts.artifactName,
+      artifactVersion,
+      endpoint,
+      version,
+    })
+    return
+  }
+
   console.log('')
   console.log('Upload these files:')
   console.log(artifacts.installer)
@@ -175,6 +195,25 @@ function main() {
   console.log(
     `gh release create v${version} --verify-tag --draft "${artifacts.installer}" "${artifacts.signaturePath}" "${manifestPath}"`,
   )
+}
+
+function publishDraft({ command, signed, artifactName, artifactVersion, endpoint, version }) {
+  // These are the bytes gh uploads, so check the file on disk rather than the
+  // object still in memory.
+  try {
+    verifyRelease({ manifest: readManifest(), signed, artifactName, artifactVersion, endpoint })
+  } catch (error) {
+    fail(describe(error))
+  }
+
+  const result = spawnSync('gh', command, { cwd: ROOT, stdio: 'inherit' })
+  if (result.status !== 0) {
+    const reason = result.error ? describe(result.error) : 'non-zero exit'
+    fail(`gh release create failed for v${version}: ${reason}`)
+  }
+
+  console.log('')
+  console.log(`Draft release v${version} holds the installer, its signature and the manifest.`)
 }
 
 try {

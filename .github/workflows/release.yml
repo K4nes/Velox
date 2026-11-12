@@ -44,8 +44,6 @@ jobs:
           if ($env:GITHUB_REF_NAME -ne "v$version") {
             throw "tag $env:GITHUB_REF_NAME does not match v$version"
           }
-          "VELOX_VERSION=$version" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # Without the updater key no artifact is signed, and the installed app
       # refuses an unsigned version. A half-configured certificate is a
@@ -106,40 +104,12 @@ jobs:
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # The script runs the pinned CLI from `node_modules`, not a global one,
-      # and refuses a missing key, a signature it cannot verify, or a manifest
-      # whose version or URL disagrees with the artifact.
-      - name: build the installer, its signature and the manifest
+      # refuses a missing key, re-checks the bytes on disk and opens the draft.
+      # `--draft` is what keeps the updater from seeing this version.
+      - name: build the installer, sign it and open the draft release
         env:
+          GH_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
             ${{ secrets.UPDATER_KEY_PASSWORD }}
-        run: npm run release:desktop
-
-      # The check a release owner runs by hand, on the bytes this job uploads.
-      - run: npm run release:verify
-
-      # The manifest already carries the CHANGELOG notes, so the release body
-      # and the update toast say the same thing. `--draft` is what keeps the
-      # updater from seeing this version.
-      - name: open the draft release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = $env:GITHUB_REF_NAME
-          $bundle = 'src-tauri/target/release/bundle/nsis'
-          $name = "Velox_$($env:VELOX_VERSION)_x64-setup.exe"
-          $installer = Join-Path $bundle $name
-          $signature = "$installer.sig"
-          $manifest = Join-Path $bundle 'latest.json'
-          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          (Get-Content $manifest -Raw | ConvertFrom-Json).notes |
-            Out-File -FilePath $notes -Encoding utf8
-          $arguments = @(
-            'release', 'create', $tag,
-            '--draft', '--verify-tag',
-            '--title', "Velox $tag",
-            '--notes-file', $notes,
-            $installer, $signature, $manifest
-          )
-          gh @arguments
+        run: npm run release:desktop -- --draft

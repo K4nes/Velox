@@ -31,7 +31,7 @@ All wallet signing happens in the browser with keys from IndexedDB.
 | `npm run dev` | Dev server; the only mode with hot reload and the full app. |
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
 | `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
-| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
+| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
 | `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
 | `npm run test:release` | Unit tests for the release manifest logic in `scripts/`. |
 | `npm run lint` | oxlint. |
@@ -164,9 +164,9 @@ The desktop installer has two independent signing chains:
 `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
 `npm run build:desktop` keeps producing a plain installer with no `.sig`.
 
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which builds through
-`npm run release:desktop`, re-checks the artifacts with `npm run release:verify`, and opens
-a draft release holding the installer, its `.sig` and `latest.json`. It never publishes.
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which runs
+`npm run release:desktop -- --draft` and leaves the installer, its `.sig` and `latest.json`
+in a draft release. It never publishes.
 The tag must equal `v` plus the package version. The job fails rather than ship unsigned
 when the updater key is missing, when `WINDOWS_CERTIFICATE` arrives without its password,
 and, once `VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent.

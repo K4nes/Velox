@@ -243,7 +243,8 @@ private key or to its contents, and `VELOX_WIN_CERT_THUMBPRINT` (plus
 `VELOX_WIN_TIMESTAMP_URL` if the default timestamp server does not suit) to sign with
 Authenticode. Then run `npm run release:desktop`. It writes the same three files into
 `src-tauri/target/release/bundle/nsis/` and prints the commands that tag, push and open the
-draft.
+draft. Add `-- --draft` to open that draft from the script instead, or `-- --dry-run` to see
+its command before anything builds.
 
 `npm run release:verify` repeats the checks on the existing artifacts without rebuilding.
 It verifies the signature against the installer bytes, then refuses a `latest.json` whose
