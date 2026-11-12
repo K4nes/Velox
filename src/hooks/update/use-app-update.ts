@@ -23,11 +23,33 @@ function showProgress(version: string, ratio: number | null): void {
   })
 }
 
+// The offer is also the retry surface, so a failed install puts it back with the reason.
+function showOffer(update: PendingUpdate, failure: string | null): void {
+  toast(`Velox ${update.version} is available`, {
+    id: TOAST_ID,
+    description:
+      failure === null
+        ? 'Installs in place. Your wallets, folders and PnL records stay as they are.'
+        : `The update did not install. ${failure}`,
+    action: {
+      label: 'Install',
+      onClick: (event) => {
+        // Sonner dismisses a toast after an action unless the click is default-prevented.
+        event.preventDefault()
+        showProgress(update.version, null)
+        void installUpdate(update)
+      },
+    },
+    closeButton: true,
+    duration: Infinity,
+  })
+}
+
 async function installUpdate(update: PendingUpdate): Promise<void> {
   try {
     await update.install((ratio) => showProgress(update.version, ratio))
   } catch (error) {
-    toast.error(toMessage(error), { id: TOAST_ID })
+    showOffer(update, toMessage(error))
   }
 }
 
@@ -42,23 +64,7 @@ export function useAppUpdate(): void {
         }
 
         const update = result.update
-        toast(`Velox ${update.version} is available`, {
-          id: TOAST_ID,
-          description:
-            'Installs in place. Your wallets, folders and PnL records stay as they are.',
-          action: {
-            label: 'Install',
-            onClick: (event) => {
-              // Sonner dismisses a toast after an action unless the click is default-prevented,
-              // and this same toast is where the progress and the failure appear.
-              event.preventDefault()
-              showProgress(update.version, null)
-              void installUpdate(update)
-            },
-          },
-          closeButton: true,
-          duration: Infinity,
-        })
+        showOffer(update, null)
       })
       .catch(() => {
         // A check that fails is not worth a toast; the next launch tries again.
