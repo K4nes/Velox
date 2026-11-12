@@ -54,6 +54,9 @@ Cheapest check that settles the change, in order:
 6. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
 
+CI also gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which settle
+style rather than behaviour.
+
 ## Layout
 
 | Path | Holds |
@@ -68,7 +71,7 @@ Cheapest check that settles the change, in order:
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
-| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs`, the sign-in chain the installed app runs. `tests/` holds its stub-upstream suite. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs`, the sign-in chain the installed app runs. `tests/` holds its stub-upstream suite. `.pi/skills/verify-desktop/SKILL.md` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored

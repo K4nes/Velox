@@ -22,16 +22,22 @@ jobs:
       # The repo's own gates, in the order AGENTS.md documents them.
       - run: npm run build
 
-      # `tauri::generate_context!` embeds `dist/`, so the suite runs after the
-      # build above.
-      - uses: dtolnay/rust-toolchain@stable
+      # `tauri::generate_context!` embeds `dist/`, so the Rust steps run after
+      # the build above. The toolchain is pinned: a floating stable could turn
+      # `-D warnings` red without a code change.
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
       - run: npm run lint
 
-      # Two lists that used to drift by hand: the command table, and the
-      # commit subject format.
+      # Three things that used to drift by hand: the command table, the commit
+      # subject format, and a version literal typed into `src/`.
       - run: node scripts/check-command-table.mjs
+      - run: node scripts/check-version-literal.mjs
       - name: commit subject
         if: github.event_name == 'pull_request'
         env:

@@ -65,6 +65,8 @@ Before presenting a commit message, verify that:
 - The scope is accurate, if present.
 - The description is specific and concise.
 - Every claim is supported by the diff.
+- After a rebase or a history split, re-read every body against `git show <sha>`. A hunk that
+  moved to another commit leaves its prose behind.
 - The message does not claim tests passed unless they were actually run and passed.
 
 Prefer a single-line subject unless additional context is necessary.
