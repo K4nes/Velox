@@ -15,6 +15,14 @@ come from the Conventional Commit history (`COMMIT.md`).
   import previews the counts it found, refuses a document from a newer version or a damaged
   one, and writes nothing until it is confirmed. Settings also states that uninstalling with
   "delete app data" ticked deletes the wallets ([#76]).
+- The installed app signs in to OpenSea with no dev server behind it. The sign-in nonce and
+  the token exchange run as in-app commands that keep the relay route's statuses, messages,
+  cookie handling and single entitlement retry, and the web lane keeps signing in through
+  its mocked route ([#74]).
+
+### Fixed
+
+- The sidebar reports the package version instead of a hardcoded `v1.0.0`.
 
 ## [0.1.2] - 2026-11-11
 
@@ -120,4 +128,5 @@ consolidated into a single entry.
 [#34]: https://github.com/K4nes/velox/pull/34
 [#35]: https://github.com/K4nes/velox/pull/35
 [#42]: https://github.com/K4nes/velox/pull/42
+[#74]: https://github.com/K4nes/Velox/issues/74
 [#76]: https://github.com/K4nes/Velox/issues/76
