@@ -253,7 +253,7 @@ The workflow reads these repository secrets:
 
 | Secret | Use |
 | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | The updater key, or the path to it. Required. |
+| `TAURI_SIGNING_PRIVATE_KEY` | The updater key. Required. |
 | `UPDATER_KEY_PASSWORD` | That key's password, when it has one. |
 | `WINDOWS_CERTIFICATE` | The Authenticode certificate as base64 `.pfx`. Optional. |
 | `WINDOWS_CERTIFICATE_PASSWORD` | That certificate's password. Required with it. |

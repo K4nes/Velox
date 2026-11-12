@@ -15,12 +15,8 @@ jobs:
     # The installer and the browser suite are verified on Windows in
     # `verify.yml`, so the release builds on the same runner.
     runs-on: windows-latest
-    # The certificate pair stays at job level because the import step's `if:`
-    # reads it. The updater key is passed to the two steps that need it, so an
-    # install script cannot reach it.
-    env:
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    # Every signing secret belongs to the step that reads it, so `npm ci` and
+    # the plain checks never see one.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,6 +55,9 @@ jobs:
         env:
           REQUIRE_AUTHENTICODE: ${{ vars.VELOX_REQUIRE_AUTHENTICODE }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: >-
+            ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
             throw 'TAURI_SIGNING_PRIVATE_KEY is not set'
@@ -74,11 +73,16 @@ jobs:
 
       # The bundler signs through the Windows certificate store, so the `.pfx`
       # is imported first. A failed import must fail the job: an empty
-      # thumbprint leaves the build unsigned without a warning.
+      # thumbprint leaves the build unsigned without a warning. No certificate
+      # means an unsigned release, which is the documented default.
       - name: import the Authenticode certificate
-        if: env.WINDOWS_CERTIFICATE != ''
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: >-
+            ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
+          if (-not $env:WINDOWS_CERTIFICATE) { exit 0 }
           $ErrorActionPreference = 'Stop'
           $path = Join-Path $env:RUNNER_TEMP 'velox.pfx'
           try {
