@@ -116,14 +116,59 @@ async function drive(evaluate) {
     `${moved.path} ${moved.header}`
   )
 
-  const seeded = await evaluate(`(() => {
-    const toggle = document.querySelector('button[aria-label="Switch to dark theme"]')
-    if (toggle) toggle.click()
+  await signIn(evaluate)
+
+  const seeded = await evaluate(`(async () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 600))
+    const toggle = () => document.querySelector('button[aria-label^="Switch to "]')
+    // The button names the theme it switches to, so a machine that already opens
+    // dark still exercises the write this check exists to prove. The storage
+    // write lands after the click commits, so the read waits for it.
+    if (document.documentElement.classList.contains('dark')) {
+      toggle()?.click()
+      await settle()
+    }
+    toggle()?.click()
+    await settle()
     localStorage.setItem(${JSON.stringify(CHAIN_KEY)}, ${JSON.stringify(CHAIN_SLUG)})
     return { theme: localStorage.getItem('theme'), chain: localStorage.getItem(${JSON.stringify(CHAIN_KEY)}) }
   })()`)
   check('the theme toggle wrote storage', seeded.theme === 'dark', String(seeded.theme))
   check('the chain key is seeded for the restart phase', seeded.chain === CHAIN_SLUG, String(seeded.chain))
+}
+
+// The sign-in chain lives in Rust, so only an invoke from the window proves the
+// packaged app can reach it. The nonce call reaches OpenSea, so an offline
+// machine still passes on the shape and shows the status it got. The token call
+// carries a malformed message and stops in Rust, which proves the payload keys
+// `signInToken` sends deserialize.
+async function signIn(evaluate) {
+  const reply = await evaluate(`(async () => {
+    try {
+      const nonce = await window.__TAURI_INTERNALS__.invoke('auth_nonce', {
+        address: '0x0000000000000000000000000000000000000000'
+      })
+      const token = await window.__TAURI_INTERNALS__.invoke('auth_token', {
+        message: 'not-a-siwe-message',
+        signature: '0xsigned'
+      })
+      return {
+        nonce: { status: nonce?.status, message: nonce?.body?.message ?? nonce?.body?.error ?? '' },
+        token: { status: token?.status, error: token?.body?.error ?? '' }
+      }
+    } catch (failure) {
+      return { rejected: String(failure) }
+    }
+  })()`)
+  check(
+    'the packaged app registers both sign-in commands',
+    typeof reply.nonce?.status === 'number' &&
+      reply.nonce.message.length > 0 &&
+      reply.token?.status === 400 &&
+      reply.token.error === 'message does not match the OpenSea sign-in layout',
+    reply.rejected ??
+      `nonce ${reply.nonce?.status}, token ${reply.token?.status} ${reply.token?.error}`
+  )
 }
 
 async function restart(evaluate) {

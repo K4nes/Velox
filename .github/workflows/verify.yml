@@ -21,6 +21,12 @@ jobs:
 
       # The repo's own gates, in the order AGENTS.md documents them.
       - run: npm run build
+
+      # `tauri::generate_context!` embeds `dist/`, so the suite runs after the
+      # build above.
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
       - run: npm run lint
 
       # Two lists that used to drift by hand: the command table, and the

@@ -291,7 +291,9 @@ Cheap checks first, stop at the first rung that settles it:
 2. `npx tsc -b --force`
 3. `npm run build`
 4. `npm run test:e2e` — the suite that covers the touched page.
-5. A browser run of the page — only when the task asks for it, or when the change cannot
+5. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
+   runs. `npm run build` has to have produced `dist/` first.
+6. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
 
 ## E2E live data and mocks

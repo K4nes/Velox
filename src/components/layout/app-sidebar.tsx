@@ -38,7 +38,9 @@ export function AppSidebar() {
           />
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <p className="text-sm font-medium">Velox</p>
-            <p className="text-xs text-sidebar-foreground/70">v1.0.0</p>
+            <p className="text-xs text-sidebar-foreground/70">
+              {`v${__APP_VERSION__}`}
+            </p>
           </div>
         </div>
       </SidebarHeader>

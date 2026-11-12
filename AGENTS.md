@@ -11,7 +11,8 @@ PnL, portfolio, bulk sell, instant sell, transfer, swap. React 19 + TypeScript +
 Tailwind 4, shadcn/Animate UI components vendored into `src/components/ui/`.
 
 There is no backend service. `server/` is a Vite plugin that mounts three routes on the dev
-and preview servers, and nothing else:
+and preview servers, and the installed app signs in to OpenSea through its own commands,
+because the sign-in cookie cannot pass through the webview. The web lane's routes:
 
 - `/api/auth/nonce` returns an OpenSea SIWE message for an address.
 - `/api/auth/token` verifies the signed message, mints an OpenSea token scoped
@@ -35,9 +36,10 @@ All wallet signing happens in the browser with keys from IndexedDB.
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
 | `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Needs the `E2E_*` values in `.env.e2e.local`. |
 | `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Needs the same values as `test:e2e:live`. |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
-A test runner exists: the `e2e` package drives a headless browser. Do not claim a suite ran
-unless you ran it.
+Two test runners exist: the `e2e` package drives a headless browser, and `cargo test` drives
+the Rust commands. Do not claim a suite ran unless you ran it.
 
 ## Verify
 
@@ -47,7 +49,9 @@ Cheapest check that settles the change, in order:
 2. `npx tsc -b --force`
 3. `npm run build`
 4. `npm run test:e2e` — the suite that covers the touched page.
-5. A browser run of the page — only when the task asks for it, or when the change cannot
+5. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
+   runs. `npm run build` has to have produced `dist/` first.
+6. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
 
 ## Layout
@@ -64,6 +68,7 @@ Cheapest check that settles the change, in order:
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs`, the sign-in chain the installed app runs. `tests/` holds its stub-upstream suite. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored
