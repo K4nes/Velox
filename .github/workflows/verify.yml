@@ -24,25 +24,51 @@ jobs:
 
       # `tauri::generate_context!` embeds `dist/`, so the Rust steps run after
       # the build above. The toolchain is pinned: a floating stable could turn
-      # `-D warnings` red without a code change.
+      # `-D warnings` red without a code change. The manifest sits in
+      # `src-tauri`, so the cache root is named or it finds no Cargo.lock.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - uses: dtolnay/rust-toolchain@1.98.1
         with:
           components: rustfmt, clippy
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+      - run: >-
+          cargo clippy --manifest-path src-tauri/Cargo.toml
+          --all-targets --locked -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 
       - run: npm run lint
 
-      # Three things that used to drift by hand: the command table, the commit
-      # subject format, and a version literal typed into `src/`.
+      # Four things that used to drift by hand: the command table, a version
+      # literal typed into `src/`, the lock against the manifest, and the commit
+      # subject format.
       - run: node scripts/check-command-table.mjs
       - run: node scripts/check-version-literal.mjs
+      - run: node scripts/check-lockfile.mjs
       - name: commit subject
         if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: node scripts/check-commit-subject.mjs
+
+      # The release manifest and signature logic. It needs no window and no
+      # network, so it runs beside the gates above.
+      - run: npm run test:release
+
+  browser:
+    # The mocked lane starts its own Vite server, so it needs neither the Rust
+    # toolchain nor `dist`. A second job runs it beside `verify` instead of
+    # after four minutes of Rust compile.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - run: npm ci
 
       # Deliberately no E2E_* secrets. The mocked lane has to pass without
       # them, and a test that quietly needs one fails here instead of on a
