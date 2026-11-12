@@ -27,8 +27,6 @@ export type BackupCounts = {
   pnlRecords: number
 }
 
-// Every message here is operator copy, so a refusal names what is wrong with
-// the file rather than the field the reader tripped on.
 export class BackupError extends Error {
   constructor(message: string) {
     super(message)
@@ -55,8 +53,6 @@ export async function readBackup(now = Date.now()): Promise<Backup> {
   }
 }
 
-// Indented so the file opens as plain JSON in any editor, and a re-export diffs
-// row by row instead of as one line.
 export function backupJson(backup: Backup): string {
   return `${JSON.stringify(backup, null, 2)}\n`
 }
@@ -110,8 +106,6 @@ export function parseBackup(text: string): Backup {
   }
 }
 
-// One transaction over the four stores, so an import that fails on a quota
-// error leaves the profile as it was instead of with half the file applied.
 export async function applyBackup(backup: Backup): Promise<void> {
   await putMany([
     { store: 'folders', rows: backup.folders },
@@ -184,8 +178,31 @@ function checkConnection(row: Record<string, unknown>): string | null {
   if (typeof row.name !== 'string') return 'has no name'
   if (row.kind !== 'data-api' && row.kind !== 'rpc') return 'has no kind'
   if (!Array.isArray(row.credentials)) return 'has no credential list'
-  if (row.kind === 'rpc' && !Array.isArray(row.endpoints)) {
-    return 'has no endpoint list'
+  // The settings list reads `credential.value` on every row, so a credential
+  // without one throws as the page renders it.
+  if (
+    row.credentials.some(
+      (credential) =>
+        !isRecord(credential) ||
+        typeof credential.id !== 'string' ||
+        typeof credential.value !== 'string'
+    )
+  ) {
+    return 'has a credential with no value'
+  }
+  if (row.kind === 'rpc') {
+    if (!Array.isArray(row.endpoints)) return 'has no endpoint list'
+    if (
+      row.endpoints.some(
+        (endpoint) =>
+          !isRecord(endpoint) ||
+          typeof endpoint.id !== 'string' ||
+          typeof endpoint.chain !== 'string' ||
+          typeof endpoint.url !== 'string'
+      )
+    ) {
+      return 'has an endpoint with no chain or url'
+    }
   }
   // The provider list is sorted by this, and a missing value leaves the order
   // undefined instead of failing.
@@ -195,11 +212,31 @@ function checkConnection(row: Record<string, unknown>): string | null {
 
 function checkPnlRecord(row: Record<string, unknown>): string | null {
   if (!isText(row.id)) return 'has no id'
-  if (!isText(row.name)) return 'has no name'
+  // OpenSea answers with no name for some collections and the writer stores the
+  // empty string, so that row has to come back rather than be refused.
+  if (typeof row.name !== 'string') return 'has no name'
+  if (typeof row.slug !== 'string') return 'has no slug'
+  if (typeof row.chain !== 'string') return 'has no chain'
+  if (typeof row.imageUrl !== 'string') return 'has no image URL'
   if (typeof row.day !== 'string') return 'has no day'
   if (typeof row.contract !== 'string') return 'has no contract'
   if (!Array.isArray(row.wallets)) return 'has no wallet list'
   if (typeof row.netPnl !== 'string') return 'has no net PnL'
+  // A missing quote formats as `$NaN` on the monthly table, and a missing
+  // completeness flag claims a partial read was complete.
+  if (row.ethPriceUsd !== null && typeof row.ethPriceUsd !== 'number') {
+    return 'has no USD price'
+  }
+  if (typeof row.truncated !== 'boolean' || typeof row.unpriced !== 'boolean') {
+    return 'has no read completeness flags'
+  }
+  if (
+    row.breakdown !== undefined &&
+    row.breakdown !== null &&
+    !isRecord(row.breakdown)
+  ) {
+    return 'has a breakdown that is not an object'
+  }
   if (typeof row.createdAt !== 'number') return 'has no creation time'
   return null
 }

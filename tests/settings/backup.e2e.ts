@@ -3,18 +3,31 @@ import { join } from 'node:path'
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { generatePrivateKey } from 'viem/accounts'
+import { recoverTransactionAddress } from 'viem'
 import {
+  mintWallets,
   openseaConnection,
+  robinhoodRpc,
   walletFolder,
   walletRow,
 } from '../support/data'
+import { collectionFixture } from '../support/fixtures/collection'
+import { holdingsFixture } from '../support/fixtures/holdings'
 import { pnlRecordFixture } from '../support/fixtures/pnl'
-import { mockRpc } from '../support/rpc'
+import { mockCollection, mockHoldings } from '../support/opensea'
+import { mockRpc, word } from '../support/rpc'
+import { scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 type Page = Parameters<typeof seedVelox>[0]
 
 const BACKUP_DIR = '.e2e/backups'
+const SLUG = 'restored-drop'
+const CONTRACT = '0x00000000000000000000000000000000000000aa'
+const TOKEN_ID = '1'
+const RPC_URL = 'http://127.0.0.1:8545'
+const DESTINATION = '0x0000000000000000000000000000000000000001'
+const SUPPORTS_INTERFACE = '0x01ffc9a7'
 
 test('export writes one JSON document and a fresh store restores it', async ({
   app,
@@ -58,7 +71,6 @@ test('export writes one JSON document and a fresh store restores it', async ({
   expect(download.suggestedFilename).toMatch(
     /^velox-backup-\d{4}-\d{2}-\d{2}\.json$/,
   )
-  // Indented JSON, so the file reads as a document rather than one long line.
   expect(text.startsWith('{\n  "app": "velox"')).toBe(true)
   expect(backup.version).toBe(1)
   expect(backup.folders.map((row) => row.id)).toEqual([folder.id])
@@ -90,7 +102,6 @@ test('export writes one JSON document and a fresh store restores it', async ({
   await expect(screen.getByRole('button', /OpenSea/)).toContainText('1234')
 
   await app.open('/wallet-profiles')
-  // The folder comes back named, and the wallet is its row.
   await expect(
     screen.getByRole('table', 'Wallets in Export Check'),
   ).toBeVisible()
@@ -120,18 +131,7 @@ test('a backup from a newer version is refused and writes nothing', async ({
   await seedVelox(browser, { folders: [folder], wallets: [wallet] })
   await app.open('/settings')
 
-  const file = await writeBackupFile(
-    'newer.json',
-    JSON.stringify({
-      app: 'velox',
-      version: 2,
-      exportedAt: Date.now(),
-      folders: [],
-      wallets: [],
-      connections: [],
-      pnlRecords: [],
-    }),
-  )
+  const file = await writeBackupFile('newer.json', backupDocument({ version: 2 }))
   await browser.locator('input[type=file]').setInputFiles(file)
 
   await expect(
@@ -162,19 +162,11 @@ test('a damaged document is refused and leaves the store untouched', async ({
   await input.setInputFiles(await writeBackupFile('broken.json', '{"app":'))
   await expect(screen.getByText('This file is not valid JSON.')).toBeVisible()
 
-  // A key that does not sign for the stored address would restore a wallet that
-  // can never sign, so the whole document is refused.
   await input.setInputFiles(
     await writeBackupFile(
       'mismatch.json',
-      JSON.stringify({
-        app: 'velox',
-        version: 1,
-        exportedAt: Date.now(),
-        folders: [],
+      backupDocument({
         wallets: [{ ...wallet, privateKey: generatePrivateKey() }],
-        connections: [],
-        pnlRecords: [],
       }),
     ),
   )
@@ -185,6 +177,190 @@ test('a damaged document is refused and leaves the store untouched', async ({
   await expect(screen.getByRole('button', 'Import')).not.toBeVisible()
   expect(await rowCount(browser, 'wallets')).toBe(1)
 })
+
+// The OpenSea collection response carries no name for some collections, and
+// the writer stores the empty string it gets, so that row has to come back.
+test('a PnL row saved with no collection name still round-trips', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Nameless Check')
+  const wallet = walletRow({
+    label: 'nameless',
+    privateKey: generatePrivateKey(),
+    folderId: folder.id,
+  })
+
+  await app.open('/settings')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    pnlRecords: [pnlRecordFixture({ name: '' })],
+  })
+  await app.open('/settings')
+
+  const download = await browser.waitForDownload(() =>
+    screen.getByRole('button', 'Export').click(),
+  )
+  const text = await readFile(download.absolutePath, 'utf8')
+
+  await clearStores(browser)
+  await app.open('/settings')
+  await browser
+    .locator('input[type=file]')
+    .setInputFiles(await writeBackupFile('nameless.json', text))
+
+  await screen.getByRole('button', 'Import').click()
+  await expect(screen.getByText(/Imported 1 wallet/)).toBeVisible()
+
+  await app.open('/pnl/monthly')
+  await expect(
+    screen.getByRole('row').filter({ hasText: '1.0000 ETH' }),
+  ).toBeVisible()
+})
+
+test('a row that lost a field the readers use is refused whole', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Partial Check')
+  const wallet = walletRow({
+    label: 'partial',
+    privateKey: generatePrivateKey(),
+    folderId: folder.id,
+  })
+  const record = pnlRecordFixture({ name: 'Partial Collection' })
+  const partial: Record<string, unknown> = { ...record }
+  delete partial.chain
+
+  await app.open('/settings')
+  const input = browser.locator('input[type=file]')
+
+  await input.setInputFiles(
+    await writeBackupFile(
+      'missing-chain.json',
+      backupDocument({
+        folders: [folder],
+        wallets: [wallet],
+        pnlRecords: [partial],
+      }),
+    ),
+  )
+  await expect(screen.getByText(/PnL record 1 has no chain/)).toBeVisible()
+
+  // A credential with no value throws when the settings list renders its
+  // summary, so this row must never reach the store.
+  const credentialless = {
+    kind: 'data-api',
+    id: 'opensea',
+    name: 'OpenSea',
+    order: 0,
+    autoFallback: true,
+    credentials: [{ id: 'key' }],
+    updatedAt: Date.now(),
+  }
+
+  await input.setInputFiles(
+    await writeBackupFile(
+      'missing-value.json',
+      backupDocument({
+        folders: [folder],
+        wallets: [wallet],
+        connections: [credentialless],
+      }),
+    ),
+  )
+  await expect(screen.getByText(/credential with no value/)).toBeVisible()
+
+  await expect(screen.getByRole('button', 'Import')).not.toBeVisible()
+  expect(await rowCount(browser, 'wallets')).toBe(0)
+  expect(await rowCount(browser, 'pnl-records')).toBe(0)
+})
+
+test('a restored wallet signs a transfer', async ({ app, browser, screen }) => {
+  const folder = walletFolder('Restored Signer')
+  const [wallet] = mintWallets(1, folder.id)
+
+  await mockCollection(browser, {
+    slug: SLUG,
+    body: collectionFixture({
+      slug: SLUG,
+      name: 'Restored Drop',
+      contract: CONTRACT,
+    }),
+  })
+  await mockHoldings(browser, {
+    chain: 'robinhood',
+    address: wallet.address,
+    body: holdingsFixture([{ contract: CONTRACT, identifier: TOKEN_ID }]),
+  })
+  const rpc = await mockRpc(browser, {
+    url: /^http:\/\/127\.0\.0\.1:8545\/?$/,
+    allowWrites: true,
+    ethCall: { [SUPPORTS_INTERFACE]: word(1) },
+  })
+
+  await app.open('/settings')
+  await browser
+    .locator('input[type=file]')
+    .setInputFiles(
+      await writeBackupFile(
+        'signer.json',
+        backupDocument({
+          folders: [folder],
+          wallets: [wallet],
+          connections: [robinhoodRpc(RPC_URL), openseaConnection('restored-key')],
+        }),
+      ),
+    )
+  await screen.getByRole('button', 'Import').click()
+
+  await app.open('/transfer')
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'transfer',
+    collection: SLUG,
+    folder: folder.name,
+  })
+  await screen.getByRole('checkbox', { name: `Select token #${TOKEN_ID}` }).check()
+  await screen.getByLabel('Or paste an address').fill(DESTINATION)
+  await screen.getByLabel('Or paste an address').press('Tab')
+  await screen
+    .getByRole('button', { name: `Transfer ${TOKEN_ID} NFT` })
+    .click()
+
+  await expect.poll(() => rpc.count('eth_sendRawTransaction')).toBe(1)
+  const broadcast = rpc.calls.filter(
+    (call) => call.method === 'eth_sendRawTransaction',
+  )
+  const sender = await recoverTransactionAddress({
+    serializedTransaction: String(broadcast[0]?.params[0]) as `0x${string}`,
+  })
+  expect(sender.toLowerCase()).toBe(wallet.address.toLowerCase())
+})
+
+type BackupFields = {
+  folders?: unknown[]
+  wallets?: unknown[]
+  connections?: unknown[]
+  pnlRecords?: unknown[]
+  version?: number
+}
+
+function backupDocument(fields: BackupFields = {}): string {
+  return JSON.stringify({
+    app: 'velox',
+    version: fields.version ?? 1,
+    exportedAt: Date.now(),
+    folders: fields.folders ?? [],
+    wallets: fields.wallets ?? [],
+    connections: fields.connections ?? [],
+    pnlRecords: fields.pnlRecords ?? [],
+  })
+}
 
 async function writeBackupFile(name: string, text: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true })

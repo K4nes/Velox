@@ -39,8 +39,6 @@ export function DataSection({ onImported }: DataSectionProps) {
     }
   }
 
-  // The file is read and checked here, before the operator confirms, so the
-  // counts and any refusal show without a write.
   async function choose(file: File) {
     setError(null)
     setPending(null)

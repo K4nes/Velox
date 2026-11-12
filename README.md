@@ -90,7 +90,7 @@ A fresh install opens on `/mint/tasks` with an empty wallet list.
 | Transfer | `/transfer` | Moves ERC-721 and ERC-1155 tokens from many wallets to one destination. |
 | Swap | `/swap` | Routes a swap through Relay, including WETH wrap and unwrap. |
 | Wallet Profiles | `/wallet-profiles` | Imports and groups wallets into folders, and picks the active chain. |
-| Settings | `/settings` | Provider connections: OpenSea and CoinMarketCap credentials, RPC endpoints per chain. |
+| Settings | `/settings` | Provider connections: OpenSea and CoinMarketCap credentials, RPC endpoints per chain. Exports and imports the wallets, folders, connections and PnL records as one JSON file. |
 
 Chains: Ethereum, Base, Robinhood Chain, ApeChain (`src/config/chains.ts`).
 
