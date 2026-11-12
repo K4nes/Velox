@@ -1,0 +1,115 @@
+name: release
+
+# A pushed `vX.Y.Z` tag builds the installer, signs it, and opens a draft
+# release. Nothing is published, so the updater's `latest.json` never points
+# at a half-built version: a person publishes the draft.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    # The installer and the browser suite are verified on Windows in
+    # `verify.yml`, so the release builds on the same runner.
+    runs-on: windows-latest
+    # Every signing secret belongs to the step that reads it, so `npm ci` and
+    # the plain checks never see one.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This job holds `contents: write`, so the checkout token has no
+          # business sitting in `.git/config` where an install script reads it.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - run: npm ci
+
+      # Two gates before the build costs five minutes. The tag must name the
+      # version `package.json` holds, because the manifest points at
+      # `releases/download/v<version>/`; and both signing chains must be whole.
+      - name: check the tag against the package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "tag $env:GITHUB_REF_NAME does not match v$version"
+          }
+
+      # Without the updater key no artifact is signed, and the installed app
+      # refuses an unsigned version. A half-configured certificate is a
+      # mistake, not a request to ship unsigned, so it fails here too.
+      - name: check the signing secrets
+        shell: pwsh
+        env:
+          REQUIRE_AUTHENTICODE: ${{ vars.VELOX_REQUIRE_AUTHENTICODE }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: >-
+            ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw 'TAURI_SIGNING_PRIVATE_KEY is not set'
+          }
+          if ($env:WINDOWS_CERTIFICATE -and
+            -not $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            throw 'WINDOWS_CERTIFICATE_PASSWORD is not set'
+          }
+          $require = $env:REQUIRE_AUTHENTICODE -eq 'true'
+          if (-not $env:WINDOWS_CERTIFICATE -and $require) {
+            throw 'VELOX_REQUIRE_AUTHENTICODE needs WINDOWS_CERTIFICATE'
+          }
+
+      # The bundler signs through the Windows certificate store, so the `.pfx`
+      # is imported first. A failed import must fail the job: an empty
+      # thumbprint leaves the build unsigned without a warning. No certificate
+      # means an unsigned release, which is the documented default.
+      - name: import the Authenticode certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: >-
+            ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) { exit 0 }
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:RUNNER_TEMP 'velox.pfx'
+          try {
+            $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+            [IO.File]::WriteAllBytes($path, $bytes)
+            $password = $env:WINDOWS_CERTIFICATE_PASSWORD
+            $secure = ConvertTo-SecureString $password -AsPlainText -Force
+            $import = @{
+              FilePath = $path
+              CertStoreLocation = 'Cert:\CurrentUser\My'
+              Password = $secure
+            }
+            $cert = Import-PfxCertificate @import
+          } finally {
+            Remove-Item $path -Force -ErrorAction SilentlyContinue
+          }
+          if (-not $cert.Thumbprint) {
+            throw 'the certificate has no thumbprint'
+          }
+          "VELOX_WIN_CERT_THUMBPRINT=$($cert.Thumbprint)" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      # The script runs the pinned CLI from `node_modules`, not a global one,
+      # refuses a missing key, re-checks the bytes on disk and opens the draft.
+      # `--draft` is what keeps the updater from seeing this version.
+      - name: build the installer, sign it and open the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
+            ${{ secrets.UPDATER_KEY_PASSWORD }}
+        run: npm run release:desktop -- --draft

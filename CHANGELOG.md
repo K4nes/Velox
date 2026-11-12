@@ -17,7 +17,9 @@ come from the Conventional Commit history (`COMMIT.md`).
 - The three in-app commands sit under an application ACL manifest, and one capability
   grants the core defaults, the updater and those commands to the main window alone. A
   command no capability grants is rejected at runtime ([#77]).
-
+- Pushing a `vX.Y.Z` tag runs a release workflow that builds the signed installer, checks
+  `latest.json` against it, and opens a draft release for a person to publish. The job
+  fails instead of shipping an unsigned installer when its signing secrets are missing.
 - The PnL card prices its USD figure in the installed app. The operator's CoinMarketCap
   key reaches an in-app command that keeps the route's statuses, caches a quote per key
   for a minute, and bypasses the cache for a probe. With no key the card asks for one and

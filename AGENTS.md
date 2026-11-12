@@ -31,7 +31,7 @@ All wallet signing happens in the browser with keys from IndexedDB.
 | `npm run dev` | Dev server; the only mode with hot reload and the full app. |
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
 | `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
-| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
+| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
 | `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
 | `npm run test:release` | Unit tests for the release manifest logic in `scripts/`. |
 | `npm run lint` | oxlint. |
@@ -59,8 +59,9 @@ Cheapest check that settles the change, in order:
    be settled any cheaper.
 
 CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
-`node scripts/check-version-literal.mjs`, `node scripts/check-lockfile.mjs` and the PR title
-check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
+`node scripts/check-version-literal.mjs`, `node scripts/check-lockfile.mjs`,
+`node scripts/check-workflow-secrets.mjs`, `node scripts/check-workflow-width.mjs` and the PR
+title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
 settle style rather than behaviour.
 
 ## Layout
@@ -152,16 +153,23 @@ with the next patch version.
 
 ### Desktop release
 
-The desktop installer has two independent signing chains:
+The installer carries two independent signing chains, which README describes under "Two
+signing chains". The rules that bind work here:
 
-- Authenticode signs the installer and `Velox.exe` for the Windows prompt. It is optional;
-  without a certificate the SmartScreen warning is expected behaviour.
-- The updater key signs the installer and binds it to the version. The installed app checks
-  that signature before it installs an update.
+- Authenticode is optional. Without a certificate the SmartScreen warning is expected.
+- The updater key is mandatory. `requireSignedVersion` refuses an unsigned version.
 
 `src-tauri/tauri.release.conf.json` is an overlay that turns on
 `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
 `npm run build:desktop` keeps producing a plain installer with no `.sig`.
+
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which runs
+`npm run release:desktop -- --draft` and leaves the installer, its `.sig` and `latest.json`
+in a draft release. It never publishes.
+
+The tag must equal `v` plus the package version. The job fails rather than ship unsigned
+when the updater key is missing, when `WINDOWS_CERTIFICATE` arrives without its password,
+and, once `VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent.
 
 The updater reads its own keys from `tauri-plugin-updater`'s `config.rs`: `pubkey`,
 `endpoints`, `requireSignedVersion`, `windows.installMode`. `@tauri-apps/cli`'s

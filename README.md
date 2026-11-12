@@ -226,21 +226,47 @@ Only the public key is committed. Never copy, print or commit the private key;
 ### Cutting a release
 
 1. Move the `## [Unreleased]` entries in `CHANGELOG.md` into a
-   `## [x.y.z] - YYYY-MM-DD` section and bump `package.json`. The script reads the version
-   from `package.json` and the notes from that CHANGELOG section.
-2. Set `TAURI_SIGNING_PRIVATE_KEY` to the path of the private key, or to its contents. Set
-   `VELOX_WIN_CERT_THUMBPRINT`, and `VELOX_WIN_TIMESTAMP_URL` if the default timestamp
-   server does not suit, to sign with Authenticode.
-3. Run `npm run release:desktop`. It builds the app and writes the installer, its `.sig`
-   file and `latest.json` into `src-tauri/target/release/bundle/nsis/`, then prints the
-   upload paths and three commands.
-4. Run those three from the merged `main`. They tag the commit, push the annotated tag, and
-   open a draft release with the three files. Publish the draft once the files are attached.
-5. Check the installed update once per release that changes it (see below).
+   `## [x.y.z] - YYYY-MM-DD` section and bump `package.json`. The version and the notes are
+   read from those two files.
+2. Merge the change to `main`, tag the merged commit with an annotated `vX.Y.Z` tag, and
+   push the tag. `.github/workflows/release.yml` then builds the installer, writes its
+   `.sig` file and `latest.json`, checks all three, and opens a **draft** release. The tag
+   must equal `v` plus the package version, because the manifest points at
+   `releases/download/v<version>/`.
+3. Publish the draft once its three files are attached. A draft is not served by
+   `releases/latest/download/latest.json`, so no installed copy sees the version before
+   this step.
+4. Check the installed update once per release that changes it (see below).
+
+To build on your own machine instead, set `TAURI_SIGNING_PRIVATE_KEY` to the path of the
+private key or to its contents, and `VELOX_WIN_CERT_THUMBPRINT` (plus
+`VELOX_WIN_TIMESTAMP_URL` if the default timestamp server does not suit) to sign with
+Authenticode. Then run `npm run release:desktop`. It writes the same three files into
+`src-tauri/target/release/bundle/nsis/` and prints the commands that tag, push and open the
+draft. Add `-- --draft` to open that draft from the script instead, or `-- --dry-run` to see
+its command before anything builds.
 
 `npm run release:verify` repeats the checks on the existing artifacts without rebuilding.
 It verifies the signature against the installer bytes, then refuses a `latest.json` whose
 version, signed version, file name or URL disagree with them.
+
+The workflow reads these repository secrets:
+
+| Secret | Use |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | The updater key. Required. |
+| `UPDATER_KEY_PASSWORD` | That key's password, when it has one. |
+| `WINDOWS_CERTIFICATE` | The Authenticode certificate as base64 `.pfx`. Optional. |
+| `WINDOWS_CERTIFICATE_PASSWORD` | That certificate's password. Required with it. |
+
+Make the base64 value with
+`[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`.
+
+The job fails when the updater key is missing, when the certificate is set without its
+password, and when an import does not produce a thumbprint, so a half-configured run cannot
+ship unsigned artifacts. Set the repository variable `VELOX_REQUIRE_AUTHENTICODE` to `true`
+once a certificate identity is chosen: the job then also fails when `WINDOWS_CERTIFICATE` is
+absent.
 
 An installed copy checks the endpoint in `tauri.conf.json`
 (`releases/latest/download/latest.json`) on launch. When a newer version is published it
