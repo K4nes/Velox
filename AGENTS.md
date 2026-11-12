@@ -74,7 +74,7 @@ style rather than behaviour.
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
-| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs`, the sign-in chain the installed app runs. `tests/` holds its stub-upstream suite. `.pi/skills/verify-desktop/SKILL.md` checks the installed app. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `.pi/skills/verify-desktop/SKILL.md` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored

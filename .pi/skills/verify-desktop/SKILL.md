@@ -12,7 +12,7 @@ The mechanical part is `scripts/desktop-check.mjs`. The steps here are what has 
 Two facts that decide a verdict before anything runs.
 
 - A build that leaves only `src-tauri/target/release/Velox.exe` is a failure. The installer is the deliverable.
-- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in is no longer broken here, because the app answers it through its own commands. The USD price figure still needs the route, so it stays broken until #75 adds its command.
+- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in is not broken here, because the app answers it through its own commands. The ETH/USDT quote has its own command for the same reason, so the card shows a figure when a key is saved and an inline request for one when it is not.
 
 ## 1. Build
 
@@ -46,7 +46,7 @@ Start-Sleep -Seconds 9
 node scripts/desktop-check.mjs --phase drive
 ```
 
-Done when all nine checks read `PASS`. It also toggles the theme and seeds the chain so the next step has something to survive. The ninth check invokes both sign-in commands from the window: the nonce call passes on its shape whether or not OpenSea is reachable, and the token call with a malformed message must answer 400, which proves both commands are registered and that the `message` and `signature` payload keys deserialize. A real operator sign-in on the eligibility page against the live service is a manual check in #72, not this script.
+Done when all eleven checks read `PASS`. It also toggles the theme, seeds the chain and opens the PnL card so the next step has something to survive. The sign-in check invokes both sign-in commands from the window: the nonce call passes on its shape whether or not OpenSea is reachable, and the token call with a malformed message must answer 400, which proves both commands are registered and that the `message` and `signature` payload keys deserialize. The last two checks invoke `eth_usdt_price` with no key and expect a 503, then open `/pnl/card` and look for the inline notice that links to Settings. A real operator sign-in on the eligibility page against the live service is a manual check in #72, not this script.
 
 ## 4. Restart for real
 
@@ -73,4 +73,4 @@ Done when the install folder, the shortcut and the `HKCU` key are gone and `dist
 
 ## Report
 
-One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `9/9 checks passed in phase "drive"` and `4/4 checks passed in phase "restart"`.
+One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `11/11 checks passed in phase "drive"` and `4/4 checks passed in phase "restart"`.
