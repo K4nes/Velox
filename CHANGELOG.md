@@ -10,6 +10,14 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Added
 
+- The installed app runs under an explicit content-security policy. It names the OpenSea,
+  Relay, chain-RPC, Alchemy, Ankr and Blockscout endpoints the window calls, the Iconify
+  and OpenSea image hosts, and nothing else, so the CoinMarketCap host stays out because
+  the quote happens in Rust ([#77]).
+- The three in-app commands sit under an application ACL manifest, and one capability
+  grants the core defaults, the updater and those commands to the main window alone. A
+  command no capability grants is rejected at runtime ([#77]).
+
 - The PnL card prices its USD figure in the installed app. The operator's CoinMarketCap
   key reaches an in-app command that keeps the route's statuses, caches a quote per key
   for a minute, and bypasses the cache for a probe. With no key the card asks for one and
@@ -144,3 +152,4 @@ consolidated into a single entry.
 [#74]: https://github.com/K4nes/Velox/issues/74
 [#75]: https://github.com/K4nes/Velox/issues/75
 [#76]: https://github.com/K4nes/Velox/issues/76
+[#77]: https://github.com/K4nes/Velox/issues/77
