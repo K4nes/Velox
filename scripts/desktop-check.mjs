@@ -129,24 +129,36 @@ async function drive(evaluate) {
 }
 
 // The sign-in chain lives in Rust now, so the only proof that the packaged app
-// can reach it is an invoke from the window. The nonce call needs no signature
-// and reaches OpenSea, so an offline machine still passes on the shape and
-// shows the status it got.
+// can reach it is an invoke from the window. The nonce call reaches OpenSea, so
+// an offline machine still passes on the shape and shows the status it got. The
+// token call carries a malformed message: it stops in Rust, which is what proves
+// the payload keys the adaptor sends deserialize.
 async function signIn(evaluate) {
   const reply = await evaluate(`(async () => {
     try {
-      const answer = await window.__TAURI_INTERNALS__.invoke('sign_in_nonce', {
+      const nonce = await window.__TAURI_INTERNALS__.invoke('auth_nonce', {
         address: '0x0000000000000000000000000000000000000000'
       })
-      return { status: answer?.status, message: answer?.body?.message ?? answer?.body?.error ?? '' }
+      const token = await window.__TAURI_INTERNALS__.invoke('auth_token', {
+        message: 'not-a-siwe-message',
+        signature: '0xsigned'
+      })
+      return {
+        nonce: { status: nonce?.status, message: nonce?.body?.message ?? nonce?.body?.error ?? '' },
+        token: { status: token?.status, error: token?.body?.error ?? '' }
+      }
     } catch (failure) {
       return { rejected: String(failure) }
     }
   })()`)
   check(
-    'the packaged app answers the sign-in command',
-    typeof reply.status === 'number' && reply.message.length > 0,
-    reply.status === undefined ? reply.rejected : `${reply.status} ${reply.message.slice(0, 48)}`
+    'the packaged app registers both sign-in commands',
+    typeof reply.nonce?.status === 'number' &&
+      reply.nonce.message.length > 0 &&
+      reply.token?.status === 400 &&
+      reply.token.error === 'message does not match the OpenSea sign-in layout',
+    reply.rejected ??
+      `nonce ${reply.nonce?.status}, token ${reply.token?.status} ${reply.token?.error}`
   )
 }
 

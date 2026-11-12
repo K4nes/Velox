@@ -12,7 +12,7 @@ The mechanical part is `scripts/desktop-check.mjs`. The steps here are what has 
 Two facts that decide a verdict before anything runs.
 
 - A build that leaves only `src-tauri/target/release/Velox.exe` is a failure. The installer is the deliverable.
-- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in and the USD price figure are expected to be broken here until T2 and T3 replace those calls with commands.
+- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in is no longer broken here, because the app answers it through its own commands. The USD price figure still needs the route, so it stays broken until T3 adds its command.
 
 ## 1. Build
 
@@ -46,7 +46,7 @@ Start-Sleep -Seconds 9
 node scripts/desktop-check.mjs --phase drive
 ```
 
-Done when all nine checks read `PASS`. It also toggles the theme and seeds the chain so the next step has something to survive. The ninth check invokes a sign-in command from the window: that is the only place the Rust chain is reachable, and it is the check that proves the packaged app has no server behind it. It reaches OpenSea, so offline it still passes on the shape and reports the status it got.
+Done when all nine checks read `PASS`. It also toggles the theme and seeds the chain so the next step has something to survive. The ninth check invokes both sign-in commands from the window: the nonce call passes on its shape whether or not OpenSea is reachable, and the token call with a malformed message must answer 400, which proves both commands are registered and that the `message` and `signature` payload keys deserialize. A real operator sign-in on the eligibility page against the live service is a manual check in #72, not this script.
 
 ## 4. Restart for real
 
@@ -73,4 +73,4 @@ Done when the install folder, the shortcut and the `HKCU` key are gone and `dist
 
 ## Report
 
-One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `7/7 checks passed in phase "drive"` and `4/4 checks passed in phase "restart"`.
+One line per acceptance criterion, each carrying the value that was read, not a claim. The two phase summaries end it, for example `9/9 checks passed in phase "drive"` and `4/4 checks passed in phase "restart"`.
