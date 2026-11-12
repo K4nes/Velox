@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import { apiPlugin } from './server/plugin.ts'
 
-// The sidebar, the installer and the window title all report this one number.
+// The sidebar and the installer report one number, and it comes from here.
 function readVersion(): string {
   const source = readFileSync(
     path.resolve(import.meta.dirname, 'package.json'),

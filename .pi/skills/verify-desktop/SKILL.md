@@ -12,7 +12,7 @@ The mechanical part is `scripts/desktop-check.mjs`. The steps here are what has 
 Two facts that decide a verdict before anything runs.
 
 - A build that leaves only `src-tauri/target/release/Velox.exe` is a failure. The installer is the deliverable.
-- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in is no longer broken here, because the app answers it through its own commands. The USD price figure still needs the route, so it stays broken until T3 adds its command.
+- Inside the packaged app, a path the bundle does not hold returns `index.html` with a 200. So a fetch to `/api/*` gets HTML, not a 404. Sign-in is no longer broken here, because the app answers it through its own commands. The USD price figure still needs the route, so it stays broken until #75 adds its command.
 
 ## 1. Build
 
