@@ -95,10 +95,12 @@ it is present (`'v' in stored`) to tell the current split from the legacy `inves
 so a bump alone changes nothing at runtime; a new shape needs a new branch. localStorage
 holds theme, active chain and the card image cache only.
 
-**Secrets.** Wallet private keys never leave the browser and are only used to sign
-locally. Provider API keys come from the browser store; the CoinMarketCap key may travel
-to `/api/price/eth-usdt` in a header, and nothing else should. Do not log either kind. A
-new route under `server/` needs a reason the browser cannot handle on its own.
+**Secrets.** Wallet private keys are only used to sign locally, and leave the browser only
+in the backup file the operator exports on purpose; that file is unencrypted and carries
+provider API keys too. Provider API keys come from the browser store; the CoinMarketCap
+key may also travel to `/api/price/eth-usdt` in a header, and nothing else should. Do not
+log either kind. A new route under `server/` needs a reason the browser cannot handle on
+its own.
 
 **Chains.** `src/config/chains.ts` is the chain list. A new chain needs an entry there and
 an RPC connection. Its native and wrapped swap options derive from that entry; add

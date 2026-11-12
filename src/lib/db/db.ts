@@ -108,10 +108,14 @@ function readRequest<T>(request: IDBRequest<T>): Promise<T> {
   })
 }
 
-function writeTransaction(db: IDBDatabase, store: StoreName, write: (store: IDBObjectStore) => void): Promise<void> {
+function writeTransaction(
+  db: IDBDatabase,
+  stores: StoreName[],
+  write: (transaction: IDBTransaction) => void
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(store, 'readwrite')
-    write(transaction.objectStore(store))
+    const transaction = db.transaction(stores, 'readwrite')
+    write(transaction)
     transaction.oncomplete = () => resolve()
     // A failed request bubbles to the transaction and aborts it, and only
     // `abort` carries the cause. Rejecting on `error` would report the generic
@@ -136,14 +140,35 @@ export async function get<T>(store: StoreName, id: string): Promise<T | undefine
 
 export async function put<T>(store: StoreName, value: T): Promise<void> {
   const db = await openDb()
-  await writeTransaction(db, store, (objectStore) => {
-    objectStore.put(value)
+  await writeTransaction(db, [store], (transaction) => {
+    transaction.objectStore(store).put(value)
+  })
+}
+
+// Several stores in one transaction, so a restore that fails part-way rolls
+// back instead of leaving the profile holding some of the rows.
+export async function putMany(
+  entries: readonly { store: StoreName; rows: readonly unknown[] }[]
+): Promise<void> {
+  if (entries.length === 0) {
+    return
+  }
+
+  const db = await openDb()
+  const stores = [...new Set(entries.map((entry) => entry.store))]
+  await writeTransaction(db, stores, (transaction) => {
+    for (const entry of entries) {
+      const objectStore = transaction.objectStore(entry.store)
+      for (const row of entry.rows) {
+        objectStore.put(row)
+      }
+    }
   })
 }
 
 export async function remove(store: StoreName, id: string): Promise<void> {
   const db = await openDb()
-  await writeTransaction(db, store, (objectStore) => {
-    objectStore.delete(id)
+  await writeTransaction(db, [store], (transaction) => {
+    transaction.objectStore(store).delete(id)
   })
 }

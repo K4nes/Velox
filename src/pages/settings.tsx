@@ -28,6 +28,7 @@ import type {
 import { toMessage } from '@/lib/core/message'
 import { ConnectionDetail } from './settings/connection-detail'
 import { ConnectionsList } from './settings/connections-list'
+import { DataSection } from './settings/data-section'
 
 export function SettingsPage() {
   const [connections, setConnections] = useState<Connection[]>([])
@@ -398,6 +399,12 @@ export function SettingsPage() {
           )}
         </Card>
       </div>
+
+      <DataSection
+        // An imported connection reaches the list only through the loader, so
+        // the reload is what makes the restore visible on this page.
+        onImported={() => setReloadToken((token) => token + 1)}
+      />
     </div>
   )
 }

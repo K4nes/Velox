@@ -8,6 +8,14 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+### Added
+
+- Settings exports wallets, folders, provider connections and PnL records as one versioned
+  JSON file and imports it back, so a fresh install starts with the operator's data. The
+  import previews the counts it found, refuses a document from a newer version or a damaged
+  one, and writes nothing until it is confirmed. Settings also states that uninstalling with
+  "delete app data" ticked deletes the wallets ([#76]).
+
 ## [0.1.2] - 2026-11-11
 
 ### Added
@@ -112,3 +120,4 @@ consolidated into a single entry.
 [#34]: https://github.com/K4nes/velox/pull/34
 [#35]: https://github.com/K4nes/velox/pull/35
 [#42]: https://github.com/K4nes/velox/pull/42
+[#76]: https://github.com/K4nes/Velox/issues/76

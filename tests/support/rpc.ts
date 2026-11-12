@@ -133,6 +133,24 @@ export async function mockRpc(
         }
         return result
       }
+      // viem fills a local-account transaction through this node call before it
+      // signs, and reads the result back from `tx`.
+      case 'eth_fillTransaction': {
+        const request = (params[0] ?? {}) as Record<string, unknown>
+        return {
+          tx: {
+            type: '0x2',
+            chainId: options.chainId ?? '0x1237',
+            nonce: request.nonce ?? '0x0',
+            gas: request.gas ?? '0x5208',
+            maxFeePerGas: request.maxFeePerGas ?? '0x3b9aca00',
+            maxPriorityFeePerGas: request.maxPriorityFeePerGas ?? '0x3b9aca00',
+            to: request.to ?? ZERO_ADDRESS,
+            value: request.value ?? '0x0',
+            input: request.data ?? '0x',
+          },
+        }
+      }
       default:
         throw new Error(`unmocked RPC method: ${method}`)
     }
