@@ -31,6 +31,9 @@ All wallet signing happens in the browser with keys from IndexedDB.
 | `npm run dev` | Dev server; the only mode with hot reload and the full app. |
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
 | `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
+| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
+| `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
+| `npm run test:release` | Unit tests for the release manifest logic in `scripts/`. |
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
@@ -143,6 +146,24 @@ git push origin v0.1.0
 
 Annotated tags, never lightweight. A pushed tag is never moved or deleted: fix forward
 with the next patch version.
+
+### Desktop release
+
+The desktop installer has two independent signing chains:
+
+- Authenticode signs the installer and `Velox.exe` for the Windows prompt. It is optional;
+  without a certificate the SmartScreen warning is expected behaviour.
+- The updater key signs the installer and binds it to the version. The installed app checks
+  that signature before it installs an update.
+
+`src-tauri/tauri.release.conf.json` is an overlay that turns on
+`bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
+`npm run build:desktop` keeps producing a plain installer with no `.sig`.
+
+The updater private key lives outside the repository at
+`%USERPROFILE%\.velox\velox-updater.key`, with a backup in a second offline location. Only
+the public key is committed, as `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
+Never copy the private key into the repository.
 
 ## Conventions
 

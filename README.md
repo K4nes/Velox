@@ -29,6 +29,7 @@ three small server-side routes for the calls a browser cannot make alone.
 - [Configuration](#configuration)
 - [Development](#development)
 - [Data and security](#data-and-security)
+- [Desktop app and updates](#desktop-app-and-updates)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 - [Maintainers](#maintainers)
@@ -48,7 +49,8 @@ cd velox
 npm install
 ```
 
-There is no published package and no installer. The app is the repository.
+There is no published npm package. The desktop build produces a Windows installer; see
+[Desktop app and updates](#desktop-app-and-updates).
 
 Optionally, create `.env.local` to give the dev server a fallback price key:
 
@@ -175,6 +177,87 @@ Two things to know before you put real assets in it:
 OpenSea keys go from the browser straight to OpenSea. The CoinMarketCap key goes to the
 local `/api/price/eth-usdt` route, which forwards it upstream. Both sit in the same
 browser database as the wallets.
+
+## Desktop app and updates
+
+The Windows build packages the same app with Tauri and produces an NSIS installer:
+
+```bash
+npm run build:desktop
+```
+
+The installer lands at `src-tauri/target/release/bundle/nsis/Velox_<version>_x64-setup.exe`.
+It installs for the current user, so it needs no administrator prompt. Wallet, folder and
+PnL data lives in the app's IndexedDB, which survives an in-place update because the
+application identifier and the per-user install do not change. The desktop install keeps
+its own data, separate from the browser copy at `localhost`.
+
+**The unsigned warning is expected.** Until an Authenticode certificate is configured,
+Windows SmartScreen shows "Windows protected your PC" with an unknown publisher. Choose
+**More info**, then **Run anyway**. With a certificate configured, the installer and
+`Velox.exe` verify and the prompt shows the publisher name from the certificate.
+
+### Two signing chains
+
+Updates use a second signature chain beside Authenticode, and the two are independent:
+
+- Authenticode signs the installer and `Velox.exe` for the Windows prompt. It is a
+distribution convenience and can be absent.
+- The updater key signs the installer for the in-app update. The installed app checks that
+  signature before it runs an installer, and the signature binds the version the manifest
+  announces to the artifact. A manifest whose version disagrees with the signed version is
+  refused.
+
+A signed update does not remove the SmartScreen warning, and an Authenticode certificate
+does not let the app accept an unsigned update. Configure each chain on its own.
+
+The updater key pair lives outside the repository:
+
+| Item | Location |
+| --- | --- |
+| Private key | `%USERPROFILE%\.velox\velox-updater.key` |
+| Backup | A second location, never the repository |
+| Public key | `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` |
+
+Only the public key is committed. Never copy, print or commit the private key;
+`.gitignore` blocks `*.key` and `*.key.pub` as a last line of defence.
+
+### Cutting a release
+
+1. Move the `## [Unreleased]` entries in `CHANGELOG.md` into a
+   `## [x.y.z] - YYYY-MM-DD` section and bump `package.json`. The script reads the version
+   from `package.json` and the notes from that CHANGELOG section.
+2. Set `TAURI_SIGNING_PRIVATE_KEY` to the path of the private key, or to its contents. Set
+   `VELOX_WIN_CERT_THUMBPRINT`, and `VELOX_WIN_TIMESTAMP_URL` if the default timestamp
+   server does not suit, to sign with Authenticode.
+3. Run `npm run release:desktop`. It builds the app and writes the installer, its `.sig`
+   file and `latest.json` into `src-tauri/target/release/bundle/nsis/`, then prints the
+   upload paths and three commands.
+4. Run those three from the merged `main`. They tag the commit, push the annotated tag, and
+   open a draft release with the three files. Publish the draft once the files are attached.
+5. Check the installed update once per release that changes it (see below).
+
+`npm run release:verify` repeats the checks on the existing artifacts without rebuilding.
+It refuses a `latest.json` whose version, signed version, file name or URL disagree with
+the installer.
+
+An installed copy checks the endpoint in `tauri.conf.json`
+(`releases/latest/download/latest.json`) on launch. When a newer version is published it
+offers the update once, downloads it, installs it in place and relaunches. A build without
+`TAURI_SIGNING_PRIVATE_KEY` (`npm run build:desktop`) still produces a working installer,
+but it carries no updater signature and no manifest.
+
+### Update smoke test
+
+The update runs only inside an installed copy, so check it by hand on a release that
+changes the updater:
+
+1. Install the previous version and add a wallet, a folder and a PnL record.
+2. Publish the next version as a draft release with its installer, `.sig` and
+   `latest.json`, then publish it.
+3. Launch the older installed copy, accept the offer, and wait for the relaunch.
+4. Check the version of the new build and that the wallet, the folder and the PnL record
+   are still there.
 
 ## Contributing
 
