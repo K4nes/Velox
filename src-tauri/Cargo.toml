@@ -5,8 +5,22 @@ name = "velox"
 version = "0.0.0"
 edition = "2021"
 
+[lib]
+# The sign-in chain lives in the library so integration tests can drive it
+# without a window. `main.rs` only starts the app.
+name = "velox_lib"
+path = "src/lib.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+# The middleware's upstream calls need a cookie the webview cannot read, so the
+# app makes them itself. `native-tls` is schannel on Windows and needs no C
+# toolchain beyond the one the installer build already requires.
+reqwest = { version = "0.13", default-features = false, features = [
+  "blocking",
+  "native-tls",
+] }
+serde_json = "1"

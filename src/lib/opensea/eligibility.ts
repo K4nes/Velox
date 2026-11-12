@@ -1,4 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
+import { signInNonce, signInToken } from '@/lib/chain/transport'
+import type { TransportReply } from '@/lib/chain/transport'
 import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { toMessage } from '@/lib/core/message'
 import {
@@ -38,38 +40,32 @@ export type EligibilityTableState =
   | { status: 'empty'; message: string }
   | { status: 'ready'; rows: EligibilityRow[] }
 
-async function postAuth<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const body = (await response.json().catch(() => null)) as
-    | (T & { error?: string })
-    | null
-
-  if (!response.ok || body === null) {
-    throw new Error(body?.error ?? `Auth request to ${path} failed`)
-  }
-
-  return body as T
-}
-
 export async function getEligibilityToken(
   privateKey: string
 ): Promise<{ token: string; expiresAt: number }> {
   const account = privateKeyToAccount(toPrivateKeyHex(privateKey))
 
-  const { message } = await postAuth<{ message: string }>('/api/auth/nonce', {
-    address: account.address,
-  })
-  const signature = await account.signMessage({ message })
+  const nonce = await readAuth<{ message: string }>(
+    signInNonce(account.address)
+  )
+  const signature = await account.signMessage({ message: nonce.message })
 
-  return postAuth<{ token: string; expiresAt: number }>('/api/auth/token', {
-    address: account.address,
-    message,
-    signature,
-  })
+  return readAuth<{ token: string; expiresAt: number }>(
+    signInToken({ message: nonce.message, signature })
+  )
+}
+
+// Every failure the chain reports arrives as a status plus a message, so a
+// broken sign-in reads the same in the browser lane and the installed app.
+async function readAuth<T>(reply: Promise<TransportReply>): Promise<T> {
+  const { status, body } = await reply
+  const failure = body as { error?: string } | null
+
+  if (status < 200 || status >= 300 || failure === null) {
+    throw new Error(failure?.error ?? 'Sign-in request failed')
+  }
+
+  return body as T
 }
 
 // One eligibility request per wallet, plus the sign-in calls the auth proxy makes
