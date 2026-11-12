@@ -101,7 +101,7 @@ impl PriceService {
             return flight.wait();
         }
 
-        let landing = Landing::new(flight, &self.cache, key);
+        let guard = FlightGuard::new(flight, &self.cache, key);
         let (reply, quote) = exchange(&self.upstream, key);
         {
             let mut cache = lock(&self.cache);
@@ -109,7 +109,7 @@ impl PriceService {
                 cache.store(key, quote);
             }
         }
-        landing.publish(reply.clone());
+        guard.finish(reply.clone());
         reply
     }
 }
@@ -188,14 +188,14 @@ enum Answer {
 /// Publishes the leader's whole reply when it finishes, and a fallback when it
 /// panics first. The flight leaves the cache on both paths, so a panic cannot
 /// pin a key to a stale 502 for the life of the process.
-struct Landing<'a> {
+struct FlightGuard<'a> {
     flight: Arc<Flight>,
     cache: &'a Mutex<Cache>,
     key: &'a str,
     reply: Option<Reply>,
 }
 
-impl<'a> Landing<'a> {
+impl<'a> FlightGuard<'a> {
     fn new(flight: Arc<Flight>, cache: &'a Mutex<Cache>, key: &'a str) -> Self {
         Self {
             flight,
@@ -205,12 +205,12 @@ impl<'a> Landing<'a> {
         }
     }
 
-    fn publish(mut self, reply: Reply) {
+    fn finish(mut self, reply: Reply) {
         self.reply = Some(reply);
     }
 }
 
-impl Drop for Landing<'_> {
+impl Drop for FlightGuard<'_> {
     fn drop(&mut self) {
         let reply = self
             .reply
