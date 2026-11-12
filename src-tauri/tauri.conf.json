@@ -22,7 +22,36 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "font-src": "'self'",
+        "img-src": [
+          "'self'",
+          "data:",
+          "https://api.iconify.design",
+          "https://*.seadn.io"
+        ],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "https://api.opensea.io",
+          "https://api.relay.link",
+          "https://ethereum-rpc.publicnode.com",
+          "https://rpc.mainnet.chain.robinhood.com",
+          "https://mainnet.base.org",
+          "https://rpc.apechain.com/http",
+          "https://robinhoodchain.blockscout.com",
+          "https://*.alchemy.com",
+          "https://rpc.ankr.com",
+          "https://*.seadn.io"
+        ],
+        "object-src": "'none'",
+        "frame-src": "'none'",
+        "base-uri": "'self'"
+      }
     }
   },
   "bundle": {
