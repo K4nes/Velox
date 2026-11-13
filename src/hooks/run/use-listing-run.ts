@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { toast } from 'sonner'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { usePageStore } from '@/hooks/use-page-store'
 import { useRun } from '@/hooks/run/use-run'
+import type { RunState } from '@/hooks/run/use-run'
+import type { PageStore } from '@/lib/core/page-store'
 import { addressKey } from '@/lib/wallet/address'
 import {
   buildListingPlan,
@@ -28,21 +31,35 @@ import { requestListingActions } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 
+export type ListingRunFields = RunState<ListingRunProgress> & {
+  price: string
+  durationDays: number
+}
+
 export function useListingRun(input: {
   selected: readonly ListingToken[]
   collection: CollectionInfo | null
   onListed?: (keys: string[]) => void
+  store: PageStore<ListingRunFields>
 }) {
-  const [price, setPrice] = useState('')
-  const [durationDays, setDurationDays] = useState(30)
+  const { price, durationDays } = usePageStore(input.store)
 
   const run = useRun<ListingRunProgress>({
     kind: 'listing',
+    store: input.store,
     onFinish: (progress) => {
       const keys = listedKeys(progress)
       if (keys.length > 0) input.onListed?.(keys)
     },
   })
+
+  function setPrice(next: string) {
+    input.store.set({ price: next })
+  }
+
+  function setDuration(next: number) {
+    input.store.set({ durationDays: next })
+  }
 
   const decimals = input.collection?.listingCurrency.decimals ?? 18
   const priceAmount = parsePrice(price, decimals)
@@ -156,7 +173,7 @@ export function useListingRun(input: {
     price,
     setPrice,
     durationDays,
-    setDuration: setDurationDays,
+    setDuration,
     running: run.running,
     progress: run.progress,
     error: run.error,

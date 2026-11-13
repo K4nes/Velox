@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
+import type { PageStore } from '@/lib/core/page-store'
+
+export type SelectionFields = { selectedKeys: readonly string[] }
 
 export function useSelection<T>(
   items: readonly T[],
@@ -8,12 +11,19 @@ export function useSelection<T>(
   }: {
     keyOf: (item: T) => string
     isSelectable: (item: T) => boolean
-  }
+  },
+  store?: PageStore<SelectionFields>
 ) {
-  const [selectedKeys, setSelectedKeys] = useState<readonly string[]>([])
+  const scoped = usePageStoreScope(store, { selectedKeys: [] })
+  const { selectedKeys } = usePageStore(scoped)
+
+  function setKeys(next: readonly string[]) {
+    scoped.set({ selectedKeys: next })
+  }
 
   function toggle(key: string) {
-    setSelectedKeys((current) =>
+    const current = scoped.get().selectedKeys
+    setKeys(
       current.includes(key)
         ? current.filter((value) => value !== key)
         : [...current, key]
@@ -22,7 +32,8 @@ export function useSelection<T>(
 
   function toggleAll() {
     const keys = items.filter(isSelectable).map(keyOf)
-    setSelectedKeys((current) =>
+    const current = scoped.get().selectedKeys
+    setKeys(
       keys.every((key) => current.includes(key))
         ? current.filter((key) => !keys.includes(key))
         : [...new Set([...current, ...keys])]
@@ -30,12 +41,12 @@ export function useSelection<T>(
   }
 
   function deselect(keys: readonly string[]) {
-    setSelectedKeys((current) => current.filter((key) => !keys.includes(key)))
+    setKeys(scoped.get().selectedKeys.filter((key) => !keys.includes(key)))
   }
 
   return {
     selectedKeys,
-    setKeys: setSelectedKeys,
+    setKeys,
     toggle,
     toggleAll,
     deselect,

@@ -10,13 +10,15 @@ import { useListingRun } from '@/hooks/run/use-listing-run'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { Inventory } from '@/pages/bulk-sell/inventory'
 import { ListingRail } from '@/pages/bulk-sell/listing-rail'
+import { bulkSellStore } from '@/pages/bulk-sell/store'
 
 export function BulkSellPage() {
-  const scan = useBulkSellScan()
+  const scan = useBulkSellScan(bulkSellStore)
   const run = useListingRun({
     selected: scan.selection,
     collection: scan.collection,
     onListed: scan.deselect,
+    store: bulkSellStore,
   })
   const { groups } = useWalletGroups()
 

@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from 'react'
+import { usePageStore } from '@/hooks/use-page-store'
 import { readStoredImages, type CardImage } from '@/lib/card/card-images'
+import { createPageStore } from '@/lib/core/page-store'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import type { PnlStats } from '@/lib/pnl/pnl-trades'
 import {
@@ -39,78 +40,69 @@ type State = {
   }
 }
 
-let state: State = {
-  collectionUrl: '',
-  collection: null,
-  walletIds: [],
-  format: 'Landscape',
-  uploads: readStoredImages().slice(0, MAX_IMAGES),
-  activeImageId: null,
-  positions: {},
-  version: 0,
-  read: null,
-  save: null,
-  quote: { price: null, loading: false, failure: null },
-}
-
-const listeners = new Set<() => void>()
-
-function set(next: Partial<State>) {
-  state = { ...state, ...next }
-  for (const listener of listeners) listener()
-}
-
 // The route unmounts this page, so the card outlives it here at module scope.
 // A new collection check overwrites it; nothing else clears it.
-export const pnlCard = {
-  get: () => state,
-  subscribe(listener: () => void) {
-    listeners.add(listener)
-    return () => {
-      listeners.delete(listener)
-    }
+const card = createPageStore<State>(
+  {
+    collectionUrl: '',
+    collection: null,
+    walletIds: [],
+    format: 'Landscape',
+    uploads: readStoredImages().slice(0, MAX_IMAGES),
+    activeImageId: null,
+    positions: {},
+    version: 0,
+    read: null,
+    save: null,
+    quote: { price: null, loading: false, failure: null },
   },
+  { retained: true }
+)
+
+export const pnlCard = {
   setCollectionUrl(collectionUrl: string) {
-    set({ collectionUrl })
+    card.set({ collectionUrl })
   },
   setCollection(collection: CollectionInfo | null) {
-    set({ collection })
+    card.set({ collection })
   },
   setWalletIds(walletIds: string[]) {
-    set({ walletIds })
+    card.set({ walletIds })
   },
   setFormat(format: Format) {
-    set({ format })
+    card.set({ format })
   },
   setUploads(update: (current: CardImage[]) => CardImage[]) {
-    set({ uploads: update(state.uploads).slice(0, MAX_IMAGES) })
+    card.set({
+      uploads: update(card.get().uploads).slice(0, MAX_IMAGES),
+    })
   },
   setActiveImageId(activeImageId: string | null) {
-    set({ activeImageId })
+    card.set({ activeImageId })
   },
   setPosition(id: string, position: ImagePosition) {
-    set({ positions: { ...state.positions, [id]: position } })
+    card.set({ positions: { ...card.get().positions, [id]: position } })
   },
   bumpVersion() {
-    set({ version: state.version + 1 })
+    card.set({ version: card.get().version + 1 })
   },
   setRead(read: PnlRead) {
-    set({ read })
+    card.set({ read })
   },
   markSaved(at: number, price: number | null) {
-    set({ save: { at, price, failed: false } })
+    card.set({ save: { at, price, failed: false } })
   },
   markFailed(at: number) {
-    set({ save: { at, price: null, failed: true } })
+    card.set({ save: { at, price: null, failed: true } })
   },
   async loadQuote() {
-    const { quote } = state
+    const { quote } = card.get()
     if (quote.loading) return
 
-    set({ quote: { ...quote, loading: true } })
+    card.set({ quote: { ...quote, loading: true } })
     try {
       const next = await fetchEthUsdtPrice()
-      set({
+      card.set({
         quote: {
           price: next.price,
           loading: false,
@@ -118,9 +110,9 @@ export const pnlCard = {
         },
       })
     } catch (failure) {
-      set({
+      card.set({
         quote: {
-          ...state.quote,
+          ...card.get().quote,
           loading: false,
           failure: quoteFailure(failure),
         },
@@ -130,5 +122,5 @@ export const pnlCard = {
 }
 
 export function usePnlCard() {
-  return useSyncExternalStore(pnlCard.subscribe, pnlCard.get)
+  return usePageStore(card)
 }

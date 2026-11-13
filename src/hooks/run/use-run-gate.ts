@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
-import { useLiveRead } from '@/hooks/use-live-read'
+import type { PageStore } from '@/lib/core/page-store'
 import {
   abortRunSlot,
   claimRunSlot,
@@ -16,52 +16,56 @@ export type RunSession = {
   end: () => void
 }
 
-export function useRunGate(kind: RunKind): {
+export type RunGateFields = {
   running: boolean
   error: string | null
+}
+
+export function useRunGate(
+  kind: RunKind,
+  store: PageStore<RunGateFields>
+): {
   setError: (message: string | null) => void
   begin: () => Promise<RunSession | null>
 } {
-  const [running, setRunning] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const runningRef = useRef(false)
   const slotRef = useRef<RunSlot | null>(null)
-  const { open } = useLiveRead()
 
   useEffect(() => {
+    // A retained run keeps submitting after its page unmounts, so only the per-mount
+    // store abandons its slot for the next flow.
+    if (store.retained) return
     return () => {
       if (slotRef.current) abortRunSlot(slotRef.current)
     }
-  }, [])
+  }, [store])
+
+  function setError(message: string | null) {
+    store.set({ error: message })
+  }
 
   async function begin(): Promise<RunSession | null> {
-    if (runningRef.current) return null
+    if (store.get().running) return null
 
-    runningRef.current = true
-    setRunning(true)
+    store.set({ running: true })
 
-    const run = open()
+    const run = store.open('run')
     const claim = await claimRunSlot(
       kind,
       () => {
-        if (run.live()) {
-          setError('Waiting for the previous run to finish')
-        }
+        if (run.live()) setError('Waiting for the previous run to finish')
       },
       () => !run.live()
     )
 
     if (claim.kind === 'stale') {
-      runningRef.current = false
+      store.set({ running: false })
       return null
     }
 
     if (claim.kind === 'busy') {
-      runningRef.current = false
       if (run.live()) {
         const message = runKindLabel(claim.running)
-        setRunning(false)
-        setError(message)
+        store.set({ running: false, error: message })
         toast.error(message)
       }
       return null
@@ -69,7 +73,7 @@ export function useRunGate(kind: RunKind): {
 
     const slot = claim.slot
     slotRef.current = slot
-    setError(null)
+    store.set({ error: null })
 
     return {
       live: run.live,
@@ -77,13 +81,10 @@ export function useRunGate(kind: RunKind): {
       end: () => {
         releaseRunSlot(slot)
         if (slotRef.current === slot) slotRef.current = null
-        if (run.live()) {
-          runningRef.current = false
-          setRunning(false)
-        }
+        if (run.live()) store.set({ running: false })
       },
     }
   }
 
-  return { running, error, setError, begin }
+  return { setError, begin }
 }

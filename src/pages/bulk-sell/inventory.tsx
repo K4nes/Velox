@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import type { HoldingsScanState } from '@/hooks/scan/use-holdings-scan'
+import type { HoldingsScanState } from '@/lib/inventory/holdings-fields'
 import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listings/listing-run'
