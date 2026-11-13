@@ -901,8 +901,16 @@ function toCollectionOffer(
     if (filter === null || filter === undefined) continue
     if (!Array.isArray(filter) || filter.length > 0) return null
   }
+  // OpenSea marks an offer that accepts any token in the collection with the
+  // literal "*". Every other non-empty value pins the offer to encoded token
+  // IDs, which this page cannot match to a held token.
   const encoded = criteria.encoded_token_ids
-  if (encoded !== null && encoded !== undefined && encoded !== '') {
+  if (
+    encoded !== null &&
+    encoded !== undefined &&
+    encoded !== '' &&
+    encoded !== '*'
+  ) {
     return null
   }
 
