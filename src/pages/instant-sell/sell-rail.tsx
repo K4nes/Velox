@@ -1,4 +1,5 @@
 import { Gavel, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,18 @@ function formatAge(sec: number, now: number): string {
   if (diff < 60) return 'just now'
   if (diff >= 3_600) return `${Math.floor(diff / 3_600)}h ago`
   return `${Math.floor(diff / 60)}m ago`
+}
+
+function useNowSec(): number {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNow(Math.floor(Date.now() / 1000)),
+      30_000
+    )
+    return () => window.clearInterval(timer)
+  }, [])
+  return now
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -73,7 +86,7 @@ export function SellRail({
   running: boolean
   onAccept: () => void
 }) {
-  const now = Math.floor(Date.now() / 1000)
+  const now = useNowSec()
   const symbol = plan.currency?.symbol ?? 'ETH'
   const decimals = plan.currency?.decimals ?? 18
   const runSymbol = summary?.symbol ?? symbol
