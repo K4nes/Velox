@@ -26,7 +26,7 @@ export function BulkSellPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-6">
+    <div className="flex flex-1 flex-col gap-4 p-6 lg:h-[calc(100svh-3rem)] lg:flex-none lg:min-h-0 lg:overflow-hidden">
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">

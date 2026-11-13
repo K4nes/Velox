@@ -2,9 +2,10 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
-import { holdingsFixture } from '../support/fixtures/holdings'
+import { holdingsFixture, holdingsSpread } from '../support/fixtures/holdings'
 import {
   expectHeldInventoryHeader,
+  expectInventoryClamps,
   filterHeldInventory,
 } from '../support/inventory'
 import { mockCollection, mockHoldings } from '../support/opensea'
@@ -48,11 +49,7 @@ test('selection and price gate the listing run', async ({
   await mockHoldings(browser, {
     chain: CHAIN,
     address: wallet.address,
-    body: holdingsFixture([
-      { contract: CONTRACT, identifier: '1', name: 'Mock #1' },
-      { contract: CONTRACT, identifier: '2', name: 'Mock #2' },
-      { contract: CONTRACT, identifier: '3', name: 'Mock #3' },
-    ]),
+    body: holdingsSpread(CONTRACT, 16),
   })
 
   await app.open('/bulk-sell')
@@ -71,9 +68,9 @@ test('selection and price gate the listing run', async ({
     folder: folder.name,
   })
 
-  const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
+  const row = screen.getByRole('row').filter({ hasText: /Mock #1[^0-9]/ })
   await expect(row.getByText('#1', { exact: true })).toBeVisible()
-  await expect(screen.getByRole('row')).toHaveCount(4)
+  await expect(screen.getByRole('row')).toHaveCount(17)
 
   const create = screen.getByRole('button', { name: 'Create listings' })
   await expect(create).toBeDisabled()
@@ -89,8 +86,9 @@ test('selection and price gate the listing run', async ({
 
   expect(listed).toEqual([])
 
-  await expectHeldInventoryHeader(screen, 3)
-  await filterHeldInventory(screen, '#2')
+  await expectHeldInventoryHeader(screen, 16)
+  await expectInventoryClamps(browser)
+  await filterHeldInventory(screen, '#7')
 })
 
 test('one token spelled two ways is one row', async ({
