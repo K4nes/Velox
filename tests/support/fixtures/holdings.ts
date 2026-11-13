@@ -31,3 +31,17 @@ export function holdingsFixture(
     next: options.next ?? null,
   }
 }
+
+/**
+ * `count` tokens of one collection, numbered from 1. Enough rows overflow the
+ * card body at the suite's 1440x900 window, which is what makes the clamp
+ * assertion mean something.
+ */
+export function holdingsSpread(contract: string, count: number) {
+  return holdingsFixture(
+    Array.from({ length: count }, (_, index) => ({
+      contract,
+      identifier: String(index + 1),
+    })),
+  )
+}

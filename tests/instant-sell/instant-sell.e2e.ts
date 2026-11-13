@@ -4,9 +4,10 @@ import { expect } from 'e2e'
 import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
-import { holdingsFixture } from '../support/fixtures/holdings'
+import { holdingsSpread } from '../support/fixtures/holdings'
 import {
   expectHeldInventoryHeader,
+  expectInventoryClamps,
   filterHeldInventory,
 } from '../support/inventory'
 import { offerLadderFixture } from '../support/fixtures/offers'
@@ -48,11 +49,7 @@ test('one bid covers one selected token', async ({
   const holdings = await mockHoldings(browser, {
     chain: 'robinhood',
     address: wallet.address,
-    body: holdingsFixture([
-      { contract: CONTRACT, identifier: TOKEN_ID },
-      { contract: CONTRACT, identifier: '2' },
-      { contract: CONTRACT, identifier: '3' },
-    ]),
+    body: holdingsSpread(CONTRACT, 16),
   })
   const offers = await mockCollectionOffers(browser, {
     slug: SLUG,
@@ -83,7 +80,7 @@ test('one bid covers one selected token', async ({
 
   // The row's bid renders only after the offers response converts into a live
   // bid, so this is the positive signal the empty state cannot fake.
-  const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
+  const row = screen.getByRole('row').filter({ hasText: /Mock #1[^0-9]/ })
   await expect(row.getByText('0.1 ETH')).toBeVisible()
   await expect(
     screen.getByText(`${formatUnits(PINNED_WEI, 18)} ETH`)
@@ -128,6 +125,7 @@ test('one bid covers one selected token', async ({
   await expect(covered).toHaveText('1')
   await expect(screen.getByRole('button', 'Accept 1 offer')).toBeEnabled()
 
-  await expectHeldInventoryHeader(screen, 3)
-  await filterHeldInventory(screen, '#2')
+  await expectHeldInventoryHeader(screen, 16)
+  await expectInventoryClamps(browser)
+  await filterHeldInventory(screen, '#7')
 })

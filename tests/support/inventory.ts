@@ -1,5 +1,6 @@
 import { expect } from 'e2e'
 import type { Screen } from 'e2e'
+import type { Browser } from '@e2e-dev/web'
 
 export const INVENTORY_FILTER_PLACEHOLDER = 'Filter by name, ID or wallet'
 
@@ -37,4 +38,32 @@ export async function filterHeldInventory(
   await screen.getByLabel(INVENTORY_FILTER_LABEL).fill(term)
   await expect(screen.getByRole('row')).toHaveCount(2)
   await expectHeldInventoryHeader(screen, 1)
+}
+
+/**
+ * The page keeps still while the card body scrolls. Without this, a short
+ * window scrolls the whole page and the bar leaves the screen, and a green run
+ * cannot see it: nothing else asserts geometry.
+ */
+export async function expectInventoryClamps(browser: Browser): Promise<void> {
+  const box = await browser.evaluate(() => {
+    const heading = [...document.querySelectorAll('h2')].find(
+      (element) => element.textContent === 'Held NFT Inventory',
+    )
+    const card = heading?.closest('[data-slot="card"]')
+    // The table container is what scrolls: it carries `overflow-x-auto`, which
+    // computes `overflow-y` to auto as well, so it takes the vertical overflow
+    // inside the bounded body wrapper.
+    const body = card?.querySelector<HTMLElement>('[data-slot="table-container"]')
+    const page = document.scrollingElement
+    return {
+      pageScrolls:
+        page === null ? true : page.scrollHeight > window.innerHeight + 1,
+      bodyScrolls: body
+        ? body.scrollHeight > body.clientHeight + 1
+        : false,
+    }
+  })
+  expect(box.pageScrolls).toBe(false)
+  expect(box.bodyScrolls).toBe(true)
 }
