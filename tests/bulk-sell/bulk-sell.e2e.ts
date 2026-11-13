@@ -22,6 +22,7 @@ const CONTRACT_UPPER = '0x00000000000000000000000000000000000000BB'
 const CHAIN = 'robinhood'
 const ORDER_HASH = `0x${'ab'.repeat(32)}`
 const CANCEL_ORDER_HASH = `0x${'cd'.repeat(32)}`
+const KEPT_ORDER_HASH = `0x${'ef'.repeat(32)}`
 const SEAPORT = '0x0000000000000068F116a894984e2DB1123eB395'
 
 test('selection and price gate the listing run', async ({
@@ -332,12 +333,23 @@ test('the cancel tab withdraws an active listing in one click', async ({
       chain: CHAIN,
       maker: wallet.address,
       contract: CONTRACT,
-      tokenId: '1',
-      orderHash: CANCEL_ORDER_HASH,
       protocolAddress: SEAPORT,
-      priceWei: '10000000000000000',
-      startTimeSec: nowSec - 3_600,
-      expirationTimeSec: nowSec + 7 * 86_400,
+      orders: [
+        {
+          tokenId: '1',
+          orderHash: CANCEL_ORDER_HASH,
+          priceWei: '10000000000000000',
+          startTimeSec: nowSec - 3_600,
+          expirationTimeSec: nowSec + 7 * 86_400,
+        },
+        {
+          tokenId: '2',
+          orderHash: KEPT_ORDER_HASH,
+          priceWei: '10000000000000000',
+          startTimeSec: nowSec - 3_600,
+          expirationTimeSec: nowSec + 9 * 86_400,
+        },
+      ],
     }),
   })
   await browser.route(
@@ -383,7 +395,7 @@ test('the cancel tab withdraws an active listing in one click', async ({
   await cancelTab.click()
 
   await expect(cancelTab).toHaveAttribute('aria-selected', 'true')
-  await expect(screen.getByText('1 order', { exact: true })).toBeVisible()
+  await expect(screen.getByText('2 orders', { exact: true })).toBeVisible()
   await expect(
     screen.getByRole('button', { name: /Copy order hash 0xcdcdcdcd/ }),
   ).toBeVisible()
@@ -393,28 +405,31 @@ test('the cancel tab withdraws an active listing in one click', async ({
   const selectAll = screen.getByRole('checkbox', {
     name: 'Select every active listing',
   })
-  const rowBox = screen.getByRole('checkbox', { name: 'Select listing #1' })
+  const listedBox = screen.getByRole('checkbox', { name: 'Select listing #1' })
+  const keptBox = screen.getByRole('checkbox', { name: 'Select listing #2' })
   await expect(selectAll).toBeChecked()
-  await expect(rowBox).toBeChecked()
+  await expect(listedBox).toBeChecked()
+  await expect(keptBox).toBeChecked()
 
-  await rowBox.click()
-  await expect(
-    screen.getByRole('button', { name: 'Cancel 0 listings' }),
-  ).toBeDisabled()
-
-  await rowBox.click()
+  // A batch that ignored the boxes would still pass every assertion above, so the
+  // run below leaves one order out and counts the requests.
+  await keptBox.click()
   await expect(
     screen.getByRole('button', { name: 'Cancel 1 listing' }),
   ).toBeEnabled()
+  await expect(listedBox).toBeChecked()
 
   await screen.getByRole('button', { name: 'Cancel 1 listing' }).click()
 
   await expect(screen.getByText('Cancelled', { exact: true })).toBeVisible()
   await expect(screen.getByText('1 of 1 cancelled')).toBeVisible()
   await expect(screen.getByText(/^fills \d+m$/)).toBeVisible()
+  // The order left unchecked keeps its expiry line and was never withdrawn.
+  await expect(screen.getByText(/^expires \d+d$/)).toBeVisible()
 
   expect(cancels.length).toBe(1)
   expect(cancels[0]?.url).toContain(CANCEL_ORDER_HASH)
+  expect(cancels[0]?.url).not.toContain(KEPT_ORDER_HASH)
   // The offerer signed the order hash itself, so the request carries a 65-byte
   // signature and not a copy of the order terms.
   expect(String(cancels[0]?.signature)).toMatch(/^0x[0-9a-fA-F]{130}$/)
