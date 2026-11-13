@@ -290,179 +290,181 @@ export function PortfolioPage() {
       : tiles
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-6">
-      <Card className="gap-3 p-4 lg:flex-row lg:items-end">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug (OpenSea / Scatter)
-          </label>
-          <div className="relative">
-            <Input
-              id="collection-url"
-              value={scan.url}
-              onChange={(event) => scan.changeUrl(event.target.value)}
-              placeholder="https://opensea.io/collection/… or https://scatter.art/…"
-              className="pr-8"
-              disabled={scan.running}
-            />
-            {scan.url ? (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Clear collection URL"
-                className="absolute top-1/2 right-1 -translate-y-1/2"
-                onClick={() => scan.changeUrl('')}
+    <div className="flex flex-1 flex-col gap-4 p-6 lg:h-[calc(100svh-3rem)] lg:flex-none lg:min-h-0 lg:overflow-hidden">
+      <div className="flex min-h-0 flex-col gap-4 overflow-auto">
+        <Card className="gap-3 p-4 lg:flex-row lg:items-end">
+          <div className="flex flex-1 flex-col gap-1.5">
+            <label htmlFor="collection-url" className="text-xs font-medium">
+              Collection URL or slug (OpenSea / Scatter)
+            </label>
+            <div className="relative">
+              <Input
+                id="collection-url"
+                value={scan.url}
+                onChange={(event) => scan.changeUrl(event.target.value)}
+                placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+                className="pr-8"
                 disabled={scan.running}
-              >
-                <X />
-              </Button>
+              />
+              {scan.url ? (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Clear collection URL"
+                  className="absolute top-1/2 right-1 -translate-y-1/2"
+                  onClick={() => scan.changeUrl('')}
+                  disabled={scan.running}
+                >
+                  <X />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          <div
+            className="flex flex-col gap-1.5 lg:w-[280px]"
+            role="group"
+            aria-labelledby="wallets-label"
+          >
+            <span id="wallets-label" className="text-xs font-medium">
+              Wallet
+            </span>
+            <WalletSelect
+              groups={groups}
+              selected={scan.selectedWallets}
+              onSelectedChange={scan.changeWallets}
+              disabled={scan.running}
+              aria-labelledby="wallets-label"
+              className="w-full"
+            />
+            {walletsError ? (
+              <p role="alert" className="text-destructive text-xs">
+                Wallet list unavailable. {walletsError}
+              </p>
             ) : null}
           </div>
-        </div>
 
-        <div
-          className="flex flex-col gap-1.5 lg:w-[280px]"
-          role="group"
-          aria-labelledby="wallets-label"
-        >
-          <span id="wallets-label" className="text-xs font-medium">
-            Wallet
-          </span>
-          <WalletSelect
-            groups={groups}
-            selected={scan.selectedWallets}
-            onSelectedChange={scan.changeWallets}
-            disabled={scan.running}
-            aria-labelledby="wallets-label"
-            className="w-full"
-          />
-          {walletsError ? (
-            <p role="alert" className="text-destructive text-xs">
-              Wallet list unavailable. {walletsError}
-            </p>
-          ) : null}
-        </div>
+          <Button
+            className="shrink-0"
+            onClick={() => void scan.scan()}
+            disabled={
+              scan.running ||
+              !scan.url.trim() ||
+              scan.selectedWallets.length === 0
+            }
+          >
+            {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
+            Scan portfolio
+          </Button>
+        </Card>
 
-        <Button
-          className="shrink-0"
-          onClick={() => void scan.scan()}
-          disabled={
-            scan.running ||
-            !scan.url.trim() ||
-            scan.selectedWallets.length === 0
-          }
-        >
-          {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
-          Scan portfolio
-        </Button>
-      </Card>
-
-      {collection === null ? null : (
-        <>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3">
-              <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
-                {collection.imageUrl ? (
-                  <img
-                    src={collection.imageUrl}
-                    alt=""
-                    className="size-9 rounded-lg object-cover"
-                  />
-                ) : (
-                  <ImageIcon
-                    aria-hidden
-                    className="text-muted-foreground size-4"
-                  />
-                )}
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-semibold">
-                    {collection.name || collection.slug}
-                  </h2>
-                  <Badge
-                    variant="outline"
-                    className="px-1.5 text-xs tracking-[0.6px] uppercase"
-                  >
-                    {collection.chain}
-                  </Badge>
+        {collection === null ? null : (
+          <>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+                  {collection.imageUrl ? (
+                    <img
+                      src={collection.imageUrl}
+                      alt=""
+                      className="size-9 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <ImageIcon
+                      aria-hidden
+                      className="text-muted-foreground size-4"
+                    />
+                  )}
                 </div>
-                <p className="text-muted-foreground text-xs">
-                  Contract {contractLabel}, Floor {floorLabel}
-                </p>
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base font-semibold">
+                      {collection.name || collection.slug}
+                    </h2>
+                    <Badge
+                      variant="outline"
+                      className="px-1.5 text-xs tracking-[0.6px] uppercase"
+                    >
+                      {collection.chain}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Contract {contractLabel}, Floor {floorLabel}
+                  </p>
+                </div>
               </div>
+              <Separator />
             </div>
-            <Separator />
+
+            <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+              {shownTiles.map((tile) => (
+                <Card key={tile.label} className="gap-1 px-4">
+                  <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                    {tile.label}
+                  </dt>
+                  <dd className="flex flex-col gap-0.5">
+                    <span className="text-card-foreground text-lg font-semibold tabular-nums">
+                      {tile.value}
+                    </span>
+                    {tile.secondary ? (
+                      <span className="text-muted-foreground text-[11px]">
+                        {tile.secondary}
+                      </span>
+                    ) : null}
+                  </dd>
+                </Card>
+              ))}
+            </dl>
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Filter by rarity tier"
+          >
+            {TIER_FILTERS.map((option) => {
+              const active = option.key === tier
+
+              return (
+                <Button
+                  key={option.key}
+                  variant="ghost"
+                  aria-pressed={active}
+                  onClick={() => setTier(option.key)}
+                  className={cn(
+                    'px-2.5 font-medium',
+                    active ? 'bg-muted text-foreground' : 'text-muted-foreground'
+                  )}
+                >
+                  {option.label} ({tiers[option.key]})
+                </Button>
+              )
+            })}
           </div>
 
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
-            {shownTiles.map((tile) => (
-              <Card key={tile.label} className="gap-1 px-4">
-                <dt className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                  {tile.label}
-                </dt>
-                <dd className="flex flex-col gap-0.5">
-                  <span className="text-card-foreground text-lg font-semibold tabular-nums">
-                    {tile.value}
-                  </span>
-                  {tile.secondary ? (
-                    <span className="text-muted-foreground text-[11px]">
-                      {tile.secondary}
-                    </span>
-                  ) : null}
-                </dd>
-              </Card>
-            ))}
-          </dl>
-        </>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Filter by rarity tier"
-        >
-          {TIER_FILTERS.map((option) => {
-            const active = option.key === tier
-
-            return (
-              <Button
-                key={option.key}
-                variant="ghost"
-                aria-pressed={active}
-                onClick={() => setTier(option.key)}
-                className={cn(
-                  'px-2.5 font-medium',
-                  active ? 'bg-muted text-foreground' : 'text-muted-foreground'
-                )}
-              >
-                {option.label} ({tiers[option.key]})
-              </Button>
-            )
-          })}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={sort}
+              onValueChange={(value) => setSort(value as HoldingSort)}
+            >
+              <SelectTrigger aria-label="Sort held tokens" className="w-60 px-3">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" sideOffset={4}>
+                {SORTS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={sort}
-            onValueChange={(value) => setSort(value as HoldingSort)}
-          >
-            <SelectTrigger aria-label="Sort held tokens" className="w-60 px-3">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent position="popper" sideOffset={4}>
-              {SORTS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
-
-      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+      <Card className="flex min-h-56 flex-1 flex-col gap-0 overflow-hidden py-0">
         <HeldInventoryHeader
           count={visible.length}
           query={query}
