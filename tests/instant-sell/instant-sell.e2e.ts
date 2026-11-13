@@ -52,6 +52,7 @@ test('one bid covers one selected token', async ({
     body: offerLadderFixture({
       contract: CONTRACT,
       tokenId: TOKEN_ID,
+      count: 12,
       pinned: { tokenIds: '2', priceWei: PINNED_WEI },
     }) as unknown as JsonValue,
   })
@@ -79,6 +80,23 @@ test('one bid covers one selected token', async ({
   await expect(
     screen.getByText(`${formatUnits(PINNED_WEI, 18)} ETH`)
   ).toHaveCount(0)
+  await expect(screen.getByText('Last update just now')).toBeVisible()
+
+  const layout = await browser.evaluate(() => {
+    const heading = [...document.querySelectorAll('h2')].find(
+      (element) => element.textContent === 'Active OpenSea Offers'
+    )
+    const card = heading?.closest('[data-slot="card"]')
+    const list = card?.querySelector<HTMLElement>('[class*="overflow-y-auto"]')
+    const page = document.scrollingElement
+    return {
+      pageScrolls:
+        page === null ? true : page.scrollHeight > window.innerHeight + 1,
+      listScrolls: list ? list.scrollHeight > list.clientHeight + 1 : false,
+    }
+  })
+  expect(layout.pageScrolls).toBe(false)
+  expect(layout.listScrolls).toBe(true)
   await expect.poll(() => offers.count).toBeGreaterThan(0)
   expect(collection.count).toBe(1)
   expect(holdings.count).toBe(1)

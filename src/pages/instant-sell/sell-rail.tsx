@@ -87,7 +87,7 @@ export function SellRail({
       : null
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]">
+    <div className="flex min-h-0 w-full shrink-0 flex-col gap-4 lg:w-[300px]">
       <Card className="shrink-0 gap-3 p-4">
         <h2 className="text-[13px] font-semibold">Net proceeds</h2>
 
@@ -134,7 +134,7 @@ export function SellRail({
         </dl>
       </Card>
 
-      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+      <Card className="flex max-h-[60svh] min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 lg:max-h-none">
         <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
           <h2 className="truncate text-[13px] font-semibold">
             Active OpenSea Offers
@@ -157,7 +157,7 @@ export function SellRail({
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
           {offers.status !== 'idle' && offers.book ? (
             <p className="text-muted-foreground text-[11px]">
-              as of {formatAge(offers.book.fetchedAtSec, now)}
+              Last update {formatAge(offers.book.fetchedAtSec, now)}
               {offers.book.truncated ? ' · first 1,000 bids' : ''}
             </p>
           ) : null}
