@@ -8,14 +8,16 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-14
+
 ### Added
 
 - The Bulk Sell rail has a second tab, `Cancel listings`. It reads the active orders of the
   selected wallets on the collection, withdraws the ones left checked in one click, signs
   each cancel with its own offerer wallet, and reports the window in which a buyer can still
-  fill a withdrawn order ([#111]).
+  fill a withdrawn order ([#113]).
 - The order hash on a listed row is copyable and opens the token's page on OpenSea. It is an
-  order hash, not a transaction hash, so no explorer link is built from it ([#111]).
+  order hash, not a transaction hash, so no explorer link is built from it ([#113]).
 
 ## [0.2.1] - 2026-11-13
 
@@ -169,7 +171,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/K4nes/Velox/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/K4nes/Velox/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/K4nes/Velox/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/K4nes/velox/compare/v0.1.1...v0.1.2
@@ -198,4 +201,4 @@ consolidated into a single entry.
 [#104]: https://github.com/K4nes/Velox/pull/104
 [#106]: https://github.com/K4nes/Velox/pull/106
 [#107]: https://github.com/K4nes/Velox/pull/107
-[#111]: https://github.com/K4nes/Velox/issues/111
+[#113]: https://github.com/K4nes/Velox/pull/113
