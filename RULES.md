@@ -129,13 +129,16 @@ body goes below 11px, and no display size is introduced above the stat tile's 18
 
 ### Page shell
 
-- Container: `flex flex-1 flex-col gap-4 p-6`. Four page kinds differ, each listed under
-  Deliberate exceptions: the `mint/tasks` workspace, the 404 page, the `settings`
-  master/detail page and the `portfolio` inventory page.
-- The three table + rail pages — `bulk-sell`, `instant-sell`, `transfer` — add
+- Container: `flex flex-1 flex-col gap-4 p-6`. Three page kinds differ, each listed under
+  Deliberate exceptions: the `mint/tasks` workspace, the 404 page and the `settings`
+  master/detail page.
+- The four table pages — `portfolio`, `bulk-sell`, `instant-sell`, `transfer` — add
   `lg:h-[calc(100svh-3rem)] lg:flex-none lg:min-h-0 lg:overflow-hidden` to that container, so
   the card body scrolls and the panel header stays put. Without it the whole page scrolls and
-  the filter leaves the screen.
+  the filter leaves the screen. `portfolio` carries more chrome than the other three, so that
+  chrome — the collection card, the stat tiles and the rarity filter — sits in its own
+  `min-h-0 overflow-auto` region and the table card keeps `min-h-56`, which gives the chrome
+  the scrollbar on a short window instead of squeezing the table to nothing.
 - The title lives on the route entry in `src/config/routes.tsx` and renders once, in
   `app-header`.
   Never repeat it as an `h1` in the body.
@@ -243,11 +246,6 @@ Do not normalise these:
   height only at `xl` (`xl:h-[calc(100svh-3rem)]`). Below `xl`, inside the 1024px target,
   the panes stack on purpose and the page scrolls; the left list gets a fixed height so its
   own body still scrolls.
-- `portfolio`: it does not pin the shell, so its page scrolls and the inventory bar leaves the
-  screen on a short window. Its shell also carries the collection header, six stat tiles and
-  the rarity filter, which are about 350px, so pinning the shell leaves the table a sliver at
-  1440x560. Collapsing that chrome is its own change, not a copy of the three pages above
-  (issue #105).
 - `mint/tasks`: the task list, the collection bar and the run table
   (`src/pages/mint/run-table.tsx`) have no header bar.
 - `mint/tasks`: the Mint Stage picker lists every stage in the drop, on purpose. OpenSea picks
