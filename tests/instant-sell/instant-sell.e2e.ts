@@ -1,5 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
+import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
@@ -45,11 +46,12 @@ test('one bid covers one selected token', async ({
   })
   const offers = await mockCollectionOffers(browser, {
     slug: SLUG,
+    // The fixture types `consideration` as `unknown[]`, which JsonValue rejects.
     body: offerLadderFixture({
       contract: CONTRACT,
       tokenId: TOKEN_ID,
       pinned: { tokenIds: '2', priceWei: 500_000_000_000_000_000n },
-    }),
+    }) as unknown as JsonValue,
   })
 
   await app.open('/instant-sell')
