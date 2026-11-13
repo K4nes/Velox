@@ -81,10 +81,6 @@ export function SellRail({
   const covered = plan.targets.length
   const activeAddress = ladder?.currency.address ?? currency
   const average = covered > 0 ? plan.totals.netWei / BigInt(covered) : 0n
-  const earliest =
-    plan.expiresAtSec !== null
-      ? formatExpiry(plan.expiresAtSec, now)
-      : null
 
   return (
     <div className="flex min-h-0 w-full shrink-0 flex-col gap-4 lg:w-[300px]">
@@ -99,14 +95,6 @@ export function SellRail({
             {symbol}
           </span>
         </div>
-
-        <span className="text-muted-foreground text-[13px]">
-          {earliest === null
-            ? '—'
-            : earliest === 'expired'
-              ? 'expired'
-              : `earliest expiry ${earliest}`}
-        </span>
 
         <Separator />
 
