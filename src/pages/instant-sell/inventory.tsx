@@ -350,7 +350,10 @@ export function Inventory({
         query={query}
         onQueryChange={onQueryChange}
         inputId="instant-token-filter"
-        announcement={scanAnnouncement({ running, settled: state })}
+        announcement={scanAnnouncement({
+          scanning: state.status === 'scanning',
+          settled: state,
+        })}
       />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">

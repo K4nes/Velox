@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input'
 /**
  * One sentence for the live region. Every page that holds this card announces
  * the same thing, because the wording lives here and not at the call sites.
+ * The flag is `scanning`, not a generic `running`: each page also runs a
+ * listing, sell or transfer job, and announcing that job as a scan was the bug.
  */
 export function scanAnnouncement(input: {
-  running: boolean
+  scanning: boolean
   settled: { status: string; message?: string }
 }): string {
-  if (input.running) return 'Scanning held tokens'
+  if (input.scanning) return 'Scanning held tokens'
   if (input.settled.status === 'ready') return 'Scan complete'
   return input.settled.message ?? ''
 }

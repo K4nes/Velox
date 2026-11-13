@@ -26,6 +26,7 @@ export async function expectHeldInventoryHeader(
       exact: true,
     }),
   ).toBeVisible()
+  await expect(screen.getByText('Scan complete', { exact: true })).toBeVisible()
 }
 
 /** A badge that counts the whole scan instead of the visible rows fails here. */

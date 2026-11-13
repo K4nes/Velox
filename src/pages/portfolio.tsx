@@ -469,7 +469,7 @@ export function PortfolioPage() {
           onQueryChange={setQuery}
           inputId="token-search"
           announcement={scanAnnouncement({
-            running: scan.running,
+            scanning: scan.running,
             settled: scan.tableState,
           })}
         />
