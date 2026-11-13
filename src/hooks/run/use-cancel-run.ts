@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { usePageStore } from '@/hooks/use-page-store'
+import { useSelection } from '@/hooks/use-selection'
+import type { SelectionFields } from '@/hooks/use-selection'
 import { useRun } from '@/hooks/run/use-run'
 import type { RunState } from '@/hooks/run/use-run'
 import { mapLimitSettled } from '@/lib/core/async'
@@ -32,10 +34,11 @@ export type ActiveListingsState =
 // operator picked, so the join happens where the wallets are known.
 export type CancelListing = ActiveListing & { label: string }
 
-export type CancelFields = RunState<CancelRunProgress> & {
-  listings: CancelListing[]
-  read: ActiveListingsState
-}
+export type CancelFields = RunState<CancelRunProgress> &
+  SelectionFields & {
+    listings: CancelListing[]
+    read: ActiveListingsState
+  }
 
 // Every wallet is asked separately: the API filters by one maker at a time, and a
 // wallet whose read fails must not erase the listings the other wallets returned.
@@ -74,8 +77,13 @@ async function readActiveListings(input: {
 
   const listings = settled.resolved.flatMap((entry) => entry.value)
 
+  const ordered = listings.sort((a, b) => a.expiresAtSec - b.expiresAtSec)
+
+  // Every order the read returns arrives selected, so the one-click cancel keeps
+  // working; deselecting is what narrows the batch.
   input.store.set({
-    listings: listings.sort((a, b) => a.expiresAtSec - b.expiresAtSec),
+    listings: ordered,
+    selectedKeys: ordered.map((listing) => listing.orderHash),
     read: {
       status: 'ready',
       failed: settled.failed.length,
@@ -117,7 +125,23 @@ export function useCancelRun(input: {
   const summary: CancelRunSummary | null = run.progress
     ? summarizeCancelRun(run.progress)
     : null
-  const pending = pendingCancels(fields.listings, run.progress)
+
+  const select = useSelection(
+    fields.listings,
+    {
+      keyOf: (listing) => listing.orderHash,
+      // A withdrawn order is no longer part of any batch, so it drops out of the
+      // select-all and loses its box rather than sitting checked and useless.
+      isSelectable: (listing) =>
+        steps.get(listing.orderHash)?.status !== 'cancelled',
+    },
+    input.store
+  )
+
+  const selected = new Set(select.selectedKeys)
+  const pending = pendingCancels(fields.listings, run.progress).filter((listing) =>
+    selected.has(listing.orderHash)
+  )
 
   async function cancel() {
     if (collection === null || pending.length === 0) return
@@ -145,6 +169,7 @@ export function useCancelRun(input: {
   return {
     read: fields.read,
     listings: fields.listings,
+    selectedKeys: select.selectedKeys,
     pending,
     steps,
     summary,
@@ -152,6 +177,8 @@ export function useCancelRun(input: {
     error: run.error,
     cancel,
     reload,
+    toggleOrder: select.toggle,
+    toggleAll: select.toggleAll,
     reset: run.reset,
   }
 }

@@ -28,6 +28,7 @@ export function createBulkSellState(): BulkSellState {
 export function createCancelState(): CancelFields {
   return {
     listings: [],
+    selectedKeys: [],
     read: { status: 'idle' },
     running: false,
     error: null,

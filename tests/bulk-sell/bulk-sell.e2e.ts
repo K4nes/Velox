@@ -388,6 +388,25 @@ test('the cancel tab withdraws an active listing in one click', async ({
     screen.getByRole('button', { name: /Copy order hash 0xcdcdcdcd/ }),
   ).toBeVisible()
 
+  // Every order is selected when the read lands, so a full cancel stays one
+  // click; the box is what narrows the batch.
+  const selectAll = screen.getByRole('checkbox', {
+    name: 'Select every active listing',
+  })
+  const rowBox = screen.getByRole('checkbox', { name: 'Select listing #1' })
+  await expect(selectAll).toBeChecked()
+  await expect(rowBox).toBeChecked()
+
+  await rowBox.click()
+  await expect(
+    screen.getByRole('button', { name: 'Cancel 0 listings' }),
+  ).toBeDisabled()
+
+  await rowBox.click()
+  await expect(
+    screen.getByRole('button', { name: 'Cancel 1 listing' }),
+  ).toBeEnabled()
+
   await screen.getByRole('button', { name: 'Cancel 1 listing' }).click()
 
   await expect(screen.getByText('Cancelled', { exact: true })).toBeVisible()

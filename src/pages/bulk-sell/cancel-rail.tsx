@@ -5,6 +5,7 @@ import { RunStatusCell } from '@/components/run-status-cell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Spinner } from '@/components/ui/spinner'
 import type { ActiveListingsState, CancelListing } from '@/hooks/run/use-cancel-run'
 import type { ListingCurrency } from '@/lib/opensea/index'
@@ -31,11 +32,17 @@ function CancelRow({
   step,
   currency,
   nowSec,
+  selected,
+  disabled,
+  onToggle,
 }: {
   listing: CancelListing
   step: CancelStepState | undefined
   currency: ListingCurrency
   nowSec: number
+  selected: boolean
+  disabled: boolean
+  onToggle: () => void
 }) {
   const live =
     step?.status === 'signing' || step?.status === 'cancelling'
@@ -54,40 +61,50 @@ function CancelRow({
       : null
 
   return (
-    <li className="flex flex-col gap-1 rounded-[10px] border p-2">
-      <div className="flex items-start justify-between gap-2">
-        <span className="truncate text-[13px] font-medium">
-          #{listing.tokenId}
+    <li className="flex items-start gap-2 rounded-[10px] border p-2">
+      <Checkbox
+        className="mt-0.5"
+        aria-label={`Select listing #${listing.tokenId}`}
+        checked={selected}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-start justify-between gap-2">
+          <span className="truncate text-[13px] font-medium">
+            #{listing.tokenId}
+          </span>
+          {step ? (
+            <RunStatusCell
+              tone={CANCEL_STEP_TONE[step.status]}
+              label={CANCEL_STEP_LABEL[step.status]}
+              live={live}
+              error={step.status === 'failed' ? step.error : undefined}
+              className="max-w-[110px] items-end text-right"
+            />
+          ) : null}
+        </div>
+
+        <span className="text-muted-foreground text-[11px] tabular-nums">
+          {priced
+            ? `${formatAmount(listing.priceWei ?? 0n, currency.decimals)} ${currency.symbol} · `
+            : ''}
+          {listing.label}
         </span>
-        {step ? (
-          <RunStatusCell
-            tone={CANCEL_STEP_TONE[step.status]}
-            label={CANCEL_STEP_LABEL[step.status]}
-            live={live}
-            error={step.status === 'failed' ? step.error : undefined}
-            className="max-w-[110px] items-end text-right"
+
+        <div className="flex items-center justify-between gap-2">
+          <OrderHashNote
+            orderHash={listing.orderHash}
+            openseaUrl={assetUrl(listing)}
+            tokenId={listing.tokenId}
           />
-        ) : null}
-      </div>
-
-      <span className="text-muted-foreground text-[11px] tabular-nums">
-        {priced
-          ? `${formatAmount(listing.priceWei ?? 0n, currency.decimals)} ${currency.symbol} · `
-          : ''}
-        {listing.label}
-      </span>
-
-      <div className="flex items-center justify-between gap-2">
-        <OrderHashNote
-          orderHash={listing.orderHash}
-          openseaUrl={assetUrl(listing)}
-          tokenId={listing.tokenId}
-        />
-        <span className="text-muted-foreground shrink-0 text-[11px]">
-          {fillWindow === null
-            ? `expires ${formatExpiry(listing.expiresAtSec, nowSec)}`
-            : `fills ${fillWindow}`}
-        </span>
+          <span className="text-muted-foreground shrink-0 text-[11px]">
+            {fillWindow === null
+              ? `expires ${formatExpiry(listing.expiresAtSec, nowSec)}`
+              : `fills ${fillWindow}`}
+          </span>
+        </div>
       </div>
     </li>
   )
@@ -96,6 +113,7 @@ function CancelRow({
 export type CancelRailProps = {
   read: ActiveListingsState
   listings: readonly CancelListing[]
+  selectedKeys: readonly string[]
   pending: readonly CancelListing[]
   steps: Map<string, CancelStepState>
   summary: CancelRunSummary | null
@@ -104,11 +122,14 @@ export type CancelRailProps = {
   currency: ListingCurrency
   onCancel: () => void
   onRetry: () => void
+  onToggleOrder: (orderHash: string) => void
+  onToggleAll: () => void
 }
 
 export function CancelRail({
   read,
   listings,
+  selectedKeys,
   pending,
   steps,
   summary,
@@ -117,6 +138,8 @@ export function CancelRail({
   currency,
   onCancel,
   onRetry,
+  onToggleOrder,
+  onToggleAll,
 }: CancelRailProps) {
   const nowSec = Math.floor(Date.now() / 1000)
 
@@ -172,23 +195,49 @@ export function CancelRail({
 
     return (
       <ul className="flex flex-col gap-1.5">
-        {listings.map((listing) => (
-          <CancelRow
-            key={listing.orderHash}
-            listing={listing}
-            step={steps.get(listing.orderHash)}
-            currency={currency}
-            nowSec={nowSec}
-          />
-        ))}
+        {listings.map((listing) => {
+          const cancelled =
+            steps.get(listing.orderHash)?.status === 'cancelled'
+          return (
+            <CancelRow
+              key={listing.orderHash}
+              listing={listing}
+              step={steps.get(listing.orderHash)}
+              currency={currency}
+              nowSec={nowSec}
+              selected={!cancelled && selectedKeys.includes(listing.orderHash)}
+              disabled={running || cancelled}
+              onToggle={() => onToggleOrder(listing.orderHash)}
+            />
+          )
+        })}
       </ul>
     )
   }
+
+  const selectable = listings.filter(
+    (listing) => steps.get(listing.orderHash)?.status !== 'cancelled'
+  )
+  const selectedVisible = selectable.filter((listing) =>
+    selectedKeys.includes(listing.orderHash)
+  )
+  const headerChecked: boolean | 'indeterminate' =
+    selectable.length > 0 && selectedVisible.length === selectable.length
+      ? true
+      : selectedVisible.length > 0
+        ? 'indeterminate'
+        : false
 
   return (
     <Card className="flex max-h-[60svh] min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 lg:max-h-none">
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
         <div className="flex min-w-0 items-center gap-2">
+          <Checkbox
+            aria-label="Select every active listing"
+            checked={headerChecked}
+            disabled={running || selectable.length === 0}
+            onCheckedChange={onToggleAll}
+          />
           <h2 className="truncate text-[13px] font-semibold">Active listings</h2>
           <Badge variant="secondary">
             {listings.length} {listings.length === 1 ? 'order' : 'orders'}

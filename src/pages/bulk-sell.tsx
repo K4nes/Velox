@@ -130,6 +130,7 @@ export function BulkSellPage() {
           cancel={{
             read: cancel.read,
             listings: cancel.listings,
+            selectedKeys: cancel.selectedKeys,
             pending: cancel.pending,
             steps: cancel.steps,
             summary: cancel.summary,
@@ -142,6 +143,8 @@ export function BulkSellPage() {
             },
             onCancel: () => void cancel.cancel(),
             onRetry: () => void cancel.reload(),
+            onToggleOrder: cancel.toggleOrder,
+            onToggleAll: cancel.toggleAll,
           }}
         />
       </div>

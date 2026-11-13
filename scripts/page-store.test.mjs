@@ -35,6 +35,7 @@ const RETAINED_CANCEL_FIELDS = [
   'progress',
   'read',
   'running',
+  'selectedKeys',
 ]
 
 async function load() {
