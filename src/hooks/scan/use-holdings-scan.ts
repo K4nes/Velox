@@ -1,61 +1,46 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { toast } from 'sonner'
-import { useLiveRead } from '@/hooks/use-live-read'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { resolveScanWallets, scanHeldTokens } from '@/lib/inventory/holdings'
 import { toMessage } from '@/lib/core/message'
+import type { PageStore } from '@/lib/core/page-store'
 import { scanFailureMessage } from '@/lib/opensea/failure-message'
 import { failureLine } from '@/lib/core/run-engine'
-import type { HeldToken, WalletScan } from '@/lib/inventory/holdings'
 import { getCollection, slugFromUrl } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
+import { EMPTY_HOLDINGS } from '@/lib/inventory/holdings-fields'
+import type { HoldingsFields } from '@/lib/inventory/holdings-fields'
 
-export type HoldingsScanState =
-  | { status: 'idle' }
-  | { status: 'scanning' }
-  | { status: 'ready'; collection: CollectionInfo; scans: WalletScan[] }
-  | { status: 'failed'; message: string }
-
-export function useHoldingsScan() {
-  const [url, setUrl] = useState('')
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [state, setState] = useState<HoldingsScanState>({ status: 'idle' })
-  const [tokens, setTokens] = useState<HeldToken[]>([])
-  const [query, setQuery] = useState('')
-  const [running, setRunning] = useState(false)
-  const runningRef = useRef(false)
-  // A scan that resolves after the page unmounted has no state to write, and its
-  // toasts would land on whatever page the operator moved to.
-  const read = useLiveRead()
+export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
+  const scoped = usePageStoreScope(store, EMPTY_HOLDINGS)
+  const fields = usePageStore(scoped)
+  const isScanning = () => scoped.get().state.status === 'scanning'
+  const scanning = isScanning()
 
   function changeUrl(next: string) {
-    if (runningRef.current) return
-    setUrl(next)
-    setTokens([])
-    setState({ status: 'idle' })
+    if (isScanning()) return
+    scoped.set({ url: next, tokens: [], state: { status: 'idle' } })
   }
 
   function changeWallets(ids: string[]) {
-    if (runningRef.current) return
-    setSelectedWallets(ids)
-    setTokens([])
-    setState({ status: 'idle' })
+    if (isScanning()) return
+    scoped.set({ walletIds: ids, tokens: [], state: { status: 'idle' } })
   }
 
   async function scan() {
-    if (runningRef.current) return
+    if (isScanning()) return
 
-    runningRef.current = true
-    const run = read.open()
-    setRunning(true)
-    setTokens([])
-    setState({ status: 'scanning' })
+    const run = scoped.open('scan')
+    scoped.set({ tokens: [], state: { status: 'scanning' } })
+
+    const { url, walletIds } = scoped.get()
 
     try {
-      const target = await resolveScanTarget(url, selectedWallets)
+      const target = await resolveScanTarget(url, walletIds)
       if (!run.live()) return
       if (target.status === 'failed') {
-        setState({ status: 'failed', message: target.message })
+        scoped.set({ state: { status: 'failed', message: target.message } })
         return
       }
 
@@ -67,7 +52,7 @@ export function useHoldingsScan() {
       } catch (failure) {
         if (!run.live()) return
         const message = scanFailureMessage(failure, 'collection')
-        setState({ status: 'failed', message })
+        scoped.set({ state: { status: 'failed', message } })
         toast.error(message)
         return
       }
@@ -80,8 +65,10 @@ export function useHoldingsScan() {
 
       if (!run.live()) return
 
-      setTokens(result.tokens)
-      setState({ status: 'ready', collection, scans: result.scans })
+      scoped.set({
+        tokens: result.tokens,
+        state: { status: 'ready', collection, scans: result.scans },
+      })
 
       const failed = result.scans.filter((scan) => scan.error !== null)
       if (failed.length > 0) {
@@ -97,21 +84,16 @@ export function useHoldingsScan() {
     } catch (failure) {
       if (!run.live()) return
       const message = toMessage(failure)
-      setState({ status: 'failed', message })
-    } finally {
-      if (run.live()) {
-        runningRef.current = false
-        setRunning(false)
-      }
+      scoped.set({ state: { status: 'failed', message } })
     }
   }
 
-  const term = query.trim().toLowerCase()
+  const term = fields.query.trim().toLowerCase()
   const rows = useMemo(
     () =>
       term === ''
-        ? tokens
-        : tokens.filter((row) =>
+        ? fields.tokens
+        : fields.tokens.filter((row) =>
             [
               row.name,
               `#${row.tokenId}`,
@@ -120,21 +102,24 @@ export function useHoldingsScan() {
               row.owner.address,
             ].some((value) => value.toLowerCase().includes(term))
           ),
-    [tokens, term]
+    [fields.tokens, term]
   )
 
   return {
-    url,
-    selectedWallets,
-    state,
-    tokens,
+    url: fields.url,
+    selectedWallets: fields.walletIds,
+    state: fields.state,
+    tokens: fields.tokens,
     rows,
-    totalRows: tokens.length,
-    query,
-    setQuery,
-    running,
-    canScan: !running && slugFromUrl(url) !== null && selectedWallets.length > 0,
-    collection: state.status === 'ready' ? state.collection : null,
+    totalRows: fields.tokens.length,
+    query: fields.query,
+    setQuery: (next: string) => scoped.set({ query: next }),
+    running: scanning,
+    canScan:
+      !scanning &&
+      slugFromUrl(fields.url) !== null &&
+      fields.walletIds.length > 0,
+    collection: fields.state.status === 'ready' ? fields.state.collection : null,
     changeUrl,
     changeWallets,
     scan,

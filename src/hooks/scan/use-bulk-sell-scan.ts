@@ -1,16 +1,30 @@
 import { useMemo } from 'react'
+import { usePageStoreScope } from '@/hooks/use-page-store'
 import { useHoldingsScan } from '@/hooks/scan/use-holdings-scan'
+import { EMPTY_HOLDINGS } from '@/lib/inventory/holdings-fields'
+import type { HoldingsFields } from '@/lib/inventory/holdings-fields'
 import { useSelection } from '@/hooks/use-selection'
+import type { SelectionFields } from '@/hooks/use-selection'
+import type { PageStore } from '@/lib/core/page-store'
 import type { ListingToken } from '@/lib/listings/listing-plan'
 
-export function useBulkSellScan() {
-  const scan = useHoldingsScan()
-  const select = useSelection(scan.rows, {
-    keyOf: (row) => row.key,
-    // A row whose whole-unit balance is zero cannot be listed, so select-all
-    // leaves it out rather than poisoning the run.
-    isSelectable: (row) => Math.floor(row.quantity) >= 1,
-  })
+export type BulkSellFields = HoldingsFields & SelectionFields
+
+const INITIAL: BulkSellFields = { ...EMPTY_HOLDINGS, selectedKeys: [] }
+
+export function useBulkSellScan(store?: PageStore<BulkSellFields>) {
+  const scoped = usePageStoreScope(store, INITIAL)
+  const scan = useHoldingsScan(scoped)
+  const select = useSelection(
+    scan.rows,
+    {
+      keyOf: (row) => row.key,
+      // A row whose whole-unit balance is zero cannot be listed, so select-all
+      // leaves it out rather than poisoning the run.
+      isSelectable: (row) => Math.floor(row.quantity) >= 1,
+    },
+    scoped
+  )
 
   const selection = useMemo<ListingToken[]>(
     () =>

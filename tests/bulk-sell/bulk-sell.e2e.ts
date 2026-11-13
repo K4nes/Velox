@@ -1,12 +1,15 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
+import { parseUnits } from 'viem'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture, holdingsSpread } from '../support/fixtures/holdings'
+import { listingActionFixture } from '../support/fixtures/listing-actions'
 import {
   expectHeldInventoryHeader,
   expectInventoryClamps,
   filterHeldInventory,
+  INVENTORY_FILTER_LABEL,
 } from '../support/inventory'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
@@ -16,6 +19,8 @@ const SLUG = 'bulk-sell-mock'
 const CONTRACT = '0x00000000000000000000000000000000000000bb'
 const CONTRACT_UPPER = '0x00000000000000000000000000000000000000BB'
 const CHAIN = 'robinhood'
+const ORDER_HASH = `0x${'ab'.repeat(32)}`
+const SEAPORT = '0x0000000000000068F116a894984e2DB1123eB395'
 
 test('selection and price gate the listing run', async ({
   app,
@@ -137,4 +142,158 @@ test('one token spelled two ways is one row', async ({
 
   await expect(screen.getByRole('row')).toHaveCount(2)
   await expectHeldInventoryHeader(screen, 1)
+})
+
+test('page state survives a round trip through another page', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Bulk Sell Keep')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  // The order submit answers only when the test releases it, so the run stays
+  // in flight while the operator visits another page.
+  const released = Promise.withResolvers<void>()
+  const submissions: string[] = []
+
+  await browser.route(
+    /\/api\/v2\/(?:listings\/actions|orders\/.*\/seaport\/listings)$/,
+    async (route) => {
+      if (route.request.url.endsWith('/listings/actions')) {
+        const posted = JSON.parse(route.request.postData ?? '{}')
+        const item = posted.items[0]
+        const endTimeSec = Math.floor(
+          new Date(item.end_time).getTime() / 1000,
+        )
+        await route.fulfill({
+          status: 200,
+          json: listingActionFixture({
+            offerer: posted.address,
+            contract: item.contract,
+            tokenId: item.token_id,
+            chainId: 4663,
+            protocolAddress: SEAPORT,
+            startTimeSec: endTimeSec - 7 * 86_400,
+            endTimeSec,
+            amountWei: (
+              parseUnits(item.price.amount, 18) * BigInt(item.quantity)
+            ).toString(),
+            quantity: item.quantity,
+          }),
+        })
+        return
+      }
+
+      submissions.push(route.request.url)
+      await released.promise
+      await route.fulfill({
+        status: 200,
+        json: { order_hash: ORDER_HASH },
+      })
+    },
+  )
+
+  const collection = await mockCollection(browser, {
+    slug: SLUG,
+    body: collectionFixture({
+      slug: SLUG,
+      name: 'Mock Collection',
+      contract: CONTRACT,
+      chain: CHAIN,
+    }),
+  })
+  const holdings = await mockHoldings(browser, {
+    chain: CHAIN,
+    address: wallet.address,
+    body: holdingsSpread(CONTRACT, 16),
+  })
+  // Holds the holdings answer until the test releases it, so the scan is still
+  // running while the operator visits another page.
+  const holdingsReleased = Promise.withResolvers<void>()
+  await browser.route(
+    new RegExp(
+      `/api/v2/chain/${CHAIN}/account/${wallet.address}/nfts(?:\\?.*)?$`,
+      'i',
+    ),
+    async (route) => {
+      await holdingsReleased.promise
+      await route.fallback()
+    },
+  )
+
+  await app.open('/bulk-sell')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [openseaConnection('deterministic-key')],
+  })
+  await app.open('/bulk-sell')
+
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'bulk-sell',
+    collection: SLUG,
+    folder: folder.name,
+  })
+
+  await expect(screen.getByText('Scanning collection…')).toBeVisible()
+  await screen.getByRole('link', { name: 'Settings' }).click()
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveCount(0)
+  await screen.getByRole('link', { name: 'Bulk Sell' }).click()
+  await expect(screen.getByText('Scanning collection…')).toBeVisible()
+  holdingsReleased.resolve()
+  await expect(screen.getByRole('row')).toHaveCount(17)
+
+  await filterHeldInventory(screen, '#7')
+  await screen.getByRole('checkbox', { name: 'Select token #7' }).check()
+  await screen.getByLabel('Price per item · ETH').fill('0.01')
+  await screen.getByRole('combobox', { name: 'Duration' }).click()
+  await screen.getByRole('option', { name: '7 days' }).click()
+  await expect(screen.getByText(/^Items to list\s*1$/)).toBeVisible()
+
+  await screen.getByRole('link', { name: 'Settings' }).click()
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveCount(0)
+  await screen.getByRole('link', { name: 'Bulk Sell' }).click()
+
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveValue(SLUG)
+  await expect(
+    screen.getByRole('button', { name: /Select wallets/ }),
+  ).toHaveText('Select wallets (1 selected)')
+  await expect(screen.getByLabel(INVENTORY_FILTER_LABEL)).toHaveValue('#7')
+  await expect(screen.getByRole('row')).toHaveCount(2)
+  await expectHeldInventoryHeader(screen, 1)
+  await expect(
+    screen.getByRole('checkbox', { name: 'Select token #7' }),
+  ).toBeChecked()
+  await expect(screen.getByLabel('Price per item · ETH')).toHaveValue('0.01')
+  await expect(screen.getByRole('combobox', { name: 'Duration' })).toHaveText(
+    '7 days',
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: /Mock #7[^0-9]/ })
+  await screen.getByRole('button', { name: 'Create listings' }).click()
+  await expect(row).toContainText('Submitting')
+
+  await screen.getByRole('link', { name: 'Settings' }).click()
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveCount(0)
+  await screen.getByRole('link', { name: 'Bulk Sell' }).click()
+  await expect(row).toContainText('Submitting')
+  released.resolve()
+
+  await expect(row).toContainText('Listed')
+  await expect(screen.getByText('1 of 1 listed')).toBeVisible()
+  expect(submissions.length).toBe(1)
+  expect(holdings.count).toBe(1)
+  expect(collection.count).toBe(1)
 })

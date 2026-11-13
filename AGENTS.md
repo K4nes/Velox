@@ -33,7 +33,7 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
 | `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
 | `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
-| `npm run test:release` | Unit tests for the release manifest logic in `scripts/`. |
+| `npm run test:release` | Unit tests for the release manifest and the page-state store in `scripts/`. |
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
@@ -51,7 +51,7 @@ Cheapest check that settles the change, in order:
 1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
-4. `npm run test:release` — the release manifest, signature and lockfile logic in `scripts/`.
+4. `npm run test:release` — the release manifest, signature and lockfile logic, and the page-state store, in `scripts/`.
 5. `npm run test:e2e` — the suite that covers the touched page.
 6. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
    runs. `npm run build` has to have produced `dist/` first.
@@ -100,6 +100,12 @@ every reported overwrite and re-apply the local edits.
 **`src/lib/chain/connection-model.ts` stays free of runtime imports.** It holds types and
 pure resolvers, so a type-stripped copy loads without a bundler or the `@/` alias. A
 runtime import ends that. The rule holds even though nothing loads it that way today.
+
+**The same holds for the files `npm run test:release` loads.** `src/lib/core/page-store.ts`
+and `src/lib/inventory/holdings-fields.ts` have no runtime imports, and
+`src/pages/bulk-sell/state.ts` imports only types and `holdings-fields`, and names that
+module with a relative `.ts` path, because node strips the types without a bundler or the
+`@/` alias.
 
 **Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
 step in the `migrations` table in `src/lib/db/db-migrations.ts`. Those steps run from
