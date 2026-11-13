@@ -375,7 +375,7 @@ test('the cancel tab withdraws an active listing in one click', async ({
   })
 
   const createTab = screen.getByRole('tab', { name: 'Create listings' })
-  const cancelTab = screen.getByRole('tab', { name: 'Active & Cancel' })
+  const cancelTab = screen.getByRole('tab', { name: 'Cancel listings' })
   await expect(createTab).toHaveAttribute('aria-selected', 'true')
   await expect(cancelTab).toHaveAttribute('aria-selected', 'false')
   await expect(listings.count).toBe(0)

@@ -187,7 +187,7 @@ export function ListingRail({
             Create listings
           </TabsTrigger>
           <TabsTrigger value="cancel" className="focus-visible:ring-[1px]">
-            Active & Cancel
+            Cancel listings
           </TabsTrigger>
         </TabsList>
 
