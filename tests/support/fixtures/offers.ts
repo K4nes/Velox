@@ -19,7 +19,7 @@ export type OfferLadderOptions = {
   durationSec?: number
   /** OpenSea's wildcard on an offer that accepts any token in the collection. */
   encodedTokenIds?: string
-  pinned?: { tokenIds: string; priceWei?: bigint | string }
+  pinned?: { tokenIds: string; priceWei: bigint | string }
 }
 
 const ZERO_ADDRESS = `0x${'00'.repeat(20)}`
@@ -77,7 +77,7 @@ export function offerLadderFixture(options: OfferLadderOptions) {
     ...(pinned
       ? [
           {
-            amount: BigInt(pinned.priceWei ?? priceWei).toString(),
+            amount: BigInt(pinned.priceWei).toString(),
             encodedTokenIds: pinned.tokenIds,
           },
         ]
