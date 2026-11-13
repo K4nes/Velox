@@ -23,15 +23,20 @@ function formatAge(sec: number, now: number): string {
   return `${Math.floor(diff / 60)}m ago`
 }
 
-function useNowSec(): number {
+function useNowSec(anchorSec: number | null): number {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+
   useEffect(() => {
-    const timer = window.setInterval(
+    if (anchorSec === null) return
+    const ageMs = Math.max(0, Date.now() - anchorSec * 1000)
+    const delay = 60_000 - (ageMs % 60_000)
+    const timer = window.setTimeout(
       () => setNow(Math.floor(Date.now() / 1000)),
-      30_000
+      delay
     )
-    return () => window.clearInterval(timer)
-  }, [])
+    return () => window.clearTimeout(timer)
+  }, [anchorSec, now])
+
   return now
 }
 
@@ -86,7 +91,9 @@ export function SellRail({
   running: boolean
   onAccept: () => void
 }) {
-  const now = useNowSec()
+  const fetchedAtSec =
+    offers.status === 'idle' ? null : (offers.book?.fetchedAtSec ?? null)
+  const now = useNowSec(fetchedAtSec)
   const symbol = plan.currency?.symbol ?? 'ETH'
   const decimals = plan.currency?.decimals ?? 18
   const runSymbol = summary?.symbol ?? symbol
