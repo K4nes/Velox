@@ -1,4 +1,5 @@
 import { Scan } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -6,25 +7,48 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
 import { useBulkSellScan } from '@/hooks/scan/use-bulk-sell-scan'
+import { useCancelRun } from '@/hooks/run/use-cancel-run'
 import { useListingRun } from '@/hooks/run/use-listing-run'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
+import { usePageStore } from '@/hooks/use-page-store'
 import { Inventory } from '@/pages/bulk-sell/inventory'
 import { ListingRail } from '@/pages/bulk-sell/listing-rail'
-import { bulkSellStore } from '@/pages/bulk-sell/store'
+import { bulkSellCancelStore, bulkSellStore } from '@/pages/bulk-sell/store'
+import type { BulkSellTab } from '@/pages/bulk-sell/state'
 
 export function BulkSellPage() {
   const scan = useBulkSellScan(bulkSellStore)
+  const fields = usePageStore(bulkSellStore)
   const run = useListingRun({
     selected: scan.selection,
     collection: scan.collection,
     onListed: scan.deselect,
     store: bulkSellStore,
   })
+  // One identity per scan, because the cancel tab re-reads whenever this list
+  // changes and a fresh array on every render would refetch on every render.
+  const wallets = useMemo(
+    () =>
+      scan.state.status === 'ready'
+        ? scan.state.scans.map((entry) => entry.wallet)
+        : [],
+    [scan.state]
+  )
+  const cancel = useCancelRun({
+    collection: scan.collection,
+    wallets,
+    active: fields.tab === 'cancel',
+    store: bulkSellCancelStore,
+  })
   const { groups } = useWalletGroups()
 
   function check() {
     run.reset()
     void scan.scan()
+  }
+
+  function changeTab(tab: BulkSellTab) {
+    bulkSellStore.set({ tab })
   }
 
   return (
@@ -39,7 +63,7 @@ export function BulkSellPage() {
             value={scan.url}
             onChange={(event) => scan.changeUrl(event.target.value)}
             placeholder="https://opensea.io/collection/… or https://scatter.art/…"
-            disabled={scan.running || run.running}
+            disabled={scan.running || run.running || cancel.running}
           />
         </div>
 
@@ -55,7 +79,7 @@ export function BulkSellPage() {
             groups={groups}
             selected={scan.selectedWallets}
             onSelectedChange={scan.changeWallets}
-            disabled={scan.running || run.running}
+            disabled={scan.running || run.running || cancel.running}
             aria-labelledby="bulk-wallet-label"
             className="w-full"
           />
@@ -64,7 +88,7 @@ export function BulkSellPage() {
         <Button
           className="shrink-0"
           onClick={check}
-          disabled={!scan.canScan || run.running}
+          disabled={!scan.canScan || run.running || cancel.running}
         >
           {scan.running ? <Spinner data-icon="inline-start" /> : <Scan />}
           Scan held NFTs
@@ -86,19 +110,42 @@ export function BulkSellPage() {
         />
 
         <ListingRail
-          price={run.price}
-          onPriceChange={run.setPrice}
-          durationDays={run.durationDays}
-          onDurationChange={run.setDuration}
-          itemCount={scan.selection.length}
-          symbol={scan.collection?.listingCurrency.symbol ?? 'ETH'}
-          decimals={scan.collection?.listingCurrency.decimals ?? 18}
-          estimatedTotals={run.estimatedTotals}
-          summary={run.summary}
-          error={run.error}
-          blockedReason={run.blockedReason}
-          running={run.running}
-          onCreate={() => void run.start()}
+          tab={fields.tab}
+          onTabChange={changeTab}
+          create={{
+            price: run.price,
+            onPriceChange: run.setPrice,
+            durationDays: run.durationDays,
+            onDurationChange: run.setDuration,
+            itemCount: scan.selection.length,
+            symbol: scan.collection?.listingCurrency.symbol ?? 'ETH',
+            decimals: scan.collection?.listingCurrency.decimals ?? 18,
+            estimatedTotals: run.estimatedTotals,
+            summary: run.summary,
+            error: run.error,
+            blockedReason: run.blockedReason,
+            running: run.running,
+            onCreate: () => void run.start(),
+          }}
+          cancel={{
+            read: cancel.read,
+            listings: cancel.listings,
+            selectedKeys: cancel.selectedKeys,
+            pending: cancel.pending,
+            steps: cancel.steps,
+            summary: cancel.summary,
+            error: cancel.error,
+            running: cancel.running,
+            currency: scan.collection?.listingCurrency ?? {
+              address: '',
+              symbol: 'ETH',
+              decimals: 18,
+            },
+            onCancel: () => void cancel.cancel(),
+            onRetry: () => void cancel.reload(),
+            onToggleOrder: cancel.toggleOrder,
+            onToggleAll: cancel.toggleAll,
+          }}
         />
       </div>
     </div>

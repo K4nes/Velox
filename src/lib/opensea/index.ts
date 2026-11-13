@@ -845,6 +845,255 @@ const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 const ORDER_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/
 const CALLDATA_SUFFIX_PATTERN = /^0x([0-9a-fA-F]{2})+$/
 
+// One live listing of one token, as the cancel rail needs it: enough to name the
+// order, price it and pick the wallet that signed it.
+export type ActiveListing = {
+  orderHash: string
+  chain: string
+  protocolAddress: string
+  offerer: string
+  contract: string
+  tokenId: string
+  quantity: number
+  priceWei: bigint | null
+  currency: string | null
+  expiresAtSec: number
+}
+
+// A read path, not a signing path: a listing only has to be identified and
+// priced, so a uint that arrives as a number, a decimal string or a hex string is
+// normalised instead of rejecting the whole order.
+function toDecimal(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return String(value)
+  }
+  if (typeof value !== 'string' || value === '') return null
+  if (/^\d+$/.test(value)) return value
+  if (/^0x[0-9a-fA-F]+$/.test(value)) return BigInt(value).toString()
+  return null
+}
+
+type RawOrder = {
+  order_hash?: unknown
+  chain?: unknown
+  protocol_address?: unknown
+  maker?: unknown
+  current_price?: unknown
+  expiration_time?: unknown
+  cancelled?: unknown
+  finalized?: unknown
+  marked_invalid?: unknown
+  protocol_data?: unknown
+}
+
+// An order this app cannot name is not one the operator can decide to cancel, so
+// it is dropped. One unreadable order must not fail the wallet's whole page.
+function toActiveListing(raw: RawOrder, nowSec: number): ActiveListing | null {
+  const orderHash =
+    typeof raw.order_hash === 'string' && ORDER_HASH_PATTERN.test(raw.order_hash)
+      ? raw.order_hash
+      : null
+  const protocolAddress = raw.protocol_address
+  const chain = raw.chain
+
+  if (orderHash === null || typeof protocolAddress !== 'string') return null
+  if (typeof chain !== 'string' || chain === '') return null
+  if (raw.cancelled === true || raw.finalized === true) return null
+  if (raw.marked_invalid === true) return null
+
+  const parameters = asRecord(
+    offerParameters(asRecord(raw.protocol_data)?.parameters)
+  )
+  const offer = Array.isArray(parameters?.offer)
+    ? asRecord(parameters.offer[0])
+    : null
+  const consideration = Array.isArray(parameters?.consideration)
+    ? asRecord(parameters.consideration[0])
+    : null
+
+  const tokenId = toDecimal(offer?.identifierOrCriteria)
+  const contract = offer?.token
+  if (tokenId === null || typeof contract !== 'string') return null
+
+  const expires = toDecimal(raw.expiration_time) ?? toDecimal(parameters?.endTime)
+  if (expires === null) return null
+  const expiresAtSec = Number(expires)
+  if (!Number.isFinite(expiresAtSec) || expiresAtSec <= nowSec) return null
+
+  const maker = asRecord(raw.maker)?.address ?? raw.maker ?? parameters?.offerer
+  if (typeof maker !== 'string' || !ADDRESS_PATTERN.test(maker)) return null
+
+  const currentPrice = toDecimal(raw.current_price)
+  const quantity = toDecimal(offer?.startAmount)
+
+  return {
+    orderHash,
+    chain,
+    protocolAddress,
+    offerer: maker.toLowerCase(),
+    contract: contract.toLowerCase(),
+    tokenId,
+    quantity: quantity === null ? 1 : Math.max(1, Number(quantity)),
+    priceWei: currentPrice === null ? null : BigInt(currentPrice),
+    currency:
+      typeof consideration?.token === 'string'
+        ? consideration.token.toLowerCase()
+        : null,
+    expiresAtSec,
+  }
+}
+
+// A wallet lists a handful of tokens per collection, so the page cap bounds a
+// pathological account rather than pacing a normal one.
+const LISTING_PAGE_LIMIT = 50
+const LISTING_PAGE_CAP = 5
+
+export async function getActiveListings(input: {
+  chain: string
+  contractAddress: string
+  maker: string
+  nowSec?: number
+}): Promise<ActiveListing[]> {
+  const nowSec = input.nowSec ?? Math.floor(Date.now() / 1000)
+  const listings: ActiveListing[] = []
+  let cursor: string | null = null
+  let pages = 0
+
+  do {
+    const params = new URLSearchParams({
+      asset_contract_address: input.contractAddress,
+      maker: input.maker,
+      limit: String(LISTING_PAGE_LIMIT),
+    })
+    if (cursor !== null) params.set('next', cursor)
+
+    const body = (await request(
+      `/orders/${encodeURIComponent(input.chain)}/seaport/listings?${params.toString()}`
+    )) as { orders?: unknown; next?: unknown } | null
+
+    if (!Array.isArray(body?.orders)) {
+      throw unexpected('/orders/seaport/listings')
+    }
+
+    for (const raw of body.orders) {
+      const listing = toActiveListing(raw as RawOrder, nowSec)
+      if (listing) listings.push(listing)
+    }
+
+    cursor = typeof body.next === 'string' && body.next !== '' ? body.next : null
+    pages += 1
+  } while (cursor !== null && pages < LISTING_PAGE_CAP)
+
+  return listings
+}
+
+// `0` is OpenSea's answer for a cancel that vended no fulfillment signature, so
+// no window is left to report. Anything else is normalised to unix seconds,
+// because the field arrives as a unix string or as an ISO timestamp.
+function toValidUntilSec(value: unknown): number | null {
+  if (typeof value === 'number') return value > 0 ? Math.floor(value) : null
+  if (typeof value !== 'string' || value === '') return null
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value)
+    return seconds > 0 ? seconds : null
+  }
+
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed / 1000) : null
+}
+
+export type CancelTransaction = {
+  to: `0x${string}`
+  data: `0x${string}`
+  value: string
+}
+
+export async function cancelListing(input: {
+  chain: string
+  protocolAddress: string
+  orderHash: string
+  offererSignature: string
+}): Promise<{ validUntilSec: number | null }> {
+  const body = (await request(
+    `/orders/chain/${encodeURIComponent(input.chain)}/protocol/${encodeURIComponent(input.protocolAddress)}/${encodeURIComponent(input.orderHash)}/cancel`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ offererSignature: input.offererSignature }),
+    }
+  )) as { last_signature_issued_valid_until?: unknown } | null
+
+  return {
+    validUntilSec: toValidUntilSec(body?.last_signature_issued_valid_until),
+  }
+}
+
+// The step envelope is untyped on OpenSea's side, so the transaction is found by
+// its shape. A step that holds no transaction is skipped, never guessed at: this
+// is the one path that spends gas.
+function transactionOf(holder: unknown): CancelTransaction | null {
+  const transaction = asRecord(asRecord(holder)?.transaction)
+  if (!transaction) return null
+
+  const to = transaction.to
+  const data = transaction.data
+  const value =
+    transaction.value === undefined || transaction.value === null
+      ? '0'
+      : toDecimal(transaction.value)
+
+  if (typeof to !== 'string' || !ADDRESS_PATTERN.test(to)) return null
+  if (typeof data !== 'string' || !CALLDATA_SUFFIX_PATTERN.test(data)) return null
+  if (value === null) return null
+
+  return { to: to as `0x${string}`, data: data as `0x${string}`, value }
+}
+
+function cancelTransaction(step: unknown): CancelTransaction | null {
+  const direct = transactionOf(step)
+  if (direct) return direct
+
+  const record = asRecord(step)
+  if (!record) return null
+
+  for (const value of Object.values(record)) {
+    const nested = transactionOf(value)
+    if (nested) return nested
+  }
+
+  return null
+}
+
+export async function requestCancelTransactions(input: {
+  chain: string
+  protocolAddress: string
+  orderHash: string
+  address: string
+}): Promise<CancelTransaction[]> {
+  const body = (await request(
+    `/orders/chain/${encodeURIComponent(input.chain)}/protocol/${encodeURIComponent(input.protocolAddress)}/${encodeURIComponent(input.orderHash)}/cancel/actions`,
+    { method: 'POST', body: JSON.stringify({ address: input.address }) }
+  )) as { steps?: unknown } | null
+
+  if (!Array.isArray(body?.steps)) {
+    throw unexpected('/orders/cancel/actions')
+  }
+
+  const transactions = body.steps.flatMap((step) => {
+    const transaction = cancelTransaction(step)
+    return transaction ? [transaction] : []
+  })
+
+  if (transactions.length === 0) {
+    throw new OpenSeaError(
+      502,
+      'unexpected-response',
+      'OpenSea returned no cancellation transaction'
+    )
+  }
+
+  return transactions
+}
+
 // The REST order serialises uint fields in shapes the signer's leaf parser does
 // not read: counter is an integer and salt can be hex. Normalise those two.
 function offerParameters(value: unknown): Record<string, unknown> | null {

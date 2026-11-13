@@ -24,8 +24,17 @@ import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { RUN_STEP_LABEL, RUN_STEP_TONE } from '@/lib/listings/listing-run'
 import type { RunStepState } from '@/lib/listings/listing-run'
+import { OrderHashNote } from '@/pages/bulk-sell/order-hash-note'
 
-function StatusCell({ step }: { step: RunStepState | undefined }) {
+function StatusCell({
+  step,
+  openseaUrl,
+  tokenId,
+}: {
+  step: RunStepState | undefined
+  openseaUrl: string
+  tokenId: string
+}) {
   if (!step) {
     return <span className="text-muted-foreground text-xs">—</span>
   }
@@ -41,9 +50,13 @@ function StatusCell({ step }: { step: RunStepState | undefined }) {
       label={RUN_STEP_LABEL[step.status]}
       live={live}
       note={
-        step.status === 'listed' && step.orderHash
-          ? `${step.orderHash.slice(0, 8)}…`
-          : undefined
+        step.status === 'listed' && step.orderHash ? (
+          <OrderHashNote
+            orderHash={step.orderHash}
+            openseaUrl={openseaUrl}
+            tokenId={tokenId}
+          />
+        ) : undefined
       }
       error={step.status === 'failed' ? step.error : undefined}
     />
@@ -217,7 +230,11 @@ export function Inventory({
                 </div>
               </TableCell>
               <TableCell className="px-3">
-                <StatusCell step={tokenStates.get(row.key)} />
+                <StatusCell
+                  step={tokenStates.get(row.key)}
+                  openseaUrl={row.openseaUrl}
+                  tokenId={row.tokenId}
+                />
               </TableCell>
             </TableRow>
           ))}

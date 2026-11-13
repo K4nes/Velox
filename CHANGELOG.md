@@ -8,6 +8,15 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+### Added
+
+- The Bulk Sell rail has a second tab, `Cancel listings`. It reads the active orders of the
+  selected wallets on the collection, withdraws the ones left checked in one click, signs
+  each cancel with its own offerer wallet, and reports the window in which a buyer can still
+  fill a withdrawn order ([#111]).
+- The order hash on a listed row is copyable and opens the token's page on OpenSea. It is an
+  order hash, not a transaction hash, so no explorer link is built from it ([#111]).
+
 ## [0.2.1] - 2026-11-13
 
 ### Added
@@ -189,3 +198,4 @@ consolidated into a single entry.
 [#104]: https://github.com/K4nes/Velox/pull/104
 [#106]: https://github.com/K4nes/Velox/pull/106
 [#107]: https://github.com/K4nes/Velox/pull/107
+[#111]: https://github.com/K4nes/Velox/issues/111
