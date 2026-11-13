@@ -8,6 +8,30 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-13
+
+### Added
+
+- A Velox menu on right-click, with Copy and Paste. Copy takes the field's selection, then
+  the page's, then the whole value; Paste inserts through the field's own insertion command,
+  so React's state stays in step. Paste reads the clipboard through the in-app command,
+  because the webview answers every `navigator.clipboard.readText` with a native permission
+  dialog ([#104]).
+
+### Changed
+
+- The four held-NFT pages share one header: one shape, one count rule, named filter inputs,
+  and a live region that announces the scan rather than the run ([#103]).
+- `RULES.md` states the panel-header layout once, and its example now matches it ([#102]).
+
+### Fixed
+
+- Instant sell keeps wildcard collection offers instead of dropping them, keeps the offer
+  rail inside the viewport, refreshes each offer's age on the minute, and no longer prints
+  the earliest-expiry line twice ([#98]).
+- The inventory body scrolls on the table pages: the page shell is pinned to the viewport
+  instead of growing with its content ([#106]).
+
 ## [0.2.0] - 2026-11-13
 
 ### Added
@@ -136,7 +160,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/K4nes/Velox/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/K4nes/Velox/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/K4nes/velox/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/K4nes/velox/compare/v0.1.0...v0.1.1
@@ -158,3 +183,8 @@ consolidated into a single entry.
 [#75]: https://github.com/K4nes/Velox/issues/75
 [#76]: https://github.com/K4nes/Velox/issues/76
 [#77]: https://github.com/K4nes/Velox/issues/77
+[#98]: https://github.com/K4nes/Velox/pull/98
+[#102]: https://github.com/K4nes/Velox/pull/102
+[#103]: https://github.com/K4nes/Velox/pull/103
+[#104]: https://github.com/K4nes/Velox/pull/104
+[#106]: https://github.com/K4nes/Velox/pull/106
