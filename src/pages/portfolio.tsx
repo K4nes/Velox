@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Image as ImageIcon, Scan, Search, X } from 'lucide-react'
+import { Image as ImageIcon, Scan, X } from 'lucide-react'
+import { HeldInventoryHeader, scanAnnouncement } from '@/components/held-inventory-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -194,12 +195,6 @@ export function PortfolioPage() {
             scan.tableState.status === 'error')
         ? 'Scanning…'
         : scan.tableState.message
-  const statusAnnouncement = scan.running
-    ? `Scanning ${scan.selectedWallets.length} ${scan.selectedWallets.length === 1 ? 'wallet' : 'wallets'}`
-    : scan.tableState.status === 'ready'
-      ? 'Scan complete'
-      : scan.tableState.message
-
   const contractLabel = collection
     ? shortenAddress(collection.contractAddress)
     : '—'
@@ -467,119 +462,104 @@ export function PortfolioPage() {
         </div>
       </div>
 
-      <Card className="flex-1 gap-0 overflow-hidden py-0">
-        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="truncate text-[13px] font-semibold">
-              Held NFT Inventory
-            </h2>
-            <Badge variant="secondary">
-              {visible.length} {visible.length === 1 ? 'item' : 'items'}
-            </Badge>
-            <span aria-live="polite" className="sr-only">
-              {statusAnnouncement}
-            </span>
-          </div>
-          <div className="relative w-60 shrink-0">
-            <Search
-              aria-hidden
-              className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-            />
-            <label htmlFor="token-search" className="sr-only">
-              Search token
-            </label>
-            <Input
-              id="token-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search tokens"
-              className="pl-8"
-            />
-          </div>
-        </div>
-        <Table aria-label="Held NFT inventory">
-          <TableHeader>
-            <TableRow className="h-11 bg-muted hover:bg-muted">
-              <TableHead className="text-muted-foreground px-3 text-xs font-medium">
-                Token
-              </TableHead>
-              <TableHead className="text-muted-foreground w-[200px] px-3 text-xs font-medium">
-                Owner wallet
-              </TableHead>
-              <TableHead className="text-muted-foreground w-[180px] px-3 text-xs font-medium">
-                Rarity rank
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell
-                  colSpan={3}
-                  className={cn(
-                    'h-24 text-center',
-                    scan.tableState.status === 'error' && !scan.running
-                      ? 'text-destructive'
-                      : 'text-muted-foreground'
-                  )}
-                >
-                  {emptyTableMessage}
-                </TableCell>
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+        <HeldInventoryHeader
+          count={visible.length}
+          query={query}
+          onQueryChange={setQuery}
+          inputId="token-search"
+          announcement={scanAnnouncement({
+            running: scan.running,
+            status: scan.tableState.status,
+            message:
+              'message' in scan.tableState ? scan.tableState.message : '',
+          })}
+        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          <Table aria-label="Held NFT inventory">
+            <TableHeader>
+              <TableRow className="bg-muted hover:bg-muted">
+                <TableHead className="text-muted-foreground px-3 text-xs font-medium">
+                  Token
+                </TableHead>
+                <TableHead className="text-muted-foreground w-[200px] px-3 text-xs font-medium">
+                  Owner wallet
+                </TableHead>
+                <TableHead className="text-muted-foreground w-[180px] px-3 text-xs font-medium">
+                  Rarity rank
+                </TableHead>
               </TableRow>
-            ) : (
-              visible.map((holding) => (
-                <TableRow
-                  key={holding.id}
-                  className="h-[60px] hover:bg-transparent"
-                >
-                  <TableCell className="px-3">
-                    <div className="flex items-center gap-2.5">
-                      <TokenImage src={holding.imageUrl} alt="" />
-                      {holding.openseaUrl ? (
-                        <a
-                          href={holding.openseaUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm font-medium hover:underline"
-                        >
-                          {holding.name || `#${holding.tokenId}`}
-                        </a>
-                      ) : (
-                        <span className="text-sm font-medium">
-                          {holding.name || `#${holding.tokenId}`}
-                        </span>
-                      )}
-                      {holding.quantity !== 1 ? (
-                        <Badge
-                          variant="secondary"
-                          className="h-5 px-1.5 text-xs"
-                        >
-                          ×{formatAmount(holding.quantity)}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="px-3">
-                    <div
-                      className="flex flex-col gap-0.5"
-                      title={holding.owner.address}
-                    >
-                      <span className="text-[13px] font-medium">
-                        {holding.owner.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        {shortenAddress(holding.owner.address)}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="px-3">
-                    <RarityRank row={holding} maxRank={maxRank} />
+            </TableHeader>
+            <TableBody>
+              {visible.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={3}
+                    className={cn(
+                      'h-24 text-center',
+                      scan.tableState.status === 'error' && !scan.running
+                        ? 'text-destructive'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {emptyTableMessage}
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                visible.map((holding) => (
+                  <TableRow
+                    key={holding.id}
+                    className="h-[60px] hover:bg-transparent"
+                  >
+                    <TableCell className="px-3">
+                      <div className="flex items-center gap-2.5">
+                        <TokenImage src={holding.imageUrl} alt="" />
+                        {holding.openseaUrl ? (
+                          <a
+                            href={holding.openseaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-medium hover:underline"
+                          >
+                            {holding.name || `#${holding.tokenId}`}
+                          </a>
+                        ) : (
+                          <span className="text-sm font-medium">
+                            {holding.name || `#${holding.tokenId}`}
+                          </span>
+                        )}
+                        {holding.quantity !== 1 ? (
+                          <Badge
+                            variant="secondary"
+                            className="h-5 px-1.5 text-xs"
+                          >
+                            ×{formatAmount(holding.quantity)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-3">
+                      <div
+                        className="flex flex-col gap-0.5"
+                        title={holding.owner.address}
+                      >
+                        <span className="text-[13px] font-medium">
+                          {holding.owner.label}
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          {shortenAddress(holding.owner.address)}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-3">
+                      <RarityRank row={holding} maxRank={maxRank} />
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </Card>
     </div>
   )

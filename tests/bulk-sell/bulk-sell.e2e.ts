@@ -3,12 +3,17 @@ import { expect } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
+import {
+  expectHeldInventoryHeader,
+  filterHeldInventory,
+} from '../support/inventory'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 const SLUG = 'bulk-sell-mock'
 const CONTRACT = '0x00000000000000000000000000000000000000bb'
+const CONTRACT_UPPER = '0x00000000000000000000000000000000000000BB'
 const CHAIN = 'robinhood'
 
 test('selection and price gate the listing run', async ({
@@ -45,6 +50,8 @@ test('selection and price gate the listing run', async ({
     address: wallet.address,
     body: holdingsFixture([
       { contract: CONTRACT, identifier: '1', name: 'Mock #1' },
+      { contract: CONTRACT, identifier: '2', name: 'Mock #2' },
+      { contract: CONTRACT, identifier: '3', name: 'Mock #3' },
     ]),
   })
 
@@ -66,7 +73,7 @@ test('selection and price gate the listing run', async ({
 
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
   await expect(row.getByText('#1', { exact: true })).toBeVisible()
-  await expect(screen.getByRole('row')).toHaveCount(2)
+  await expect(screen.getByRole('row')).toHaveCount(4)
 
   const create = screen.getByRole('button', { name: 'Create listings' })
   await expect(create).toBeDisabled()
@@ -81,4 +88,56 @@ test('selection and price gate the listing run', async ({
   await expect(create).toBeEnabled()
 
   expect(listed).toEqual([])
+
+  await expectHeldInventoryHeader(screen, 3)
+  await filterHeldInventory(screen, '#2')
+})
+
+test('one token spelled two ways is one row', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Bulk Sell Spelling')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  await mockCollection(browser, {
+    slug: SLUG,
+    body: collectionFixture({
+      slug: SLUG,
+      name: 'Mock Collection',
+      contract: CONTRACT,
+      chain: CHAIN,
+    }),
+  })
+  // The API is free to spell the contract in either case. One token arriving
+  // twice is still one token, so the page must show one row and count one.
+  await mockHoldings(browser, {
+    chain: CHAIN,
+    address: wallet.address,
+    body: holdingsFixture([
+      { contract: CONTRACT, identifier: '1', name: 'Mock #1' },
+      { contract: CONTRACT_UPPER, identifier: '1', name: 'Mock #1' },
+    ]),
+  })
+
+  await app.open('/bulk-sell')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [openseaConnection('deterministic-key')],
+  })
+  await app.open('/bulk-sell')
+
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'bulk-sell',
+    collection: SLUG,
+    folder: folder.name,
+  })
+
+  await expect(screen.getByRole('row')).toHaveCount(2)
+  await expectHeldInventoryHeader(screen, 1)
 })
