@@ -75,9 +75,19 @@ async function readActiveListings(input: {
     return
   }
 
-  const listings = settled.resolved.flatMap((entry) => entry.value)
+  // A page cursor can repeat an order when a listing lands mid-read, and one order
+  // is one row and one cancel request, so the merge collapses on the hash. The
+  // holdings scan does the same with its own key.
+  const byHash = new Map<string, CancelListing>()
+  for (const entry of settled.resolved) {
+    for (const listing of entry.value) {
+      if (!byHash.has(listing.orderHash)) byHash.set(listing.orderHash, listing)
+    }
+  }
 
-  const ordered = listings.sort((a, b) => a.expiresAtSec - b.expiresAtSec)
+  const ordered = [...byHash.values()].sort(
+    (a, b) => a.expiresAtSec - b.expiresAtSec
+  )
 
   // Every order the read returns arrives selected, so the one-click cancel keeps
   // working; deselecting is what narrows the batch.
