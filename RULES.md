@@ -144,12 +144,16 @@ The bar at the top of a card that holds a table, a rail panel or a form.
 
 ```tsx
 <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-  <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
-  <Badge variant="secondary">0 items</Badge>
+  <div className="flex min-w-0 items-center gap-2">
+    <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
+    <Badge variant="secondary">0 items</Badge>
+  </div>
+  <Input className="w-60" placeholder="Filter by token" />
 </div>
 ```
 
-48px tall, one divider, 16px inset, 13px semibold title; counts and filters on the right.
+48px tall, one divider, 16px inset, 13px semibold title. The title and its row count
+are one group on the left; the filter, where the page has one, sits alone on the right.
 The card that owns it: `gap-0 overflow-hidden py-0`.
 
 A title *inside* a card body is the same 13px semibold — not `CardTitle` (16px), not a
