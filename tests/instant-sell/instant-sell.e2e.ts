@@ -5,6 +5,10 @@ import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
+import {
+  expectHeldInventoryHeader,
+  filterHeldInventory,
+} from '../support/inventory'
 import { offerLadderFixture } from '../support/fixtures/offers'
 import {
   mockCollection,
@@ -44,7 +48,11 @@ test('one bid covers one selected token', async ({
   const holdings = await mockHoldings(browser, {
     chain: 'robinhood',
     address: wallet.address,
-    body: holdingsFixture([{ contract: CONTRACT, identifier: TOKEN_ID }]),
+    body: holdingsFixture([
+      { contract: CONTRACT, identifier: TOKEN_ID },
+      { contract: CONTRACT, identifier: '2' },
+      { contract: CONTRACT, identifier: '3' },
+    ]),
   })
   const offers = await mockCollectionOffers(browser, {
     slug: SLUG,
@@ -119,4 +127,7 @@ test('one bid covers one selected token', async ({
   await expect(selected).toHaveText('1')
   await expect(covered).toHaveText('1')
   await expect(screen.getByRole('button', 'Accept 1 offer')).toBeEnabled()
+
+  await expectHeldInventoryHeader(screen, 3)
+  await filterHeldInventory(screen, '#2')
 })

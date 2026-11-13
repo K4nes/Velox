@@ -3,6 +3,10 @@ import { expect } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
+import {
+  expectHeldInventoryHeader,
+  filterHeldInventory,
+} from '../support/inventory'
 import { mockCollection, mockHoldings, mockRarityBatch } from '../support/opensea'
 import { mockPrice } from '../support/price'
 import { scanCollection } from '../support/scan'
@@ -33,10 +37,18 @@ test('a scan fills the inventory and the owned count', async ({
     address: wallet.address,
     body: holdingsFixture([
       { contract: CONTRACT, identifier: '1', name: 'Mock #1' },
+      { contract: CONTRACT, identifier: '2', name: 'Mock #2' },
+      { contract: CONTRACT, identifier: '3', name: 'Mock #3' },
     ]),
   })
   await mockRarityBatch(browser, {
-    body: { nfts: [{ identifier: '1', rarity: { rank: 5 } }] },
+    body: {
+      nfts: [
+        { identifier: '1', rarity: { rank: 5 } },
+        { identifier: '2', rarity: { rank: 6 } },
+        { identifier: '3', rarity: { rank: 7 } },
+      ],
+    },
   })
 
   // The scan also reads stats and the ETH price; both fail soft, but a live
@@ -83,7 +95,10 @@ test('a scan fills the inventory and the owned count', async ({
   const totalOwned = browser.locator(
     'xpath=//dt[normalize-space(.)="Total owned"]/following-sibling::dd/span[1]',
   )
-  await expect(totalOwned).toHaveText('1')
+  await expect(totalOwned).toHaveText('3')
 
   await expect(screen.getByText(/could not be ranked/)).toHaveCount(0)
+
+  await expectHeldInventoryHeader(screen, 3)
+  await filterHeldInventory(screen, '#2')
 })

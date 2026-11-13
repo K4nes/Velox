@@ -7,6 +7,10 @@ import {
   robinhoodRpc,
 } from '../support/data'
 import { holdingsFixture } from '../support/fixtures/holdings'
+import {
+  expectHeldInventoryHeader,
+  filterHeldInventory,
+} from '../support/inventory'
 import { collectionFixture } from '../support/fixtures/collection'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { mockRpc, word } from '../support/rpc'
@@ -38,7 +42,11 @@ test('a pasted destination arms the transfer', async ({
   await mockHoldings(browser, {
     chain: 'robinhood',
     address: wallet.address,
-    body: holdingsFixture([{ contract: CONTRACT, identifier: '1' }]),
+    body: holdingsFixture([
+      { contract: CONTRACT, identifier: '1' },
+      { contract: CONTRACT, identifier: '2' },
+      { contract: CONTRACT, identifier: '3' },
+    ]),
   })
   // The scan probes ERC-165 before a row is selectable; a 32-byte word with the
   // low byte `01` decodes as `true`, so the probe resolves to ERC-721.
@@ -80,4 +88,7 @@ test('a pasted destination arms the transfer', async ({
   await expect(screen.getByText('Sends to 0x0000…0001')).toBeVisible()
   await expect(button).toBeEnabled()
   expect(rpc.count('eth_sendRawTransaction')).toBe(0)
+
+  await expectHeldInventoryHeader(screen, 3)
+  await filterHeldInventory(screen, '#2')
 })

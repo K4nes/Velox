@@ -1,13 +1,16 @@
-import { PackageOpen, Search } from 'lucide-react'
+import { PackageOpen } from 'lucide-react'
 
 import { BodyMessage } from '@/components/body-message'
+import {
+  HeldInventoryHeader,
+  scanAnnouncement,
+} from '@/components/held-inventory-header'
 import { RunStatusCell } from '@/components/run-status-cell'
 import { TokenImage } from '@/components/token-image'
 import { TxHashLink } from '@/components/tx-hash-link'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -232,7 +235,7 @@ export function Inventory({
       <Table aria-label="Held NFT inventory">
         <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
           <TableRow>
-            <TableHead className="w-10 pl-4">
+            <TableHead className="w-10 px-3">
               <Checkbox
                 aria-label="Select every token in this view"
                 checked={
@@ -284,7 +287,7 @@ export function Inventory({
 
             return (
               <TableRow key={row.token.key}>
-                <TableCell className="pl-4">
+                <TableCell className="px-3">
                   <Checkbox
                     aria-label={`Select token #${row.token.tokenId}`}
                     checked={row.selected}
@@ -342,30 +345,16 @@ export function Inventory({
 
   return (
     <Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-        <h2 className="truncate text-[13px] font-semibold">Held NFT Inventory</h2>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary">
-            {totalRows} {totalRows === 1 ? 'item' : 'items'}
-          </Badge>
-          <div className="relative w-60">
-            <Search
-              aria-hidden
-              className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-            />
-            <label htmlFor="instant-token-filter" className="sr-only">
-              Filter tokens by token number
-            </label>
-            <Input
-              id="instant-token-filter"
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Filter by token #"
-              className="pl-8"
-            />
-          </div>
-        </div>
-      </div>
+      <HeldInventoryHeader
+        count={rows.length}
+        query={query}
+        onQueryChange={onQueryChange}
+        inputId="instant-token-filter"
+        announcement={scanAnnouncement({
+          scanning: state.status === 'scanning',
+          settled: state,
+        })}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {body()}

@@ -29,7 +29,10 @@ export function holdingKey(
   contract: string,
   tokenId: string
 ): string {
-  return `${address.toLowerCase()}:${chain}:${contract}:${tokenId}`
+  // The API is free to spell a chain or a contract in either case, and one
+  // token arriving twice in two spellings is still one token. The ID stays
+  // exact, because it is the one field where case can carry meaning.
+  return `${address.toLowerCase()}:${chain.toLowerCase()}:${contract.toLowerCase()}:${tokenId}`
 }
 
 export function resolveScanWallets(
