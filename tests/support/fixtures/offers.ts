@@ -17,6 +17,9 @@ export type OfferLadderOptions = {
   protocolAddress?: string
   /** How long each bid stays live, in seconds. */
   durationSec?: number
+  /** OpenSea's wildcard on an offer that accepts any token in the collection. */
+  encodedTokenIds?: string
+  pinned?: { tokenIds: string; priceWei: bigint | string }
 }
 
 const ZERO_ADDRESS = `0x${'00'.repeat(20)}`
@@ -39,6 +42,8 @@ export function offerLadderFixture(options: OfferLadderOptions) {
     offerer = `0x${'11'.repeat(20)}`,
     protocolAddress = `0x${'00'.repeat(19)}f2`,
     durationSec = 3_600,
+    encodedTokenIds = '*',
+    pinned,
   } = options
 
   const nowSec = Math.floor(Date.now() / 1000)
@@ -67,14 +72,26 @@ export function offerLadderFixture(options: OfferLadderOptions) {
     recipient: offerer,
   })
 
+  const bids = [
+    ...Array.from({ length: count }, () => ({ amount: gross, encodedTokenIds })),
+    ...(pinned
+      ? [
+          {
+            amount: BigInt(pinned.priceWei).toString(),
+            encodedTokenIds: pinned.tokenIds,
+          },
+        ]
+      : []),
+  ]
+
   return {
-    offers: Array.from({ length: count }, (_, index) => ({
+    offers: bids.map((bid, index) => ({
       order_hash: orderHash(index),
       status: 'ACTIVE',
       chain,
       protocol_address: protocolAddress,
       remaining_quantity: 1,
-      criteria: {},
+      criteria: { encoded_token_ids: bid.encodedTokenIds },
       price_per_item: {
         currency: currency.symbol ?? 'ETH',
         decimals: currency.decimals ?? 18,
@@ -88,8 +105,8 @@ export function offerLadderFixture(options: OfferLadderOptions) {
               itemType: 0,
               token: ZERO_ADDRESS,
               identifierOrCriteria: '0',
-              startAmount: gross,
-              endAmount: gross,
+              startAmount: bid.amount,
+              endAmount: bid.amount,
             },
           ],
           consideration,

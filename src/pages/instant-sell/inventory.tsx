@@ -367,7 +367,9 @@ export function Inventory({
         </div>
       </div>
 
-      {body()}
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        {body()}
+      </div>
     </Card>
   )
 }

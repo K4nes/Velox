@@ -1,4 +1,5 @@
 import { test } from '@e2e-dev/web'
+import { formatUnits } from 'viem'
 import { expect } from 'e2e'
 import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
@@ -16,6 +17,7 @@ import { seedVelox } from '../support/seed'
 const SLUG = 'mock-collection'
 const CONTRACT = '0x00000000000000000000000000000000000000bb'
 const TOKEN_ID = '1'
+const PINNED_WEI = 500_000_000_000_000_000n
 
 test('one bid covers one selected token', async ({
   app,
@@ -46,11 +48,12 @@ test('one bid covers one selected token', async ({
   })
   const offers = await mockCollectionOffers(browser, {
     slug: SLUG,
-    // The fixture's inferred `criteria: {}` has no index signature, so its
-    // return type is not accepted as JsonValue without the cast.
+    // The fixture types `consideration` as `unknown[]`, which JsonValue rejects.
     body: offerLadderFixture({
       contract: CONTRACT,
       tokenId: TOKEN_ID,
+      count: 12,
+      pinned: { tokenIds: '2', priceWei: PINNED_WEI },
     }) as unknown as JsonValue,
   })
 
@@ -74,6 +77,26 @@ test('one bid covers one selected token', async ({
   // bid, so this is the positive signal the empty state cannot fake.
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
   await expect(row.getByText('0.1 ETH')).toBeVisible()
+  await expect(
+    screen.getByText(`${formatUnits(PINNED_WEI, 18)} ETH`)
+  ).toHaveCount(0)
+  await expect(screen.getByText('Last update just now')).toBeVisible()
+
+  const layout = await browser.evaluate(() => {
+    const heading = [...document.querySelectorAll('h2')].find(
+      (element) => element.textContent === 'Active OpenSea Offers'
+    )
+    const card = heading?.closest('[data-slot="card"]')
+    const list = card?.querySelector<HTMLElement>('[class*="overflow-y-auto"]')
+    const page = document.scrollingElement
+    return {
+      pageScrolls:
+        page === null ? true : page.scrollHeight > window.innerHeight + 1,
+      listScrolls: list ? list.scrollHeight > list.clientHeight + 1 : false,
+    }
+  })
+  expect(layout.pageScrolls).toBe(false)
+  expect(layout.listScrolls).toBe(true)
   await expect.poll(() => offers.count).toBeGreaterThan(0)
   expect(collection.count).toBe(1)
   expect(holdings.count).toBe(1)

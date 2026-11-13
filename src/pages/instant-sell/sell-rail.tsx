@@ -1,4 +1,5 @@
 import { Gavel, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,23 @@ function formatAge(sec: number, now: number): string {
   if (diff < 60) return 'just now'
   if (diff >= 3_600) return `${Math.floor(diff / 3_600)}h ago`
   return `${Math.floor(diff / 60)}m ago`
+}
+
+function useNowSec(anchorSec: number | null): number {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
+
+  useEffect(() => {
+    if (anchorSec === null) return
+    const ageMs = Math.max(0, Date.now() - anchorSec * 1000)
+    const delay = 60_000 - (ageMs % 60_000)
+    const timer = window.setTimeout(
+      () => setNow(Math.floor(Date.now() / 1000)),
+      delay
+    )
+    return () => window.clearTimeout(timer)
+  }, [anchorSec, now])
+
+  return now
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -73,7 +91,9 @@ export function SellRail({
   running: boolean
   onAccept: () => void
 }) {
-  const now = Math.floor(Date.now() / 1000)
+  const fetchedAtSec =
+    offers.status === 'idle' ? null : (offers.book?.fetchedAtSec ?? null)
+  const now = useNowSec(fetchedAtSec)
   const symbol = plan.currency?.symbol ?? 'ETH'
   const decimals = plan.currency?.decimals ?? 18
   const runSymbol = summary?.symbol ?? symbol
@@ -81,13 +101,9 @@ export function SellRail({
   const covered = plan.targets.length
   const activeAddress = ladder?.currency.address ?? currency
   const average = covered > 0 ? plan.totals.netWei / BigInt(covered) : 0n
-  const earliest =
-    plan.expiresAtSec !== null
-      ? formatExpiry(plan.expiresAtSec, now)
-      : null
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]">
+    <div className="flex min-h-0 w-full shrink-0 flex-col gap-4 lg:w-[300px]">
       <Card className="shrink-0 gap-3 p-4">
         <h2 className="text-[13px] font-semibold">Net proceeds</h2>
 
@@ -99,14 +115,6 @@ export function SellRail({
             {symbol}
           </span>
         </div>
-
-        <span className="text-muted-foreground text-[13px]">
-          {earliest === null
-            ? '—'
-            : earliest === 'expired'
-              ? 'expired'
-              : `earliest expiry ${earliest}`}
-        </span>
 
         <Separator />
 
@@ -134,7 +142,7 @@ export function SellRail({
         </dl>
       </Card>
 
-      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+      <Card className="flex max-h-[60svh] min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 lg:max-h-none">
         <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
           <h2 className="truncate text-[13px] font-semibold">
             Active OpenSea Offers
@@ -157,7 +165,7 @@ export function SellRail({
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
           {offers.status !== 'idle' && offers.book ? (
             <p className="text-muted-foreground text-[11px]">
-              as of {formatAge(offers.book.fetchedAtSec, now)}
+              Last update {formatAge(offers.book.fetchedAtSec, now)}
               {offers.book.truncated ? ' · first 1,000 bids' : ''}
             </p>
           ) : null}
