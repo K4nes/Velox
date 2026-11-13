@@ -1,4 +1,5 @@
 import { test } from '@e2e-dev/web'
+import { formatUnits } from 'viem'
 import { expect } from 'e2e'
 import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
@@ -16,6 +17,7 @@ import { seedVelox } from '../support/seed'
 const SLUG = 'mock-collection'
 const CONTRACT = '0x00000000000000000000000000000000000000bb'
 const TOKEN_ID = '1'
+const PINNED_WEI = 500_000_000_000_000_000n
 
 test('one bid covers one selected token', async ({
   app,
@@ -50,7 +52,7 @@ test('one bid covers one selected token', async ({
     body: offerLadderFixture({
       contract: CONTRACT,
       tokenId: TOKEN_ID,
-      pinned: { tokenIds: '2', priceWei: 500_000_000_000_000_000n },
+      pinned: { tokenIds: '2', priceWei: PINNED_WEI },
     }) as unknown as JsonValue,
   })
 
@@ -74,7 +76,9 @@ test('one bid covers one selected token', async ({
   // bid, so this is the positive signal the empty state cannot fake.
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
   await expect(row.getByText('0.1 ETH')).toBeVisible()
-  await expect(screen.getByText('0.5 ETH')).toHaveCount(0)
+  await expect(
+    screen.getByText(`${formatUnits(PINNED_WEI, 18)} ETH`)
+  ).toHaveCount(0)
   await expect.poll(() => offers.count).toBeGreaterThan(0)
   expect(collection.count).toBe(1)
   expect(holdings.count).toBe(1)
