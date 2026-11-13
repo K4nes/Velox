@@ -1,22 +1,17 @@
 import { expect } from 'e2e'
 import type { Screen } from 'e2e'
 
-/** The placeholder every held-token page shows in its filter. */
-export const INVENTORY_FILTER_PLACEHOLDER = 'Filter by token, ID or wallet'
+export const INVENTORY_FILTER_PLACEHOLDER = 'Filter by name, ID or wallet'
 
 /**
- * The filter's accessible name. It lists exactly the three things the filter
- * searches, so a screen-reader user is not told to type a token number and then
- * find that a wallet address matches.
+ * The filter's accessible name lists exactly the three things it searches, so a
+ * screen-reader user is never told to type a token number and then find that a
+ * wallet address matches.
  */
 export const INVENTORY_FILTER_LABEL =
   'Filter tokens by name, token ID or wallet address'
 
-/**
- * The bar above the held-token table: a title and the count of the rows on
- * screen, then the filter. Every held-token page shares it, so a page that
- * disagrees on any of the three is the bug this asserts.
- */
+/** A page that disagrees on any of these three is the drift the bar exists to stop. */
 export async function expectHeldInventoryHeader(
   screen: Screen,
   count: number,
@@ -33,11 +28,7 @@ export async function expectHeldInventoryHeader(
   ).toBeVisible()
 }
 
-/**
- * Types a term into the filter and asserts the count follows the body: one row
- * left, and the badge reading one. A page whose badge counts the whole scan
- * instead of the visible rows fails here.
- */
+/** A badge that counts the whole scan instead of the visible rows fails here. */
 export async function filterHeldInventory(
   screen: Screen,
   term: string,

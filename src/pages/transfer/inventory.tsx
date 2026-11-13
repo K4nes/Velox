@@ -165,7 +165,7 @@ export function Inventory({
       <Table aria-label="Held NFT inventory">
         <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
           <TableRow>
-            <TableHead className="w-12 px-3">
+            <TableHead className="w-10 px-3">
               <Checkbox
                 aria-label="Select every token in this view"
                 checked={headerChecked}
@@ -264,11 +264,7 @@ export function Inventory({
         query={query}
         onQueryChange={onQueryChange}
         inputId="transfer-token-filter"
-        announcement={scanAnnouncement({
-          running,
-          status: state.status,
-          message: state.status === 'failed' ? state.message : '',
-        })}
+        announcement={scanAnnouncement({ running, settled: state })}
       />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">

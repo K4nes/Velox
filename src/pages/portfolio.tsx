@@ -470,15 +470,13 @@ export function PortfolioPage() {
           inputId="token-search"
           announcement={scanAnnouncement({
             running: scan.running,
-            status: scan.tableState.status,
-            message:
-              'message' in scan.tableState ? scan.tableState.message : '',
+            settled: scan.tableState,
           })}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <Table aria-label="Held NFT inventory">
-            <TableHeader>
-              <TableRow className="bg-muted hover:bg-muted">
+            <TableHeader className="[&_tr]:bg-muted [&_tr]:hover:bg-muted">
+              <TableRow>
                 <TableHead className="text-muted-foreground px-3 text-xs font-medium">
                   Token
                 </TableHead>

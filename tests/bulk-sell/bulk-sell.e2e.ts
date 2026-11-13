@@ -111,8 +111,7 @@ test('one token spelled two ways is one row', async ({
       chain: CHAIN,
     }),
   })
-  // The API is free to spell the contract in either case. One token arriving
-  // twice is still one token, so the page must show one row and count one.
+  // The API is free to spell the contract in either case.
   await mockHoldings(browser, {
     chain: CHAIN,
     address: wallet.address,

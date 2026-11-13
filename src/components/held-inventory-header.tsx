@@ -4,25 +4,18 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 
 /**
- * One sentence for the live region, so every page that holds this card
- * announces the same thing. A page passes the message it already shows in the
- * table body, and the running and finished wordings come from here.
+ * One sentence for the live region. Every page that holds this card announces
+ * the same thing, because the wording lives here and not at the call sites.
  */
 export function scanAnnouncement(input: {
   running: boolean
-  status: string
-  message: string
+  settled: { status: string; message?: string }
 }): string {
   if (input.running) return 'Scanning held tokens'
-  if (input.status === 'ready') return 'Scan complete'
-  return input.message
+  if (input.settled.status === 'ready') return 'Scan complete'
+  return input.settled.message ?? ''
 }
 
-/**
- * The `Held NFT Inventory` bar: title and the count of the rows on screen on
- * the left, the filter alone on the right. Every page that renders this card
- * uses it, so the count cannot drift from the body it describes.
- */
 export function HeldInventoryHeader({
   count,
   query,
@@ -61,7 +54,7 @@ export function HeldInventoryHeader({
           id={inputId}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Filter by token, ID or wallet"
+          placeholder="Filter by name, ID or wallet"
           className="pl-8"
         />
       </div>
