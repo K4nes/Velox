@@ -1,6 +1,5 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import type { JsonValue } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture } from '../support/fixtures/holdings'
@@ -46,12 +45,11 @@ test('one bid covers one selected token', async ({
   })
   const offers = await mockCollectionOffers(browser, {
     slug: SLUG,
-    // The fixture's inferred `criteria: {}` has no index signature, so its
-    // return type is not accepted as JsonValue without the cast.
     body: offerLadderFixture({
       contract: CONTRACT,
       tokenId: TOKEN_ID,
-    }) as unknown as JsonValue,
+      pinned: { tokenIds: '2', priceWei: 500_000_000_000_000_000n },
+    }),
   })
 
   await app.open('/instant-sell')
@@ -74,6 +72,7 @@ test('one bid covers one selected token', async ({
   // bid, so this is the positive signal the empty state cannot fake.
   const row = screen.getByRole('row').filter({ hasText: 'Mock #1' })
   await expect(row.getByText('0.1 ETH')).toBeVisible()
+  await expect(screen.getByText('0.5 ETH')).toHaveCount(0)
   await expect.poll(() => offers.count).toBeGreaterThan(0)
   expect(collection.count).toBe(1)
   expect(holdings.count).toBe(1)
