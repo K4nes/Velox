@@ -65,6 +65,21 @@ export type OrderTypedData = {
   message: SignableOrder
 }
 
+export type CancelTypedData = {
+  types: Record<string, readonly { name: string; type: string }[]>
+  primaryType: 'OrderHash'
+  domain: SeaportDomain
+  message: { orderHash: `0x${string}` }
+}
+
+// Seaport's version is part of the EIP-712 domain, and a cancel is signed against
+// the contract that holds the order. The protocol address is the only thing in a
+// cancel request that names it, so it is the only source the domain has.
+const SEAPORT_VERSIONS: Record<string, string> = {
+  '0x0000000000000068f116a894984e2db1123eb395': '1.6',
+  '0x00000000000000adc04c56bf30ac9d3c0aaf14dc': '1.5',
+}
+
 export type OrderFees = {
   grossWei: bigint
   feeWei: bigint
@@ -77,6 +92,7 @@ export type SeaportErrorCode =
   | 'unsupported-primary-type'
   | 'invalid-domain'
   | 'no-proceeds-item'
+  | 'unknown-protocol'
 
 export class SeaportError extends Error {
   readonly code: SeaportErrorCode
@@ -329,8 +345,36 @@ export function typedDataForLeaf(
   }
 }
 
-export function splitConsideration(leaf: OrderComponentsLeaf): OrderFees {
-  const offerer = leaf.offerer.toLowerCase()
+// The off-chain cancel is authorised by the offerer signing the order hash itself
+// against the Seaport domain the order was listed on, so the signature is the
+// order's own identifier and never a copy of the order terms.
+export function cancelTypedData(input: {
+  chainId: number
+  protocolAddress: string
+  orderHash: string
+}): CancelTypedData {
+  const version = SEAPORT_VERSIONS[input.protocolAddress.toLowerCase()]
+  if (version === undefined) {
+    throw new SeaportError(
+      'unknown-protocol',
+      `Unsupported Seaport contract ${input.protocolAddress}`
+    )
+  }
+
+  return {
+    types: { OrderHash: [{ name: 'orderHash', type: 'bytes32' }] },
+    primaryType: 'OrderHash',
+    domain: {
+      name: 'Seaport',
+      version,
+      chainId: input.chainId,
+      verifyingContract: input.protocolAddress as `0x${string}`,
+    },
+    message: { orderHash: input.orderHash as `0x${string}` },
+  }
+}
+
+export function splitConsideration(leaf: OrderComponentsLeaf): OrderFees {  const offerer = leaf.offerer.toLowerCase()
   let grossWei = 0n
   let feeWei = 0n
   let paysOfferer = false

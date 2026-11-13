@@ -21,17 +21,29 @@ const RETAINED_FIELDS = [
   'running',
   'selectedKeys',
   'state',
+  'tab',
   'tokens',
   'url',
   'walletIds',
 ]
 
+// The cancel tab keeps its own state across a route change, so it is reviewed by
+// the same rule: what outlives the page cannot carry a key.
+const RETAINED_CANCEL_FIELDS = [
+  'error',
+  'listings',
+  'progress',
+  'read',
+  'running',
+]
+
 async function load() {
-  const [{ createPageStore }, { createBulkSellState }] = await Promise.all([
-    import('../src/lib/core/page-store.ts'),
-    import('../src/pages/bulk-sell/state.ts'),
-  ])
-  return { createPageStore, createBulkSellState }
+  const [{ createPageStore }, { createBulkSellState, createCancelState }] =
+    await Promise.all([
+      import('../src/lib/core/page-store.ts'),
+      import('../src/pages/bulk-sell/state.ts'),
+    ])
+  return { createPageStore, createBulkSellState, createCancelState }
 }
 
 test('bulk sell retains exactly the reviewed fields', { skip }, async () => {
@@ -40,6 +52,15 @@ test('bulk sell retains exactly the reviewed fields', { skip }, async () => {
   assert.deepEqual(
     Object.keys(createBulkSellState()).sort(),
     [...RETAINED_FIELDS].sort(),
+  )
+})
+
+test('the cancel tab retains exactly the reviewed fields', { skip }, async () => {
+  const { createCancelState } = await load()
+
+  assert.deepEqual(
+    Object.keys(createCancelState()).sort(),
+    [...RETAINED_CANCEL_FIELDS].sort(),
   )
 })
 

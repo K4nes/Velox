@@ -5,13 +5,14 @@ import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsFixture, holdingsSpread } from '../support/fixtures/holdings'
 import { listingActionFixture } from '../support/fixtures/listing-actions'
+import { orderListingsFixture } from '../support/fixtures/order-listings'
 import {
   expectHeldInventoryHeader,
   expectInventoryClamps,
   filterHeldInventory,
   INVENTORY_FILTER_LABEL,
 } from '../support/inventory'
-import { mockCollection, mockHoldings } from '../support/opensea'
+import { mockActiveListings, mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
@@ -20,6 +21,7 @@ const CONTRACT = '0x00000000000000000000000000000000000000bb'
 const CONTRACT_UPPER = '0x00000000000000000000000000000000000000BB'
 const CHAIN = 'robinhood'
 const ORDER_HASH = `0x${'ab'.repeat(32)}`
+const CANCEL_ORDER_HASH = `0x${'cd'.repeat(32)}`
 const SEAPORT = '0x0000000000000068F116a894984e2DB1123eB395'
 
 test('selection and price gate the listing run', async ({
@@ -296,4 +298,108 @@ test('page state survives a round trip through another page', async ({
   expect(submissions.length).toBe(1)
   expect(holdings.count).toBe(1)
   expect(collection.count).toBe(1)
+})
+
+test('the cancel tab withdraws an active listing in one click', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Bulk Sell Cancel')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  const nowSec = Math.floor(Date.now() / 1000)
+  const cancels: { url: string; signature: unknown }[] = []
+
+  await mockCollection(browser, {
+    slug: SLUG,
+    body: collectionFixture({
+      slug: SLUG,
+      name: 'Mock Collection',
+      contract: CONTRACT,
+      chain: CHAIN,
+    }),
+  })
+  await mockHoldings(browser, {
+    chain: CHAIN,
+    address: wallet.address,
+    body: holdingsSpread(CONTRACT, 16),
+  })
+  const listings = await mockActiveListings(browser, {
+    chain: CHAIN,
+    body: orderListingsFixture({
+      chain: CHAIN,
+      maker: wallet.address,
+      contract: CONTRACT,
+      tokenId: '1',
+      orderHash: CANCEL_ORDER_HASH,
+      protocolAddress: SEAPORT,
+      priceWei: '10000000000000000',
+      startTimeSec: nowSec - 3_600,
+      expirationTimeSec: nowSec + 7 * 86_400,
+    }),
+  })
+  await browser.route(
+    /\/api\/v2\/orders\/chain\/[^/]+\/protocol\/0x[0-9a-fA-F]{40}\/0x[0-9a-fA-F]{64}\/cancel$/,
+    async (route) => {
+      const posted = JSON.parse(route.request.postData ?? '{}')
+      cancels.push({ url: route.request.url, signature: posted.offererSignature })
+      await route.fulfill({
+        status: 200,
+        json: {
+          // A fulfillment signature vended before the cancel stays fillable for
+          // up to five minutes, which is what the row has to report.
+          last_signature_issued_valid_until: new Date(
+            (nowSec + 240) * 1000,
+          ).toISOString(),
+        },
+      })
+    },
+  )
+
+  await app.open('/bulk-sell')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [openseaConnection('deterministic-key')],
+  })
+  await app.open('/bulk-sell')
+
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'bulk-sell',
+    collection: SLUG,
+    folder: folder.name,
+  })
+
+  const createTab = screen.getByRole('tab', { name: 'Create listings' })
+  const cancelTab = screen.getByRole('tab', { name: 'Active & Cancel' })
+  await expect(createTab).toHaveAttribute('aria-selected', 'true')
+  await expect(cancelTab).toHaveAttribute('aria-selected', 'false')
+  await expect(listings.count).toBe(0)
+
+  await cancelTab.click()
+
+  await expect(cancelTab).toHaveAttribute('aria-selected', 'true')
+  await expect(screen.getByText('1 order', { exact: true })).toBeVisible()
+  await expect(
+    screen.getByRole('button', { name: /Copy order hash 0xcdcdcdcd/ }),
+  ).toBeVisible()
+
+  await screen.getByRole('button', { name: 'Cancel 1 listing' }).click()
+
+  await expect(screen.getByText('Cancelled', { exact: true })).toBeVisible()
+  await expect(screen.getByText('1 of 1 cancelled')).toBeVisible()
+  await expect(screen.getByText(/^fills \d+m$/)).toBeVisible()
+
+  expect(cancels.length).toBe(1)
+  expect(cancels[0]?.url).toContain(CANCEL_ORDER_HASH)
+  // The offerer signed the order hash itself, so the request carries a 65-byte
+  // signature and not a copy of the order terms.
+  expect(String(cancels[0]?.signature)).toMatch(/^0x[0-9a-fA-F]{130}$/)
+
+  // Nothing reloaded: the scanned inventory is still on screen beside the rail.
+  await expect(screen.getByRole('row')).toHaveCount(17)
 })

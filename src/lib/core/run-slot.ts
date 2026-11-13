@@ -1,9 +1,11 @@
-export type RunKind = 'listing' | 'sale' | 'swap' | 'transfer'
+export type RunKind = 'listing' | 'cancel' | 'sale' | 'swap' | 'transfer'
 
 export function runKindLabel(kind: RunKind): string {
   switch (kind) {
     case 'listing':
       return 'A bulk sell run is still in progress'
+    case 'cancel':
+      return 'A cancel run is still in progress'
     case 'sale':
       return 'An instant sell run is still in progress'
     case 'swap':

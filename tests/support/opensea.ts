@@ -133,6 +133,28 @@ export async function mockRarityBatch(
   return counter
 }
 
+/**
+ * Answers the active-listing page the cancel tab reads. The same path takes the
+ * listing POST, so a non-GET request falls through to whichever route claims it.
+ */
+export async function mockActiveListings(
+  browser: Browser,
+  options: { chain: string; body: JsonValue },
+): Promise<RequestCounter> {
+  const counter = newCounter()
+  const pattern = new RegExp(
+    `/api/v2/orders/${escapeRegExp(options.chain)}/seaport/listings(?:\\?.*)?$`,
+  )
+  await browser.route(pattern, async (route) => {
+    if (route.request.method !== 'GET') {
+      await route.fallback()
+      return
+    }
+    await answer(route, counter, options.body)
+  })
+  return counter
+}
+
 /** Answers the collection-offer page instant sell reads on scan. */
 export async function mockCollectionOffers(
   browser: Browser,
