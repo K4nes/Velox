@@ -71,14 +71,14 @@ settle style rather than behaviour.
 | `src/config/routes.tsx` | The route table: `path`, `title`, icon and element per route. `src/router.tsx` builds the data router from it. |
 | `src/pages/` | Route components; the path mirrors the URL. Feature components colocate in `src/pages/<feature>/`. |
 | `src/components/ui/` | Vendored shadcn + Animate UI primitives. |
-| `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`. |
+| `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`, `app-context-menu`. |
 | `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `body-message`, `summary-row`, `run-status-cell`, `tx-hash-link`, `token-image`), plus the `dither-kit/` chart primitives, `lightswind/` toggle and `theme/` provider. |
-| `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage. `chain/transport.ts` is the one module that picks between a `/api/*` route and an in-app command, so a caller never branches on the lane. |
+| `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage, clipboard. `chain/transport.ts` is the one module that picks between a `/api/*` route and an in-app command, so a caller never branches on the lane. |
 | `src/hooks/` | Long-running flows and their run state (scans, listings, mints, swaps). |
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
-| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed app. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, `capabilities/default.json` (what the window may call), and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Rules that break things if ignored

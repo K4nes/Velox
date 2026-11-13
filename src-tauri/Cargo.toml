@@ -25,4 +25,7 @@ reqwest = { version = "0.13", default-features = false, features = [
 ] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# `navigator.clipboard.readText` raises a native permission prompt on every call
+# in the webview, so the installed app reads and writes the clipboard from Rust.
+tauri-plugin-clipboard-manager = "2"
 serde_json = "1"

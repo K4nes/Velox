@@ -29,7 +29,7 @@ Animate UI has no primitive for every component (`button`, `card`, `input`,
 | Folder | Contents | Rule |
 | --- | --- | --- |
 | `components/ui/` | library components (shadcn + Animate UI) | vendored; edit only what belongs to every instance |
-| `components/layout/` | page chrome: `app-layout`, `app-header`, `app-sidebar` | wraps every route |
+| `components/layout/` | page chrome: `app-layout`, `app-header`, `app-sidebar`, `app-context-menu` | wraps every route |
 | `components/theme/` | `theme-provider` | app-wide provider |
 | `components/lightswind/` | `toggle-theme` | different vendor, not read by the animate CLI |
 | `components/dither-kit/` | dithered chart primitives (`area-chart`, `tooltip`, `sparkline`, …) | different vendor; imported by the PnL pages |

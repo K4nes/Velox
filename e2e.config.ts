@@ -16,6 +16,9 @@ export default {
       engine: web({ viewport: { width: 1440, height: 900 } }),
       app: {
         url: 'http://127.0.0.1:0',
+        // The app reads and writes the clipboard on the right-click menu, so the
+        // suite's pages need the permission before the gesture, not after it.
+        permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' },
         command: {
           executable: 'node',
           args: [
