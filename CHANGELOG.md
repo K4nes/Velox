@@ -8,21 +8,21 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-11-14
+## [0.3.0] - 2026-11-14
 
 ### Added
 
+- Every page keeps its setup across a route change: the collection URL, the wallets, the
+  filter, the sort, the selection, the destination, the swap draft and its resolved quotes,
+  the offer book and currency, the eligibility result, and every mint task with its active
+  row. A scan or run still in flight keeps reporting after the round trip, and a reload
+  still starts fresh ([#115]).
 - The Bulk Sell rail has a second tab, `Cancel listings`. It reads the active orders of the
   selected wallets on the collection, withdraws the ones left checked in one click, signs
   each cancel with its own offerer wallet, and reports the window in which a buyer can still
   fill a withdrawn order ([#113]).
 - The order hash on a listed row is copyable and opens the token's page on OpenSea. It is an
   order hash, not a transaction hash, so no explorer link is built from it ([#113]).
-
-## [0.2.1] - 2026-11-13
-
-### Added
-
 - A Velox menu on right-click, with Copy and Paste. Copy takes the field's selection, then
   the page's, then the whole value; Paste inserts through the field's own insertion command,
   so React's state stays in step. Paste reads the clipboard through the in-app command,
@@ -37,6 +37,8 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Fixed
 
+- A mint run claims the shared run slot. Another batch flow refuses to start while it signs,
+  and an abort now reaches the wallet loop instead of being ignored ([#115]).
 - Instant sell keeps wildcard collection offers instead of dropping them, keeps the offer
   rail inside the viewport, refreshes each offer's age on the minute, and no longer prints
   the earliest-expiry line twice ([#98]).
@@ -171,9 +173,8 @@ consolidated into a single entry.
 - `use-store` keeps its reader stable across renders ([#22]).
 - Target read failures route through the error converter ([#29]).
 
-[Unreleased]: https://github.com/K4nes/Velox/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/K4nes/Velox/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/K4nes/Velox/compare/v0.2.0...v0.2.1
+[Unreleased]: https://github.com/K4nes/Velox/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/K4nes/Velox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/K4nes/Velox/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/K4nes/velox/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/K4nes/velox/compare/v0.1.0...v0.1.1
@@ -202,3 +203,4 @@ consolidated into a single entry.
 [#106]: https://github.com/K4nes/Velox/pull/106
 [#107]: https://github.com/K4nes/Velox/pull/107
 [#113]: https://github.com/K4nes/Velox/pull/113
+[#115]: https://github.com/K4nes/Velox/issues/115
