@@ -139,11 +139,11 @@ export async function mockRarityBatch(
  */
 export async function mockActiveListings(
   browser: Browser,
-  options: { chain: string; body: JsonValue },
+  options: { slug: string; body: JsonValue },
 ): Promise<RequestCounter> {
   const counter = newCounter()
   const pattern = new RegExp(
-    `/api/v2/orders/${escapeRegExp(options.chain)}/seaport/listings(?:\\?.*)?$`,
+    `/api/v2/listings/collection/${escapeRegExp(options.slug)}/all(?:\\?.*)?$`,
   )
   await browser.route(pattern, async (route) => {
     if (route.request.method !== 'GET') {

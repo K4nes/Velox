@@ -56,7 +56,7 @@ async function readActiveListings(input: {
     async (wallet) =>
       (
         await getActiveListings({
-          chain: input.collection.chain,
+          slug: input.collection.slug,
           contractAddress: input.collection.contractAddress,
           maker: wallet.address,
         })

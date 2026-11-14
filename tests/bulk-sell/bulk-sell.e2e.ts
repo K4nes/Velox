@@ -328,7 +328,7 @@ test('the cancel tab withdraws an active listing in one click', async ({
     body: holdingsSpread(CONTRACT, 16),
   })
   const listings = await mockActiveListings(browser, {
-    chain: CHAIN,
+    slug: SLUG,
     body: orderListingsFixture({
       chain: CHAIN,
       maker: wallet.address,
