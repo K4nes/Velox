@@ -20,6 +20,7 @@ import { sellStepsByToken } from '@/lib/offers/sell-run'
 import { Inventory } from '@/pages/instant-sell/inventory'
 import type { InventoryRow } from '@/pages/instant-sell/inventory'
 import { SellRail } from '@/pages/instant-sell/sell-rail'
+import { instantSellStore } from '@/pages/instant-sell/store'
 
 const NO_STEPS = new Map<string, SellStepState>()
 
@@ -31,11 +32,12 @@ function currentSecond(): number {
 }
 
 export function InstantSellPage() {
-  const scan = useBulkSellScan()
-  const offers = useCollectionOffers(scan.collection)
+  const scan = useBulkSellScan(instantSellStore)
+  const offers = useCollectionOffers(scan.collection, instantSellStore)
   const run = useInstantSellRun({
     onSold: scan.deselect,
     onSettled: offers.refresh,
+    store: instantSellStore,
   })
   const { groups } = useWalletGroups()
 

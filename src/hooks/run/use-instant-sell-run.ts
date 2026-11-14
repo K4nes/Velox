@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { toast } from 'sonner'
 
 import { useRun } from '@/hooks/run/use-run'
+import type { RunState } from '@/hooks/run/use-run'
+import type { PageStore } from '@/lib/core/page-store'
 import { countFailed, failureLine } from '@/lib/core/run-engine'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import {
@@ -15,6 +17,7 @@ import { listWallets } from '@/lib/wallet/wallets'
 export function useInstantSellRun(input: {
   onSold?: (keys: readonly string[]) => void
   onSettled?: () => void
+  store: PageStore<RunState<SellRunProgress>>
 }): {
   running: boolean
   progress: SellRunProgress | null
@@ -25,6 +28,7 @@ export function useInstantSellRun(input: {
 } {
   const run = useRun<SellRunProgress>({
     kind: 'sale',
+    store: input.store,
     onSettled: input.onSettled,
     onFinish: (progress) => {
       const keys = soldKeys(progress)

@@ -13,12 +13,16 @@ import {
 import { SnapshotCard, SnapshotDetail } from './snapshot-card'
 import { WalletSelect } from '@/components/wallet-select'
 import { useEligibilityCheck } from '@/hooks/scan/use-eligibility-check'
+import { mintEligibilityStore } from '@/pages/mint/store'
 import { useSnapshotLibrary } from '@/hooks/data/use-snapshot-library'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 
 export function MintEligibilityPage() {
   const library = useSnapshotLibrary()
-  const check = useEligibilityCheck(library.clearSaveError)
+  const check = useEligibilityCheck(
+    mintEligibilityStore,
+    library.clearSaveError
+  )
   const { groups, error: walletsError } = useWalletGroups()
   const selectedSnapshot = library.selectedSnapshot
   const gridRef = useRef<HTMLDivElement>(null)

@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { useHoldingsScan } from '@/hooks/scan/use-holdings-scan'
 import { useSelection } from '@/hooks/use-selection'
+import type { SelectionFields } from '@/hooks/use-selection'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
+import { EMPTY_HOLDINGS } from '@/lib/inventory/holdings-fields'
+import type { HoldingsFields } from '@/lib/inventory/holdings-fields'
+import type { PageStore } from '@/lib/core/page-store'
 import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { probeStandards } from '@/lib/chain/token-standard'
@@ -24,19 +29,35 @@ export type TransferSelectionGroup = {
   tokens: { key: string; tokenId: string; ownerLabel: string }[]
 }
 
+export type TransferProbeState = {
+  key: string
+  probes: ReadonlyMap<string, StandardProbe>
+}
+
+export type TransferScanFields = HoldingsFields &
+  SelectionFields & {
+    probeState: TransferProbeState
+    spent: ReadonlyMap<string, number>
+  }
+
 const NO_PROBES: ReadonlyMap<string, StandardProbe> = new Map()
 
-export function useTransferScan() {
-  const scan = useHoldingsScan()
-  const { groups } = useWalletGroups()
-  const [probeState, setProbeState] = useState<{
-    key: string
-    probes: ReadonlyMap<string, StandardProbe>
-  }>({ key: '', probes: NO_PROBES })
-  const [spent, setSpent] = useState<ReadonlyMap<string, number>>(new Map())
+const INITIAL: TransferScanFields = {
+  ...EMPTY_HOLDINGS,
+  selectedKeys: [],
+  probeState: { key: '', probes: NO_PROBES },
+  spent: new Map(),
+}
 
-  const state = scan.state
-  const tokens = scan.tokens
+export function useTransferScan(store?: PageStore<TransferScanFields>) {
+  const scoped = usePageStoreScope(store, INITIAL)
+  const fields = usePageStore(scoped)
+  const scan = useHoldingsScan(scoped)
+  const { groups } = useWalletGroups()
+
+  const state = fields.state
+  const tokens = fields.tokens
+  const spent = fields.spent
   const collection = state.status === 'ready' ? state.collection : null
   // A probe belongs to the collection it was made for. Keying the state keeps a
   // rescan from reusing the previous collection's probes.
@@ -44,7 +65,8 @@ export function useTransferScan() {
     state.status === 'ready'
       ? `${state.collection.chain}:${state.collection.slug}`
       : ''
-  const standards = probeState.key === scanKey ? probeState.probes : NO_PROBES
+  const standards =
+    fields.probeState.key === scanKey ? fields.probeState.probes : NO_PROBES
 
   useEffect(() => {
     if (state.status !== 'ready') return
@@ -69,13 +91,13 @@ export function useTransferScan() {
       chain: state.collection.chain,
       tokens: [...byContract.values()],
     }).then((probes) => {
-      if (!cancelled) setProbeState({ key: scanKey, probes })
+      if (!cancelled) scoped.set({ probeState: { key: scanKey, probes } })
     })
 
     return () => {
       cancelled = true
     }
-  }, [state, tokens, scanKey])
+  }, [state, tokens, scanKey, scoped])
 
   const wallets = useMemo<TransferScanWallet[]>(
     () =>
@@ -117,10 +139,14 @@ export function useTransferScan() {
     [scan.rows, standards, spent]
   )
 
-  const select = useSelection(rows, {
-    keyOf: (row) => row.token.key,
-    isSelectable: (row) => row.selectable,
-  })
+  const select = useSelection(
+    rows,
+    {
+      keyOf: (row) => row.token.key,
+      isSelectable: (row) => row.selectable,
+    },
+    scoped
+  )
 
   const selection = useMemo<TransferSelection[]>(
     () =>
@@ -165,7 +191,7 @@ export function useTransferScan() {
 
   function resetSelection() {
     select.setKeys([])
-    setSpent(new Map())
+    scoped.set({ spent: new Map() })
   }
 
   function removeToken(key: string) {
@@ -182,13 +208,11 @@ export function useTransferScan() {
   }
 
   function applySpent(units: Map<string, number>) {
-    setSpent((current) => {
-      const next = new Map(current)
-      for (const [key, amount] of units) {
-        next.set(key, (next.get(key) ?? 0) + amount)
-      }
-      return next
-    })
+    const next = new Map(scoped.get().spent)
+    for (const [key, amount] of units) {
+      next.set(key, (next.get(key) ?? 0) + amount)
+    }
+    scoped.set({ spent: next })
   }
 
   async function rescan() {

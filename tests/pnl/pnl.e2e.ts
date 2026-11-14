@@ -199,3 +199,110 @@ test('a rate limit and an unreachable provider each say what happened', async ({
     ),
   ).toBeVisible()
 })
+
+function pad(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+test('the monthly filters survive a round trip through another page', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const now = new Date()
+  const monthTitle = now.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })
+  const monthHeader = browser.locator(
+    `span[aria-live="polite"]:not(.rdp-caption_label):text-is("${monthTitle}")`,
+  )
+  const isoDay = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const dayLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(now)
+
+  await app.open('/pnl/monthly')
+  await seedVelox(browser, {
+    pnlRecords: [pnlRecordFixture({ name: 'Mock Collection' })],
+  })
+  await app.open('/pnl/monthly')
+
+  await expect(
+    screen.getByRole('row').filter({ hasText: 'Mock Collection' }),
+  ).toContainText('1.0000 ETH')
+
+  // A month step moves the calendar, and the next step back returns to the
+  // month the record lives in.
+  await screen.getByRole('button', { name: 'Previous month' }).click()
+  await expect(monthHeader).toHaveCount(0)
+  await screen.getByRole('button', { name: 'Next month' }).click()
+  await expect(monthHeader).toBeVisible()
+
+  await screen.getByLabel('Search collection').fill('mock')
+  await screen.getByRole('combobox', { name: 'Sort collections' }).click()
+  await screen.getByRole('option', { name: 'Oldest First' }).click()
+  await browser.locator(`[data-day="${isoDay}"] button`).click()
+  await expect(
+    screen.getByRole('button', { name: `Clear ${dayLabel} filter` }),
+  ).toBeVisible()
+
+  await browser.locator('a[href="/settings"]').first().click()
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveCount(0)
+  await browser.locator('a[href="/pnl/monthly"]').first().click()
+  await expect(browser).toHaveURL('/pnl/monthly')
+
+  await expect(screen.getByLabel('Search collection')).toHaveValue('mock')
+  await expect(
+    screen.getByRole('combobox', { name: 'Sort collections' }),
+  ).toHaveText('Oldest First')
+  await expect(monthHeader).toBeVisible()
+  await expect(
+    screen.getByRole('button', { name: `Clear ${dayLabel} filter` }),
+  ).toBeVisible()
+  await expect(
+    screen.getByRole('row').filter({ hasText: 'Mock Collection' }),
+  ).toBeVisible()
+
+  // The store lives in the module, so a reload starts from the creators.
+  await app.open('/pnl/monthly')
+  await expect(screen.getByLabel('Search collection')).toHaveValue('')
+})
+
+test('the lifetime filters survive a round trip through another page', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open('/pnl/lifetime')
+  await seedVelox(browser, {
+    pnlRecords: [pnlRecordFixture({ name: 'Mock Collection' })],
+  })
+  await app.open('/pnl/lifetime')
+
+  await expect(
+    screen.getByRole('row').filter({ hasText: 'Mock Collection' }),
+  ).toBeVisible()
+
+  await screen.getByLabel('Search collection').fill('mock')
+  await screen.getByRole('combobox', { name: 'Sort collections' }).click()
+  await screen.getByRole('option', { name: 'Highest PnL' }).click()
+
+  await browser.locator('a[href="/settings"]').first().click()
+  await expect(
+    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+  ).toHaveCount(0)
+  await browser.locator('a[href="/pnl/lifetime"]').first().click()
+  await expect(browser).toHaveURL('/pnl/lifetime')
+
+  await expect(screen.getByLabel('Search collection')).toHaveValue('mock')
+  await expect(
+    screen.getByRole('combobox', { name: 'Sort collections' }),
+  ).toHaveText('Highest PnL')
+  await expect(
+    screen.getByRole('row').filter({ hasText: 'Mock Collection' }),
+  ).toBeVisible()
+})

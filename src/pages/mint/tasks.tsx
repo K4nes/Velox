@@ -3,12 +3,13 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useMintTasks } from '@/hooks/run/use-mint-tasks'
+import { mintTasksStore } from '@/pages/mint/store'
 import { MintPanel } from './mint-panel'
 import { RunTable } from './run-table'
 import { TaskList } from './task-list'
 
 export function MintTasksPage() {
-  const mint = useMintTasks()
+  const mint = useMintTasks(mintTasksStore)
   const { active, view } = mint
   const isMintingThisTask = mint.runningIds.includes(active.id)
 
