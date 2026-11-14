@@ -13,9 +13,9 @@ export type OrderListingRow = {
 }
 
 /**
- * One page of `GET /orders/{chain}/seaport/listings`. Each order offers one unit
- * and pays the whole price back to the maker, which is what an NFT listing looks
- * like.
+ * One page of `GET /listings/collection/{slug}/all`. Each listing offers one
+ * unit and pays the whole price back to the maker, which is what an NFT listing
+ * looks like, and carries the fields the collection-scoped endpoint returns.
  */
 export function orderListingsFixture(input: {
   chain: string
@@ -25,17 +25,10 @@ export function orderListingsFixture(input: {
   orders: readonly OrderListingRow[]
 }): JsonValue {
   return {
-    orders: input.orders.map((order) => ({
+    listings: input.orders.map((order) => ({
       order_hash: order.orderHash,
       chain: input.chain,
       protocol_address: input.protocolAddress,
-      maker: { address: input.maker },
-      current_price: order.priceWei,
-      expiration_time: order.expirationTimeSec,
-      remaining_quantity: 1,
-      cancelled: false,
-      finalized: false,
-      marked_invalid: false,
       protocol_data: {
         parameters: {
           offerer: input.maker,
@@ -66,8 +59,23 @@ export function orderListingsFixture(input: {
           salt: '1',
           conduitKey: BYTES32,
           counter: '0',
+          totalOriginalConsiderationItems: 1,
         },
+        signature: null,
       },
+      asset: { identifier: order.tokenId, contract: input.contract },
+      remaining_quantity: 1,
+      order_created_at: order.startTimeSec,
+      price: {
+        current: { currency: 'ETH', decimals: 18, value: order.priceWei },
+      },
+      price_per_item: {
+        currency: 'ETH',
+        decimals: 18,
+        value: order.priceWei,
+      },
+      type: 'basic',
+      status: 'ACTIVE',
     })),
     next: null,
   }

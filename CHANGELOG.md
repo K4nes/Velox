@@ -37,6 +37,9 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Fixed
 
+- Cancel listings reads active orders from the collection endpoint OpenSea kept after
+  removing the chain-scoped one, so the tab no longer fails with `Method Not Allowed`
+  ([#117]).
 - A mint run claims the shared run slot. Another batch flow refuses to start while it signs,
   and an abort now reaches the wallet loop instead of being ignored ([#115]).
 - Instant sell keeps wildcard collection offers instead of dropping them, keeps the offer
@@ -204,3 +207,4 @@ consolidated into a single entry.
 [#107]: https://github.com/K4nes/Velox/pull/107
 [#113]: https://github.com/K4nes/Velox/pull/113
 [#115]: https://github.com/K4nes/Velox/issues/115
+[#117]: https://github.com/K4nes/Velox/pull/117

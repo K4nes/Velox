@@ -884,6 +884,10 @@ type RawOrder = {
   finalized?: unknown
   marked_invalid?: unknown
   protocol_data?: unknown
+  // The collection-scoped listings endpoint wraps the price and the token, and
+  // has no maker or expiration field of its own.
+  price?: unknown
+  remaining_quantity?: unknown
 }
 
 // An order this app cannot name is not one the operator can decide to cancel, so
@@ -923,8 +927,14 @@ function toActiveListing(raw: RawOrder, nowSec: number): ActiveListing | null {
   const maker = asRecord(raw.maker)?.address ?? raw.maker ?? parameters?.offerer
   if (typeof maker !== 'string' || !ADDRESS_PATTERN.test(maker)) return null
 
-  const currentPrice = toDecimal(raw.current_price)
-  const quantity = toDecimal(offer?.startAmount)
+  // `GET /orders/{chain}/{protocol}/listings` was removed in API 2.0.3; the
+  // replacement names the price under `price.current.value`.
+  const price = asRecord(raw.price)
+  const currentPrice =
+    toDecimal(raw.current_price) ??
+    toDecimal(asRecord(price?.current)?.value)
+  const quantity =
+    toDecimal(offer?.startAmount) ?? toDecimal(raw.remaining_quantity)
 
   return {
     orderHash,
@@ -949,7 +959,9 @@ const LISTING_PAGE_LIMIT = 50
 const LISTING_PAGE_CAP = 5
 
 export async function getActiveListings(input: {
-  chain: string
+  // The collection-scoped endpoint, because the chain-scoped one this app used
+  // was removed in API 2.0.3 and answers 405.
+  slug: string
   contractAddress: string
   maker: string
   nowSec?: number
@@ -961,23 +973,27 @@ export async function getActiveListings(input: {
 
   do {
     const params = new URLSearchParams({
-      asset_contract_address: input.contractAddress,
       maker: input.maker,
       limit: String(LISTING_PAGE_LIMIT),
     })
     if (cursor !== null) params.set('next', cursor)
 
     const body = (await request(
-      `/orders/${encodeURIComponent(input.chain)}/seaport/listings?${params.toString()}`
-    )) as { orders?: unknown; next?: unknown } | null
+      `/listings/collection/${encodeURIComponent(input.slug)}/all?${params.toString()}`
+    )) as { listings?: unknown; next?: unknown } | null
 
-    if (!Array.isArray(body?.orders)) {
-      throw unexpected('/orders/seaport/listings')
+    if (!Array.isArray(body?.listings)) {
+      throw unexpected('/listings/collection/all')
     }
 
-    for (const raw of body.orders) {
+    for (const raw of body.listings) {
       const listing = toActiveListing(raw as RawOrder, nowSec)
-      if (listing) listings.push(listing)
+      // The endpoint is collection-wide; the page scans one contract of it.
+      if (!listing || listing.contract !== input.contractAddress.toLowerCase()) {
+        continue
+      }
+      if (listing.offerer !== input.maker.toLowerCase()) continue
+      listings.push(listing)
     }
 
     cursor = typeof body.next === 'string' && body.next !== '' ? body.next : null
