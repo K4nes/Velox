@@ -9,15 +9,17 @@ import { useTransferRun } from '@/hooks/run/use-transfer-run'
 import { useTransferScan } from '@/hooks/scan/use-transfer-scan'
 import { Inventory } from '@/pages/transfer/inventory'
 import { TransferRail } from '@/pages/transfer/rail'
+import { transferStore } from '@/pages/transfer/store'
 
 export function TransferPage() {
-  const scan = useTransferScan()
+  const scan = useTransferScan(transferStore)
   const run = useTransferRun({
     wallets: scan.wallets,
     selections: scan.selection,
     chain: scan.collection?.chain ?? null,
     onSpent: scan.applySpent,
     onDeselect: scan.deselect,
+    store: transferStore,
   })
 
   function check() {

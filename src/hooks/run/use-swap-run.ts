@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { toast } from 'sonner'
 
 import { useRun } from '@/hooks/run/use-run'
+import type { PageStore } from '@/lib/core/page-store'
 import type { SwapBatch } from '@/lib/swap/swap-batch'
 import {
   runSwapPlan,
@@ -13,11 +14,13 @@ import type {
   SwapRunSummary,
   SwapWalletState,
 } from '@/lib/swap/swap-run'
+import type { SwapState } from '@/pages/swap/state'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useSwapRun(input: {
   batch: SwapBatch | null
   onSettled?: () => void
+  store: PageStore<SwapState>
 }): {
   running: boolean
   error: string | null
@@ -28,6 +31,9 @@ export function useSwapRun(input: {
 } {
   const run = useRun<SwapRunProgress>({
     kind: 'swap',
+    // The run outlives the route: progress keeps landing on the retained store and
+    // no unmount aborts the wallets still in flight.
+    store: input.store,
     onSettled: input.onSettled,
     onFinish: (progress) => toastSwapResult(summarizeSwapRun(progress)),
   })

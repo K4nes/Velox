@@ -38,6 +38,105 @@ const RETAINED_CANCEL_FIELDS = [
   'selectedKeys',
 ]
 
+// One field list per store added after Bulk Sell. Each list is the review gate on
+// what outlives a page: a field has to enter on purpose, and no private key or
+// provider key can enter at all.
+const RETAINED_STORES = [
+  {
+    name: 'PnL monthly',
+    module: '../src/pages/pnl/state.ts',
+    creator: 'createPnlMonthlyState',
+    fields: ['month', 'query', 'selectedDay', 'sort'],
+  },
+  {
+    name: 'PnL lifetime',
+    module: '../src/pages/pnl/state.ts',
+    creator: 'createPnlLifetimeState',
+    fields: ['query', 'sort'],
+  },
+  {
+    name: 'portfolio',
+    module: '../src/pages/portfolio/state.ts',
+    creator: 'createPortfolioState',
+    fields: ['query', 'sort', 'starting', 'state', 'tier', 'url', 'walletIds'],
+  },
+  {
+    name: 'transfer',
+    module: '../src/pages/transfer/state.ts',
+    creator: 'createTransferState',
+    fields: [
+      'destinationText',
+      'error',
+      'history',
+      'probeState',
+      'progress',
+      'query',
+      'resolved',
+      'running',
+      'selectedKeys',
+      'spent',
+      'state',
+      'tokens',
+      'url',
+      'walletIds',
+    ],
+  },
+  {
+    name: 'instant sell',
+    module: '../src/pages/instant-sell/state.ts',
+    creator: 'createInstantSellState',
+    fields: [
+      'error',
+      'offers',
+      'offersCurrency',
+      'progress',
+      'query',
+      'running',
+      'selectedKeys',
+      'state',
+      'tokens',
+      'url',
+      'walletIds',
+    ],
+  },
+  {
+    name: 'swap',
+    module: '../src/pages/swap/state.ts',
+    creator: 'createSwapState',
+    // The creator takes the default spec from the page module, which the type
+    // stripper cannot load; the test only reviews the keys.
+    args: [{}],
+    fields: [
+      'amounts',
+      'batchError',
+      'error',
+      'pending',
+      'preview',
+      'previewPending',
+      'progress',
+      'resolved',
+      'running',
+      'spec',
+      'walletIds',
+    ],
+  },
+  {
+    name: 'mint tasks',
+    module: '../src/pages/mint/state.ts',
+    creator: 'createMintTasksState',
+    // The creator takes its first task from the store module; the test only
+    // reviews the keys.
+    args: [{}],
+    fields: ['activeId', 'preparedMints', 'runs', 'runningIds', 'tasks'],
+  },
+  {
+    name: 'mint eligibility',
+    module: '../src/pages/mint/state.ts',
+    creator: 'createMintEligibilityState',
+    fields: ['checked', 'error', 'running', 'url', 'walletIds'],
+  },
+]
+
 async function load() {
   const [{ createPageStore }, { createBulkSellState, createCancelState }] =
     await Promise.all([
@@ -64,6 +163,16 @@ test('the cancel tab retains exactly the reviewed fields', { skip }, async () =>
     [...RETAINED_CANCEL_FIELDS].sort(),
   )
 })
+
+for (const { name, module: path, creator, fields, args = [] } of RETAINED_STORES) {
+  test(`${name} retains exactly the reviewed fields`, { skip }, async () => {
+    const state = await import(path)
+    assert.deepEqual(
+      Object.keys(state[creator](...args)).sort(),
+      [...fields].sort(),
+    )
+  })
+}
 
 test('the store refuses a field the state does not declare', { skip }, async () => {
   const { createPageStore, createBulkSellState } = await load()

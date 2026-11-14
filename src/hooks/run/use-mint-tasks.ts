@@ -1,12 +1,21 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { ARM_TICK_MS, armWait } from '@/lib/mint/arm-schedule'
 import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
 import { toMessage } from '@/lib/core/message'
+import type { PageStore } from '@/lib/core/page-store'
+import {
+  abortRunSlot,
+  claimRunSlot,
+  releaseRunSlot,
+  runKindLabel,
+} from '@/lib/core/run-slot'
+import type { RunSlot } from '@/lib/core/run-slot'
 import { mintFailureMessage } from '@/lib/opensea/failure-message'
 import { traceMint } from '@/lib/mint/mint-trace'
 import {
@@ -46,40 +55,34 @@ import { getDrop, slugFromUrl } from '@/lib/opensea/index'
 import type { DropInfo } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
+import { createMintTasksState } from '@/pages/mint/state'
+import type { MintTasksState } from '@/pages/mint/state'
 
 const READINESS_FALLBACK_ATTEMPTS = 4
 
-export function useMintTasks() {
-  const [tasks, setTasks] = useState<Task[]>(() => [createTask()])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [runs, setRuns] = useState<Record<string, WalletRun[]>>({})
-  const [runningIds, setRunningIds] = useState<string[]>([])
-  const runsRef = useRef(new Map<string, number>())
-  const mintRunRef = useRef(new Map<string, number>())
-  const mintingRef = useRef(new Set<string>())
-  const firingRef = useRef(new Set<string>())
-  const preparedMintRef = useRef(new Map<string, PreparedMint>())
-  const prepareAttemptRef = useRef(new Map<string, string>())
-  const preparingRef = useRef(new Set<string>())
-  const prepareTaskRef = useRef(new Map<string, Promise<void>>())
-  const readinessFailuresRef = useRef(new Map<string, number>())
-  const openCheckRef = useRef(
-    new Map<string, { key: string; check: CheckResult }>()
-  )
+// The page unmounts while a check or a mint can still be running, so the epochs
+// and in-flight markers outlive it here at module scope. A remount reads the same
+// run instead of starting a second one.
+const runsRef = new Map<string, number>()
+const mintRunRef = new Map<string, number>()
+const mintingRef = new Set<string>()
+const firingRef = new Set<string>()
+const mintSlots = new Map<string, RunSlot>()
+const prepareAttemptRef = new Map<string, string>()
+const preparingRef = new Set<string>()
+const prepareTaskRef = new Map<string, Promise<void>>()
+const readinessFailuresRef = new Map<string, number>()
+const openCheckRef = new Map<string, { key: string; check: CheckResult }>()
+
+export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
+  const scoped = usePageStoreScope(store, createMintTasksState(createTask()))
+  const { tasks, activeId, runs, runningIds } = usePageStore(scoped)
   // The countdown renders from a local tick, but the fire decision comes from the
   // chain's clock: a desktop that is a minute off would mint before the stage opens.
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [blockSample, setBlockSample] = useState<{ ms: number; at: number } | null>(
     null
   )
-  const tasksRef = useRef(tasks)
-  const runsStateRef = useRef(runs)
-  useLayoutEffect(() => {
-    tasksRef.current = tasks
-  }, [tasks])
-  useLayoutEffect(() => {
-    runsStateRef.current = runs
-  }, [runs])
   const { groups, loading: walletsLoading, error: walletsError } = useWalletGroups()
   const knownWalletIds = useMemo(
     () =>
@@ -106,9 +109,41 @@ export function useMintTasks() {
   )
 
   function updateTask(id: string, patch: TaskPatch) {
-    setTasks((current) =>
+    updateTasks((current) =>
       current.map((task) => (task.id === id ? { ...task, ...patch } : task))
     )
+  }
+
+  function updateTasks(update: (current: Task[]) => Task[]) {
+    scoped.set({ tasks: update(scoped.get().tasks) })
+  }
+
+  function updateRuns(
+    update: (current: Record<string, WalletRun[]>) => Record<string, WalletRun[]>
+  ) {
+    scoped.set({ runs: update(scoped.get().runs) })
+  }
+
+  function updateRunningIds(update: (current: string[]) => string[]) {
+    scoped.set({ runningIds: update(scoped.get().runningIds) })
+  }
+
+  function setActiveId(id: string | null) {
+    scoped.set({ activeId: id })
+  }
+
+  function preparedMintOf(id: string): PreparedMint | undefined {
+    return scoped.get().preparedMints.get(id)
+  }
+
+  function setPreparedMint(id: string, mint: PreparedMint | null) {
+    const next = new Map(scoped.get().preparedMints)
+    if (mint === null) {
+      next.delete(id)
+    } else {
+      next.set(id, mint)
+    }
+    scoped.set({ preparedMints: next })
   }
 
   function updateActive(patch: TaskPatch) {
@@ -117,36 +152,43 @@ export function useMintTasks() {
   }
 
   function cancelRun(id: string) {
-    runsRef.current.set(id, (runsRef.current.get(id) ?? 0) + 1)
+    runsRef.set(id, (runsRef.get(id) ?? 0) + 1)
   }
 
   function cancelMint(id: string) {
-    mintRunRef.current.set(id, (mintRunRef.current.get(id) ?? 0) + 1)
+    mintRunRef.set(id, (mintRunRef.get(id) ?? 0) + 1)
+    const slot = mintSlots.get(id)
+    if (slot) abortRunSlot(slot)
   }
 
   function finishMint(id: string) {
-    mintingRef.current.delete(id)
-    setRunningIds((current) => current.filter((value) => value !== id))
+    mintingRef.delete(id)
+    updateRunningIds((current) => current.filter((value) => value !== id))
+    const slot = mintSlots.get(id)
+    if (slot) {
+      releaseRunSlot(slot)
+      mintSlots.delete(id)
+    }
   }
 
   function clearArmState(id: string) {
-    preparedMintRef.current.delete(id)
-    prepareAttemptRef.current.delete(id)
-    prepareTaskRef.current.delete(id)
-    readinessFailuresRef.current.delete(id)
-    openCheckRef.current.delete(id)
+    setPreparedMint(id, null)
+    prepareAttemptRef.delete(id)
+    prepareTaskRef.delete(id)
+    readinessFailuresRef.delete(id)
+    openCheckRef.delete(id)
   }
 
   function addTask() {
     const task = createTask()
-    setTasks((current) => [...current, task])
+    updateTasks((current) => [...current, task])
     setActiveId(task.id)
   }
 
   function closeTask(id: string) {
     // The loop is still suspended in an await, and closing would throw away the
     // hash of a transaction that already reached the chain.
-    if (mintingRef.current.has(id)) return
+    if (mintingRef.has(id)) return
 
     const index = tasks.findIndex((task) => task.id === id)
     if (index === -1) return
@@ -155,9 +197,9 @@ export function useMintTasks() {
     cancelMint(id)
     finishMint(id)
     clearArmState(id)
-    runsRef.current.delete(id)
-    mintRunRef.current.delete(id)
-    setRuns((current) => {
+    runsRef.delete(id)
+    mintRunRef.delete(id)
+    updateRuns((current) => {
       const next = { ...current }
       delete next[id]
       return next
@@ -165,7 +207,7 @@ export function useMintTasks() {
 
     const remaining = tasks.filter((task) => task.id !== id)
 
-    setTasks(remaining)
+    updateTasks(() => remaining)
     if (realActive?.id === id) {
       const neighbour = remaining[index] ?? remaining[index - 1] ?? null
       setActiveId(neighbour ? neighbour.id : null)
@@ -173,10 +215,10 @@ export function useMintTasks() {
   }
 
   function changeUrl(url: string) {
-    if (!realActive || mintingRef.current.has(realActive.id)) return
+    if (!realActive || mintingRef.has(realActive.id)) return
     cancelRun(realActive.id)
     clearArmState(realActive.id)
-    setRuns((current) => ({
+    updateRuns((current) => ({
       ...current,
       [realActive.id]: (current[realActive.id] ?? []).filter(landed),
     }))
@@ -195,7 +237,7 @@ export function useMintTasks() {
     const id = realActive.id
     cancelRun(id)
     clearArmState(id)
-    setRuns((current) => ({
+    updateRuns((current) => ({
       ...current,
       [id]: (current[id] ?? []).filter(reachedChain),
     }))
@@ -232,16 +274,16 @@ export function useMintTasks() {
     if (!task || task.status === 'running' || task.url.trim().length === 0) {
       return null
     }
-    if (mintingRef.current.has(task.id)) return null
+    if (mintingRef.has(task.id)) return null
 
     const id = task.id
     const url = task.url
     const walletIds = [...task.wallets]
-    const run = (runsRef.current.get(id) ?? 0) + 1
-    runsRef.current.set(id, run)
+    const run = (runsRef.get(id) ?? 0) + 1
+    runsRef.set(id, run)
     updateTask(id, { status: 'running', checked: false })
 
-    const stale = () => runsRef.current.get(id) !== run
+    const stale = () => runsRef.get(id) !== run
     const slug = slugFromUrl(url)
 
     if (!slug) {
@@ -308,15 +350,15 @@ export function useMintTasks() {
 
       // The operator can pick a stage while the check runs. Read the live task,
       // not the snapshot taken when the check started, or that pick is reverted.
-      const live = tasksRef.current.find((entry) => entry.id === id) ?? task
+      const live = scoped.get().tasks.find((entry) => entry.id === id) ?? task
       const keptStage = drop.stages.some((entry) => entry.uuid === live.stageUuid)
       const stageUuid = keptStage ? live.stageUuid : (drop.activeStage?.uuid ?? '')
       const stage = drop.stages.find((entry) => entry.uuid === stageUuid) ?? null
       const checkedRows = rowsFromCheck(rows, stageUuid)
-      const mergedRows = mergeCheckedRows(checkedRows, runsStateRef.current[id] ?? [])
+      const mergedRows = mergeCheckedRows(checkedRows, scoped.get().runs[id] ?? [])
       const quantityMax = quantityMaxFor(mergedRows, live.wallets, stageUuid)
 
-      setRuns((current) => ({ ...current, [id]: mergedRows }))
+      updateRuns((current) => ({ ...current, [id]: mergedRows }))
       updateTask(id, {
         name: drop.name || slug,
         status: 'idle',
@@ -357,7 +399,7 @@ export function useMintTasks() {
   ) {
     const prepared = options.prepared
     const task = target ?? realActive
-    if (!task || !task.drop || mintingRef.current.has(task.id)) return
+    if (!task || !task.drop || mintingRef.has(task.id)) return
 
     const id = task.id
     const drop = options.drop ?? prepared?.drop ?? task.drop
@@ -385,17 +427,27 @@ export function useMintTasks() {
           )
         : null
 
-    mintingRef.current.add(id)
-    setRunningIds((current) => [...current, id])
-    const run = (mintRunRef.current.get(id) ?? 0) + 1
-    mintRunRef.current.set(id, run)
-    const stopped = () => mintRunRef.current.get(id) !== run
+    mintingRef.add(id)
+    const run = (mintRunRef.get(id) ?? 0) + 1
+    mintRunRef.set(id, run)
+    const superseded = () => mintRunRef.get(id) !== run
+    // The slot is what a mint run never held: another flow sees it as busy, and
+    // an abort from cancelMint stops the wallet loop below.
+    const claim = await claimRunSlot('mint', undefined, superseded)
+    if (claim.kind !== 'acquired') {
+      mintingRef.delete(id)
+      if (claim.kind === 'busy') toast.error(runKindLabel(claim.running))
+      return
+    }
+    mintSlots.set(id, claim.slot)
+    const stopped = () => superseded() || claim.slot.aborted
+    updateRunningIds((current) => [...current, id])
 
     try {
       const fresh = options.drop ?? (await getDrop(drop.slug))
       if (stopped()) return
       if (!options.stageVerified && fresh.activeStage === null) {
-        setRuns((current) => ({
+        updateRuns((current) => ({
           ...current,
           [id]: (current[id] ?? []).filter(reachedChain),
         }))
@@ -455,7 +507,7 @@ export function useMintTasks() {
         maxPriorityFeePerGas: gweiToWei(task.priorityFee),
       }
 
-      setRuns((current) => ({
+      updateRuns((current) => ({
         ...current,
         [id]: (current[id] ?? []).map((row) =>
           mintable.has(row.walletId)
@@ -475,7 +527,7 @@ export function useMintTasks() {
         patch: (row: WalletRun) => Partial<WalletRun>
       ) => {
         if (stopped()) return
-        setRuns((current) => ({
+        updateRuns((current) => ({
           ...current,
           [id]: (current[id] ?? []).map((entry) =>
             entry.walletId === walletId ? { ...entry, ...patch(entry) } : entry
@@ -571,8 +623,8 @@ export function useMintTasks() {
   ): Promise<void> {
     // openArmed owns calldata once it starts firing. A prepare racing it would
     // issue a second /mint request and break the single open-time fetch.
-    if (firingRef.current.has(taskId)) return
-    const task = tasksRef.current.find((entry) => entry.id === taskId)
+    if (firingRef.has(taskId)) return
+    const task = scoped.get().tasks.find((entry) => entry.id === taskId)
     if (
       !task ||
       !task.arm ||
@@ -589,15 +641,15 @@ export function useMintTasks() {
     if (quantity === null) return
 
     const key = prepareKeyFor(task, quantity)
-    if (preparedMintRef.current.get(taskId)?.key === key) return
-    if (prepareAttemptRef.current.get(taskId) === key) return
-    if (preparingRef.current.has(taskId)) return
-    prepareAttemptRef.current.set(taskId, key)
-    preparingRef.current.add(taskId)
+    if (preparedMintOf(taskId)?.key === key) return
+    if (prepareAttemptRef.get(taskId) === key) return
+    if (preparingRef.has(taskId)) return
+    prepareAttemptRef.set(taskId, key)
+    preparingRef.add(taskId)
 
     try {
       const mintable = new Set(
-        (runsStateRef.current[taskId] ?? [])
+        (scoped.get().runs[taskId] ?? [])
           .filter(
             (row) =>
               task.wallets.includes(row.walletId) &&
@@ -618,7 +670,7 @@ export function useMintTasks() {
         wallets: selected,
         pinnedGasLimit: pinnedGasLimitOf(task),
         isCurrent: () => {
-          const current = tasksRef.current.find((entry) => entry.id === taskId)
+          const current = scoped.get().tasks.find((entry) => entry.id === taskId)
           return (
             current?.arm !== null &&
             current?.arm?.stageUuid === arm.stageUuid &&
@@ -628,7 +680,7 @@ export function useMintTasks() {
       })
       if (entries === null) return
 
-      const current = tasksRef.current.find((entry) => entry.id === taskId)
+      const current = scoped.get().tasks.find((entry) => entry.id === taskId)
       if (
         !current?.arm ||
         current.arm.stageUuid !== arm.stageUuid ||
@@ -636,33 +688,33 @@ export function useMintTasks() {
       ) {
         return
       }
-      preparedMintRef.current.set(taskId, {
+      setPreparedMint(taskId, {
         key: prepareKeyFor(current, quantity),
         entries,
       })
     } catch {
       // Best-effort: openArmed and the commit rebuild what is missing.
     } finally {
-      preparingRef.current.delete(taskId)
+      preparingRef.delete(taskId)
     }
   }
 
   async function openArmed(taskId: string, blockMs: number) {
-    const task = tasksRef.current.find((entry) => entry.id === taskId)
+    const task = scoped.get().tasks.find((entry) => entry.id === taskId)
     const arm = task?.arm
-    if (!task || !arm || !task.drop || firingRef.current.has(taskId)) return
-    firingRef.current.add(taskId)
+    if (!task || !arm || !task.drop || firingRef.has(taskId)) return
+    firingRef.add(taskId)
     const armKey = `${taskId}:${arm.stageUuid}:${arm.startMs}`
     try {
       // A prepare started just before the open can still be in flight. Let it
       // settle so readiness reuses its calldata instead of fetching a second
       // copy.
-      const pendingPrepare = prepareTaskRef.current.get(taskId)
+      const pendingPrepare = prepareTaskRef.get(taskId)
       if (pendingPrepare) await pendingPrepare
       const drop = await getDrop(task.drop.slug)
       // The operator can disarm, or arm a different stage, while the drop is in
       // flight. Re-read before acting, or a cancelled run still spends gas.
-      const latest = tasksRef.current.find((entry) => entry.id === taskId)
+      const latest = scoped.get().tasks.find((entry) => entry.id === taskId)
       if (!latest || latest.arm?.stageUuid !== arm.stageUuid) return
       const stage =
         drop.stages.find((entry) => entry.uuid === arm.stageUuid) ?? null
@@ -696,7 +748,7 @@ export function useMintTasks() {
       // Caps can appear only when the stage opens, so readiness must start from
       // the rows of an open-time check, not the pre-open ones. Keep that check
       // across readiness retries instead of re-running eligibility every tick.
-      let checked = openCheckRef.current.get(taskId)
+      let checked = openCheckRef.get(taskId)
       if (checked?.key !== armKey) {
         const result = await check(latest, drop)
         if (!result) {
@@ -705,10 +757,10 @@ export function useMintTasks() {
           return
         }
         checked = { key: armKey, check: result }
-        openCheckRef.current.set(taskId, checked)
+        openCheckRef.set(taskId, checked)
       }
 
-      const current = tasksRef.current.find((entry) => entry.id === taskId)
+      const current = scoped.get().tasks.find((entry) => entry.id === taskId)
       if (!current?.arm || current.arm.stageUuid !== arm.stageUuid) return
       const quantity = mintQuantityFor(latest, checked.check.quantityMax, stage)
       if (quantity === null) {
@@ -723,7 +775,7 @@ export function useMintTasks() {
         drop: checked.check.drop,
         quantity,
         rows: checked.check.rows,
-        preparedMint: preparedMintRef.current.get(taskId),
+        preparedMint: preparedMintOf(taskId),
       })
       if (readiness.candidates === 0) {
         updateTask(taskId, { arm: null })
@@ -734,11 +786,11 @@ export function useMintTasks() {
 
       const ready = await stageConfirmed(drop.chain, readiness.entries)
       if (!ready) {
-        const failures = (readinessFailuresRef.current.get(taskId) ?? 0) + 1
-        readinessFailuresRef.current.set(taskId, failures)
+        const failures = (readinessFailuresRef.get(taskId) ?? 0) + 1
+        readinessFailuresRef.set(taskId, failures)
         // Calldata that failed at the open must not be reused on every retry.
-        preparedMintRef.current.delete(taskId)
-        prepareAttemptRef.current.delete(taskId)
+        setPreparedMint(taskId, null)
+        prepareAttemptRef.delete(taskId)
         if (failures < READINESS_FALLBACK_ATTEMPTS) return
 
         const activeConfirmed = active?.uuid === arm.stageUuid && activeLive
@@ -754,7 +806,7 @@ export function useMintTasks() {
         // fall back to the old gate and let the rows report any send failure.
       }
 
-      const armNow = tasksRef.current.find((entry) => entry.id === taskId)
+      const armNow = scoped.get().tasks.find((entry) => entry.id === taskId)
       if (!armNow?.arm || armNow.arm.stageUuid !== arm.stageUuid) return
 
       const preparedForCommit = ready
@@ -775,7 +827,7 @@ export function useMintTasks() {
     } catch (error) {
       toast.error(toMessage(error))
     } finally {
-      firingRef.current.delete(taskId)
+      firingRef.delete(taskId)
     }
   }
 
@@ -851,7 +903,7 @@ export function useMintTasks() {
       let openReached = false
 
       while (!cancelled) {
-        const task = tasksRef.current.find((entry) => entry.id === taskId)
+        const task = scoped.get().tasks.find((entry) => entry.id === taskId)
         const arm = task?.arm
         if (!task || !arm) return
         if (task.status === 'running') {
@@ -887,14 +939,14 @@ export function useMintTasks() {
         if (
           wait.prepare &&
           !openReached &&
-          !firingRef.current.has(task.id) &&
-          !prepareTaskRef.current.has(task.id)
+          !firingRef.has(task.id) &&
+          !prepareTaskRef.has(task.id)
         ) {
           const running = prepareArmedRef.current(task.id, arm)
-          prepareTaskRef.current.set(task.id, running)
+          prepareTaskRef.set(task.id, running)
           const finished = () => {
-            if (prepareTaskRef.current.get(task.id) === running) {
-              prepareTaskRef.current.delete(task.id)
+            if (prepareTaskRef.get(task.id) === running) {
+              prepareTaskRef.delete(task.id)
             }
           }
           void running.then(finished, finished)
@@ -912,7 +964,7 @@ export function useMintTasks() {
             openReached = true
             await openArmedRef.current(task.id, ms)
             if (cancelled) return
-            const latest = tasksRef.current.find(
+            const latest = scoped.get().tasks.find(
               (entry) => entry.id === taskId
             )
             if (!latest?.arm) return
@@ -930,7 +982,7 @@ export function useMintTasks() {
       }
     }
 
-    for (const task of tasksRef.current) {
+    for (const task of scoped.get().tasks) {
       if (task.arm) void runArm(task.id)
     }
 
@@ -939,6 +991,9 @@ export function useMintTasks() {
       for (const timer of timers) window.clearTimeout(timer)
       timers.clear()
     }
+    // The loop must not restart on a render. The helpers it calls write through
+    // the same store, and the tasks it reads are re-read from that store each tick.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [armSignature])
 
   const view = useMemo(

@@ -1,29 +1,30 @@
-import { useState } from 'react'
-
 import { useSwapBatch } from '@/hooks/data/use-swap-batch'
 import { useSwapPreview } from '@/hooks/data/use-swap-preview'
 import { useSwapRun } from '@/hooks/run/use-swap-run'
+import { usePageStore } from '@/hooks/use-page-store'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 import {
-  defaultSwapSpec,
   explainSwapBlockers,
   withAmountText,
   withMaxAmount,
 } from '@/lib/swap/swap-spec'
-import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
+import type { SwapSpec } from '@/lib/swap/swap-spec'
 import { SwapComposer } from '@/pages/swap/composer'
 import { SwapRail } from '@/pages/swap/rail'
 import { SwapWallets } from '@/pages/swap/wallets'
+import { swapStore } from '@/pages/swap/store'
 
 export function SwapPage() {
   const { groups } = useWalletGroups()
-  const [walletIds, setWalletIds] = useState<string[]>([])
-  const [spec, setSpec] = useState<SwapSpec>(defaultSwapSpec)
-  const [amounts, setAmounts] = useState<SwapAmounts>({})
+  const { walletIds, spec, amounts } = usePageStore(swapStore)
 
-  const batch = useSwapBatch(spec, walletIds, amounts)
-  const preview = useSwapPreview(spec, batch.value?.jobs[0] ?? null)
-  const run = useSwapRun({ batch: batch.value, onSettled: batch.refresh })
+  const batch = useSwapBatch(spec, walletIds, amounts, swapStore)
+  const preview = useSwapPreview(spec, batch.value?.jobs[0] ?? null, swapStore)
+  const run = useSwapRun({
+    batch: batch.value,
+    onSettled: batch.refresh,
+    store: swapStore,
+  })
 
   const blockedReason = explainSwapBlockers({
     spec,
@@ -38,9 +39,9 @@ export function SwapPage() {
       <SwapComposer
         groups={groups}
         walletIds={walletIds}
-        onWalletIdsChange={setWalletIds}
+        onWalletIdsChange={(ids) => swapStore.set({ walletIds: ids })}
         spec={spec}
-        onSpecChange={setSpec}
+        onSpecChange={(next: SwapSpec) => swapStore.set({ spec: next })}
         disabled={run.running}
       />
 
@@ -52,10 +53,14 @@ export function SwapPage() {
           pending={batch.pending}
           disabled={run.running}
           onAmountChange={(walletId, text) =>
-            setAmounts((current) => withAmountText(current, walletId, text))
+            swapStore.set({
+              amounts: withAmountText(swapStore.get().amounts, walletId, text),
+            })
           }
           onMaxAmount={(walletId) =>
-            setAmounts((current) => withMaxAmount(current, walletId))
+            swapStore.set({
+              amounts: withMaxAmount(swapStore.get().amounts, walletId),
+            })
           }
         />
         <SwapRail

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useLiveRead } from '@/hooks/use-live-read'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
+import type { PageStore } from '@/lib/core/page-store'
 import { resolveScanWallets } from '@/lib/inventory/holdings'
 import { scanFailureMessage } from '@/lib/opensea/failure-message'
 import { failureLine } from '@/lib/core/run-engine'
@@ -11,6 +11,8 @@ import type {
   PortfolioTableState,
 } from '@/lib/inventory/portfolio'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
+import { createPortfolioState } from '@/pages/portfolio/state'
+import type { PortfolioState } from '@/pages/portfolio/state'
 
 export function describeTable(
   state: PortfolioScanState,
@@ -79,41 +81,39 @@ function toastResult(result: PortfolioScanResult) {
   )
 }
 
-export function usePortfolioScan() {
-  const [url, setUrl] = useState('')
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [state, setState] = useState<PortfolioScanState>({ status: 'idle' })
-  const [starting, setStarting] = useState(false)
-  const runningRef = useRef(false)
-  const read = useLiveRead()
+export function usePortfolioScan(store?: PageStore<PortfolioState>) {
+  const scoped = usePageStoreScope(store, createPortfolioState())
+  const fields = usePageStore(scoped)
 
   function reset() {
-    read.abort()
-    setState({ status: 'idle' })
+    scoped.dropReads()
+    scoped.set({ state: { status: 'idle' } })
   }
 
   function changeUrl(next: string) {
-    setUrl(next)
+    scoped.set({ url: next })
     reset()
   }
 
   function changeWallets(ids: string[]) {
-    setSelectedWallets(ids)
+    scoped.set({ walletIds: ids })
     reset()
   }
 
   async function scan() {
-    if (runningRef.current) return
+    // A retained store keeps `starting` through a route change, so a remount cannot
+    // launch a second scan while the first one is still reporting.
+    if (scoped.get().starting) return
 
-    runningRef.current = true
-    setStarting(true)
-    const run = read.open()
+    const run = scoped.open('scan')
+    scoped.set({ starting: true })
 
     try {
-      const target = await resolveScanTarget(url, selectedWallets)
+      const { url, walletIds } = scoped.get()
+      const target = await resolveScanTarget(url, walletIds)
       if (!run.live()) return
       if (target.status === 'failed') {
-        setState({ status: 'failed', message: target.message })
+        scoped.set({ state: { status: 'failed', message: target.message } })
         return
       }
 
@@ -127,27 +127,29 @@ export function usePortfolioScan() {
           collapsed: resolved.collapsed,
           onSnapshot: (snapshot) => {
             if (!run.live()) return
-            setState({ status: 'scanning', snapshot })
+            scoped.set({ state: { status: 'scanning', snapshot } })
           },
         })
       } catch (failure) {
         if (!run.live()) return
-        setState({
-          status: 'failed',
-          message: scanFailureMessage(failure, 'collection'),
+        scoped.set({
+          state: {
+            status: 'failed',
+            message: scanFailureMessage(failure, 'collection'),
+          },
         })
         return
       }
 
       if (!run.live()) return
-      setState({ status: 'ready', result })
+      scoped.set({ state: { status: 'ready', result } })
       toastResult(result)
     } finally {
-      runningRef.current = false
-      setStarting(false)
+      scoped.set({ starting: false })
     }
   }
 
+  const { state } = fields
   const collectionName =
     state.status === 'scanning'
       ? state.snapshot.collection.name || state.snapshot.collection.slug
@@ -156,11 +158,11 @@ export function usePortfolioScan() {
         : ''
 
   return {
-    url,
-    selectedWallets,
+    url: fields.url,
+    selectedWallets: fields.walletIds,
     state,
     tableState: describeTable(state, collectionName),
-    running: starting || state.status === 'scanning',
+    running: fields.starting || state.status === 'scanning',
     changeUrl,
     changeWallets,
     scan,

@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,7 +30,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { usePageStore } from '@/hooks/use-page-store'
 import { usePnlRecords } from '@/hooks/data/use-pnl-records'
+import { pnlMonthlyStore } from '@/pages/pnl/store'
 import {
   dailyNetSeries,
   dayKey,
@@ -62,13 +63,12 @@ const recordDateFormat = new Intl.DateTimeFormat('en-US', {
 
 export function PnlMonthlyPage() {
   const { records, loading, error, remove } = usePnlRecords()
-  const [month, setMonth] = useState(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1)
-  })
-  const [selectedDay, setSelectedDay] = useState<Date>()
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState(sortOptions[0])
+  const { month, selectedDay, query, sort } = usePageStore(pnlMonthlyStore)
+  const setMonth = (next: Date) => pnlMonthlyStore.set({ month: next })
+  const setSelectedDay = (next: Date | undefined) =>
+    pnlMonthlyStore.set({ selectedDay: next })
+  const setQuery = (next: string) => pnlMonthlyStore.set({ query: next })
+  const setSort = (next: string) => pnlMonthlyStore.set({ sort: next })
 
   const monthRecords = recordsInMonth(records, month)
   const totals = monthNet(records, month)

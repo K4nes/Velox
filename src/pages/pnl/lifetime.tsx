@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Image as ImageIcon, Search, Trash2 } from 'lucide-react'
 import { Area } from '@/components/dither-kit/area'
 import { AreaChart } from '@/components/dither-kit/area-chart'
@@ -23,7 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { usePageStore } from '@/hooks/use-page-store'
 import { usePnlRecords } from '@/hooks/data/use-pnl-records'
+import { pnlLifetimeStore } from '@/pages/pnl/store'
 import {
   formatUsd,
   lifetimeView,
@@ -111,8 +113,9 @@ function emptyMessage(
 
 export function PnlLifetimePage() {
   const { records, loading, error, remove } = usePnlRecords()
-  const [query, setQuery] = useState('')
-  const [sort, setSort] = useState(sortOptions[0])
+  const { query, sort } = usePageStore(pnlLifetimeStore)
+  const setQuery = (next: string) => pnlLifetimeStore.set({ query: next })
+  const setSort = (next: string) => pnlLifetimeStore.set({ sort: next })
 
   const view = useMemo(() => lifetimeView(records), [records])
   const series = useMemo(

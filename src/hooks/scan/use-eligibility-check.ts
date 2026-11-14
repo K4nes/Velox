@@ -1,20 +1,25 @@
-import { useRef, useState } from 'react'
+import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { toMessage } from '@/lib/core/message'
-import { useLiveRead } from '@/hooks/use-live-read'
+import type { PageStore } from '@/lib/core/page-store'
 import { checkEligibility } from '@/lib/opensea/eligibility'
 import type { EligibilityTableState } from '@/lib/opensea/eligibility'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
 import { buildSnapshotPayload, marketplaceFromSource } from '@/lib/mint/snapshots'
-import type { EligibilitySnapshotPayload } from '@/lib/mint/snapshots'
+import { createMintEligibilityState } from '@/pages/mint/state'
+import type { MintEligibilityState } from '@/pages/mint/state'
 
-export function useEligibilityCheck(onResetSaveError: () => void) {
-  const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [url, setUrl] = useState('')
-  const [checked, setChecked] = useState<EligibilitySnapshotPayload | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [running, setRunning] = useState(false)
-  const runningRef = useRef(false)
-  const read = useLiveRead()
+export function useEligibilityCheck(
+  store: PageStore<MintEligibilityState>,
+  onResetSaveError: () => void
+) {
+  const scoped = usePageStoreScope(store, createMintEligibilityState())
+  const {
+    walletIds: selectedWallets,
+    url,
+    checked,
+    error,
+    running,
+  } = usePageStore(scoped)
 
   const tableState: EligibilityTableState = error
     ? { status: 'error', message: error }
@@ -26,59 +31,52 @@ export function useEligibilityCheck(onResetSaveError: () => void) {
 
   // An input edit abandons the request that read the old value.
   function invalidateRun() {
-    read.abort()
-    runningRef.current = false
-    setRunning(false)
+    scoped.dropReads()
+    scoped.set({ running: false })
   }
 
   function changeUrl(next: string) {
-    setUrl(next)
-    setChecked(null)
-    setError(null)
+    scoped.set({ url: next, checked: null, error: null })
     onResetSaveError()
     invalidateRun()
   }
 
   function changeWallets(ids: string[]) {
-    setSelectedWallets(ids)
-    setChecked(null)
-    setError(null)
+    scoped.set({ walletIds: ids, checked: null, error: null })
     onResetSaveError()
     invalidateRun()
   }
 
   async function check() {
-    if (runningRef.current) return
+    if (scoped.get().running) return
 
     // Read off the raw input before the first await, so the saved payload
     // describes the URL that produced it.
-    const marketplace = marketplaceFromSource(url)
-    setChecked(null)
+    const marketplace = marketplaceFromSource(scoped.get().url)
+    const target = scoped.get()
+    scoped.set({ checked: null })
     onResetSaveError()
 
-    runningRef.current = true
-    const run = read.open()
-    setRunning(true)
-    setError(null)
+    const run = scoped.open('scan')
+    scoped.set({ running: true, error: null })
 
     try {
-      const target = await resolveScanTarget(url, selectedWallets)
+      const resolved = await resolveScanTarget(target.url, target.walletIds)
       if (!run.live()) return
-      if (target.status === 'failed') {
-        setError(target.message)
+      if (resolved.status === 'failed') {
+        scoped.set({ error: resolved.message })
         return
       }
 
-      const result = await checkEligibility(target.slug, target.wallets)
+      const result = await checkEligibility(resolved.slug, resolved.wallets)
       if (!run.live()) return
-      setChecked(buildSnapshotPayload(result, target.slug, marketplace))
+      scoped.set({ checked: buildSnapshotPayload(result, resolved.slug, marketplace) })
     } catch (failure) {
       if (!run.live()) return
-      setError(toMessage(failure))
+      scoped.set({ error: toMessage(failure) })
     } finally {
       if (run.live()) {
-        runningRef.current = false
-        setRunning(false)
+        scoped.set({ running: false })
       }
     }
   }

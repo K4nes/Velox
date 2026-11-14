@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
+import { usePageStore } from '@/hooks/use-page-store'
 import { useRun } from '@/hooks/run/use-run'
+import type { RunState } from '@/hooks/run/use-run'
+import type { PageStore } from '@/lib/core/page-store'
 import { resolveEnsAddress } from '@/lib/chain/ens'
 import { toMessage } from '@/lib/core/message'
 import {
@@ -27,22 +30,28 @@ import { listWallets } from '@/lib/wallet/wallets'
 
 const RESOLVE_DEBOUNCE_MS = 400
 
+export type ResolvedDestination = {
+  name: string
+  address: `0x${string}` | null
+  error: string | null
+}
+
+export type TransferRunFields = RunState<TransferRunProgress> & {
+  destinationText: string
+  resolved: ResolvedDestination | null
+  history: Map<string, TransferStepState>
+}
+
 export function useTransferRun(input: {
   wallets: readonly { id: string; label: string; address: string }[]
   selections: readonly TransferSelection[]
   chain: string | null
   onSpent: (spent: Map<string, number>) => void
   onDeselect: (keys: string[]) => void
+  store: PageStore<TransferRunFields>
 }) {
-  const [destinationText, setDestinationText] = useState('')
-  const [resolved, setResolved] = useState<{
-    name: string
-    address: `0x${string}` | null
-    error: string | null
-  } | null>(null)
-  const [history, setHistory] = useState<Map<string, TransferStepState>>(
-    new Map()
-  )
+  const store = input.store
+  const { destinationText, resolved, history } = usePageStore(store)
 
   const parsed = useMemo(() => parseDestination(destinationText), [destinationText])
 
@@ -55,14 +64,12 @@ export function useTransferRun(input: {
       resolveEnsAddress(name)
         .then((address) => {
           if (!active) return
-          setResolved({ name, address, error: null })
+          store.set({ resolved: { name, address, error: null } })
         })
         .catch((failure: unknown) => {
           if (!active) return
-          setResolved({
-            name,
-            address: null,
-            error: toMessage(failure),
+          store.set({
+            resolved: { name, address: null, error: toMessage(failure) },
           })
         })
     }, RESOLVE_DEBOUNCE_MS)
@@ -71,7 +78,7 @@ export function useTransferRun(input: {
       active = false
       window.clearTimeout(timer)
     }
-  }, [parsed])
+  }, [parsed, store])
 
   const destination = useMemo<DestinationResolution>(() => {
     if (parsed.kind === 'empty') return { status: 'empty' }
@@ -121,27 +128,27 @@ export function useTransferRun(input: {
 
   const run = useRun<TransferRunProgress>({
     kind: 'transfer',
-    clear: () => setHistory(new Map()),
+    store,
+    clear: () => store.set({ history: new Map() }),
     // The table keeps the rows that already landed when a later run starts.
-    onProgress: (next) =>
-      setHistory((previous) => {
-        const merged = new Map(previous)
-        let changed = false
-        for (const step of next.steps) {
-          if (
-            step.status !== 'sent' &&
-            step.status !== 'unknown' &&
-            step.status !== 'failed'
-          ) {
-            continue
-          }
-          if (merged.get(step.tokenKey) !== step) {
-            merged.set(step.tokenKey, step)
-            changed = true
-          }
+    onProgress: (next) => {
+      const merged = new Map(store.get().history)
+      let changed = false
+      for (const step of next.steps) {
+        if (
+          step.status !== 'sent' &&
+          step.status !== 'unknown' &&
+          step.status !== 'failed'
+        ) {
+          continue
         }
-        return changed ? merged : previous
-      }),
+        if (merged.get(step.tokenKey) !== step) {
+          merged.set(step.tokenKey, step)
+          changed = true
+        }
+      }
+      if (changed) store.set({ history: merged })
+    },
     onFinish: (progress) => {
       const result = summarizeTransferRun(progress)
       const spent = spentUnits(progress)
@@ -187,12 +194,12 @@ export function useTransferRun(input: {
     : null
 
   function changeDestination(text: string) {
-    setDestinationText(text)
+    store.set({ destinationText: text })
   }
 
   function pickWallet(id: string) {
     const wallet = input.wallets.find((entry) => entry.id === id)
-    if (wallet) setDestinationText(wallet.address)
+    if (wallet) store.set({ destinationText: wallet.address })
   }
 
   async function start() {
@@ -224,11 +231,9 @@ export function useTransferRun(input: {
         const cleared = new Set(
           outcome.progress.steps.map((step) => step.tokenKey)
         )
-        setHistory((previous) => {
-          const next = new Map(previous)
-          for (const key of cleared) next.delete(key)
-          return next
-        })
+        const next = new Map(store.get().history)
+        for (const key of cleared) next.delete(key)
+        store.set({ history: next })
         run.setProgress(null)
       }
 

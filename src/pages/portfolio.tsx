@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Image as ImageIcon, Scan, X } from 'lucide-react'
 import { HeldInventoryHeader, scanAnnouncement } from '@/components/held-inventory-header'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +26,8 @@ import { TokenImage } from '@/components/token-image'
 import { WalletSelect } from '@/components/wallet-select'
 import { usePortfolioScan } from '@/hooks/scan/use-portfolio-scan'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
+import { usePageStore } from '@/hooks/use-page-store'
+import { portfolioStore } from '@/pages/portfolio/store'
 import {
   countRarityTiers,
   portfolioStats,
@@ -145,11 +147,9 @@ function RarityRank({
 }
 
 export function PortfolioPage() {
-  const scan = usePortfolioScan()
+  const scan = usePortfolioScan(portfolioStore)
   const { groups, error: walletsError } = useWalletGroups()
-  const [query, setQuery] = useState('')
-  const [tier, setTier] = useState<RarityTierFilter>('all')
-  const [sort, setSort] = useState<HoldingSort>('rarest')
+  const { query, tier, sort } = usePageStore(portfolioStore)
 
   const snapshot = scan.state.status === 'scanning' ? scan.state.snapshot : null
   const result = scan.state.status === 'ready' ? scan.state.result : null
@@ -432,7 +432,7 @@ export function PortfolioPage() {
                   key={option.key}
                   variant="ghost"
                   aria-pressed={active}
-                  onClick={() => setTier(option.key)}
+                  onClick={() => portfolioStore.set({ tier: option.key })}
                   className={cn(
                     'px-2.5 font-medium',
                     active ? 'bg-muted text-foreground' : 'text-muted-foreground'
@@ -447,7 +447,9 @@ export function PortfolioPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Select
               value={sort}
-              onValueChange={(value) => setSort(value as HoldingSort)}
+              onValueChange={(value) =>
+                portfolioStore.set({ sort: value as HoldingSort })
+              }
             >
               <SelectTrigger aria-label="Sort held tokens" className="w-60 px-3">
                 <SelectValue />
@@ -468,7 +470,7 @@ export function PortfolioPage() {
         <HeldInventoryHeader
           count={visible.length}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={(next) => portfolioStore.set({ query: next })}
           inputId="token-search"
           announcement={scanAnnouncement({
             scanning: scan.running,
