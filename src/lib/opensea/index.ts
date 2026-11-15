@@ -892,7 +892,11 @@ type RawOrder = {
 
 // An order this app cannot name is not one the operator can decide to cancel, so
 // it is dropped. One unreadable order must not fail the wallet's whole page.
-function toActiveListing(raw: RawOrder, nowSec: number): ActiveListing | null {
+// Exported for the contract test, which runs it over a recorded real response.
+export function toActiveListing(
+  raw: RawOrder,
+  nowSec: number
+): ActiveListing | null {
   const orderHash =
     typeof raw.order_hash === 'string' && ORDER_HASH_PATTERN.test(raw.order_hash)
       ? raw.order_hash

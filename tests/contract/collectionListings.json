@@ -1,0 +1,143 @@
+{
+  "recordedAt": "2026-11-15T07:01:42.298Z",
+  "url": "https://api.opensea.io/api/v2/listings/collection/bigfatfish/all?limit=2",
+  "body": {
+    "listings": [
+      {
+        "order_hash": "0x137f35c54b254661963df718661f26e50c70e0142ff397159f100be2ec5383ee",
+        "chain": "robinhood",
+        "protocol_data": {
+          "parameters": {
+            "offerer": "0x10b4b6e48841121be9c0e564062401a4d29676bd",
+            "offer": [
+              {
+                "itemType": 2,
+                "token": "0x56511f824f8d31f4c7747622bd2ad1be26f24e4e",
+                "identifierOrCriteria": "1161",
+                "startAmount": "1",
+                "endAmount": "1"
+              }
+            ],
+            "consideration": [
+              {
+                "itemType": 0,
+                "token": "0x0000000000000000000000000000000000000000",
+                "identifierOrCriteria": "0",
+                "startAmount": "9900000000000",
+                "endAmount": "9900000000000",
+                "recipient": "0x10b4b6e48841121be9c0e564062401a4d29676bd"
+              },
+              {
+                "itemType": 0,
+                "token": "0x0000000000000000000000000000000000000000",
+                "identifierOrCriteria": "0",
+                "startAmount": "100000000000",
+                "endAmount": "100000000000",
+                "recipient": "0x0000a26b00c1f0df003000390027140000faa719"
+              }
+            ],
+            "startTime": "1794678278",
+            "endTime": "1810230278",
+            "orderType": 0,
+            "zone": "0x0000000000000000000000000000000000000000",
+            "zoneHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "salt": "0x3d958fe200000000000000000000000000000000000000009f10a686949b36e4",
+            "conduitKey": "0x61159fefdfada89302ed55f8b9e89e2d67d8258712b3a3f89aa88525877f1d5e",
+            "totalOriginalConsiderationItems": 2,
+            "counter": "0"
+          },
+          "signature": null
+        },
+        "protocol_address": "0x0000000000000068f116a894984e2db1123eb395",
+        "asset": {
+          "identifier": "1161",
+          "contract": "0x56511f824f8d31f4c7747622bd2ad1be26f24e4e"
+        },
+        "remaining_quantity": 1,
+        "order_created_at": 1794678293,
+        "price": {
+          "current": {
+            "currency": "ETH",
+            "decimals": 18,
+            "value": "10000000000000"
+          }
+        },
+        "price_per_item": {
+          "currency": "ETH",
+          "decimals": 18,
+          "value": "10000000000000"
+        },
+        "type": "basic",
+        "status": "ACTIVE"
+      },
+      {
+        "order_hash": "0x54af40bb40637614423effb91d0ca1a537d3e313f882fd824ec1dd54b2474f2a",
+        "chain": "robinhood",
+        "protocol_data": {
+          "parameters": {
+            "offerer": "0xeaf83f87e4ac4c9a1553cb3f68476d176a796dea",
+            "offer": [
+              {
+                "itemType": 2,
+                "token": "0x56511f824f8d31f4c7747622bd2ad1be26f24e4e",
+                "identifierOrCriteria": "1187",
+                "startAmount": "1",
+                "endAmount": "1"
+              }
+            ],
+            "consideration": [
+              {
+                "itemType": 0,
+                "token": "0x0000000000000000000000000000000000000000",
+                "identifierOrCriteria": "0",
+                "startAmount": "9900000000000",
+                "endAmount": "9900000000000",
+                "recipient": "0xeaf83f87e4ac4c9a1553cb3f68476d176a796dea"
+              },
+              {
+                "itemType": 0,
+                "token": "0x0000000000000000000000000000000000000000",
+                "identifierOrCriteria": "0",
+                "startAmount": "100000000000",
+                "endAmount": "100000000000",
+                "recipient": "0x0000a26b00c1f0df003000390027140000faa719"
+              }
+            ],
+            "startTime": "1794678765",
+            "endTime": "1802454765",
+            "orderType": 0,
+            "zone": "0x0000000000000000000000000000000000000000",
+            "zoneHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "salt": "0x3d958fe2000000000000000000000000000000000000000037e24192bbf32d17",
+            "conduitKey": "0x61159fefdfada89302ed55f8b9e89e2d67d8258712b3a3f89aa88525877f1d5e",
+            "totalOriginalConsiderationItems": 2,
+            "counter": "0"
+          },
+          "signature": null
+        },
+        "protocol_address": "0x0000000000000068f116a894984e2db1123eb395",
+        "asset": {
+          "identifier": "1187",
+          "contract": "0x56511f824f8d31f4c7747622bd2ad1be26f24e4e"
+        },
+        "remaining_quantity": 1,
+        "order_created_at": 1794678840,
+        "price": {
+          "current": {
+            "currency": "ETH",
+            "decimals": 18,
+            "value": "10000000000000"
+          }
+        },
+        "price_per_item": {
+          "currency": "ETH",
+          "decimals": 18,
+          "value": "10000000000000"
+        },
+        "type": "basic",
+        "status": "ACTIVE"
+      }
+    ],
+    "next": "WzAuMDAwMDEwLCIyMDI2LTExLTE0VDE3OjU0OjAwLjExNVoiLCJlZWM0YzBhZi01MGQwLTNmYTEtYTgyNi1hZTljNjAyMGE0ZWUiXQ"
+  }
+}
