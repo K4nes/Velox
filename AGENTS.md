@@ -37,8 +37,8 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
-| `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Needs the `E2E_*` values in `.env.e2e.local`. |
-| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Needs the same values as `test:e2e:live`. |
+| `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Loads `.env.e2e.local` and fails before the browser when a required value is missing, so a skipped lane cannot read as green. |
+| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file; a case that needs a value still skips, and `scatter.e2e.ts` runs without one. |
 | `npm run verify` | `build`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
@@ -50,14 +50,15 @@ claim a suite ran unless you ran it.
 
 Cheapest check that settles the change, in order:
 
-0. `npm run verify` — `build`, `lint`, `test:release` and `test:e2e` in one command, about a
-   minute. This is the default, and its tail is what a pull request body quotes. Drop to the
-   rungs below only when one gate is already known red, or the change is not reachable from
-   the browser suite.
+0. `npm run verify` — `build`, `lint`, `test:release` and `test:e2e` in one command, about
+   three minutes. This is the default, and its tail is what a pull request body quotes. Drop
+   to the rungs below only when one gate is already known red, or the change is not reachable
+   from the browser suite.
 1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
-4. `npm run test:release` — the release manifest, signature and lockfile logic, and the page-state store, in `scripts/`.
+4. `npm run test:release` — the release manifest, signature and lockfile logic, the page-state
+   store and the pure formatters, in `scripts/`.
 5. `npm run test:e2e` — the suite that covers the touched page.
 6. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
    runs. `npm run build` has to have produced `dist/` first.
@@ -70,9 +71,12 @@ CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
 title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
 settle style rather than behaviour.
 
-A stale install is the most common false red. `npm run build` then fails with `Cannot find
-module '@tauri-apps/...'`, and the browser suite dies with a `500` on a source import rather
-than a failing assertion. Run `npm ci` once in a fresh worktree before believing a red gate.
+A stale install is the most common wrong gate, in both directions. With `node_modules`
+absent, `npm run build` still starts: npm resolves `tsc` and `vite` through `PATH`, so the
+build can go green against a globally installed copy while the browser lane dies with
+`APP_UNREACHABLE`. `npm run build` and `npm run test:e2e` therefore refuse to start unless
+`node_modules/.bin` holds both. Run `npm ci` once in a fresh worktree before believing any
+gate, red or green.
 
 A change to `src/lib/opensea/` or `src/lib/chain/` also runs the live lane for the folder it
 touches, and pastes the last 20 lines in the pull request body:
@@ -80,6 +84,9 @@ touches, and pastes the last 20 lines in the pull request body:
 ```bash
 npx e2e run --config e2e.live.config.ts tests/portfolio/live/scan.e2e.ts
 ```
+
+A change to `src/lib/scatter/` runs `npx e2e run --config e2e.live.config.ts
+tests/mint/live/scatter.e2e.ts`. It reads the live collection and needs no `E2E_*` value.
 
 CI holds no `E2E_*` secrets, so that lane cannot run there and the evidence rides in the
 pull request. The mocked lane cannot stand in for it: it answers whatever path the client
@@ -122,11 +129,12 @@ every reported overwrite and re-apply the local edits.
 pure resolvers, so a type-stripped copy loads without a bundler or the `@/` alias. A
 runtime import ends that. The rule holds even though nothing loads it that way today.
 
-**The same holds for the files `npm run test:release` loads.** `src/lib/core/page-store.ts`,
-`src/lib/inventory/holdings-fields.ts` and `src/lib/scatter/stage-fields.ts` have no runtime
-imports, and `src/pages/bulk-sell/state.ts` imports only types and `holdings-fields`, and
-names that module with a relative `.ts` path, because node strips the types without a
-bundler or the `@/` alias.
+**The files `npm run test:release` loads stay free of runtime `@/` imports.** Node
+strips the types without a bundler or the alias, so each such file says so in its header
+comment, imports through the alias only as a type, and reaches a bare package
+(`viem`) the ordinary way. `src/pages/bulk-sell/state.ts` is the model for a file that
+needs a sibling: a relative `.ts` path, types only. A new file the suite loads carries
+that header comment; the loader fails loudly when it does not.
 
 **Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
 step in the `migrations` table in `src/lib/db/db-migrations.ts`. Those steps run from
