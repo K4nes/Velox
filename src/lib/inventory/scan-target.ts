@@ -1,10 +1,16 @@
-import { slugFromUrl } from '@/lib/opensea/index'
+import { resolveCollectionSource } from '@/lib/collection-source'
+import type { CollectionSource } from '@/lib/collection-source'
 import { toMessage } from '@/lib/core/message'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type ScanTarget =
-  | { status: 'ready'; slug: string; wallets: StoredWallet[] }
+  | {
+      status: 'ready'
+      slug: string
+      source: CollectionSource
+      wallets: StoredWallet[]
+    }
   | { status: 'failed'; message: string }
 
 // The preamble every scan shares: the URL has to name a collection, and the
@@ -13,8 +19,8 @@ export async function resolveScanTarget(
   url: string,
   selectedIds: readonly string[]
 ): Promise<ScanTarget> {
-  const slug = slugFromUrl(url)
-  if (slug === null) {
+  const collection = resolveCollectionSource(url)
+  if (collection === null) {
     return { status: 'failed', message: 'Collection URL not recognised' }
   }
 
@@ -33,5 +39,10 @@ export async function resolveScanTarget(
     return { status: 'failed', message: 'No saved wallet matches the selection' }
   }
 
-  return { status: 'ready', slug, wallets }
+  return {
+    status: 'ready',
+    slug: collection.slug,
+    source: collection.source,
+    wallets,
+  }
 }

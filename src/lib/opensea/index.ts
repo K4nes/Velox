@@ -1,4 +1,5 @@
 import { formatUnits } from 'viem'
+import type { CollectionSource } from '@/lib/collection-source'
 import { resolveKeys } from '@/lib/chain/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import { traceMint } from '@/lib/mint/mint-trace'
@@ -63,6 +64,11 @@ export type AccountNftPage = { nfts: AccountNft[]; next: string | null }
 
 export type NftRank = { tokenId: string; rank: number | null }
 
+// A list's price is always carried in base units. The currency is absent on OpenSea,
+// which keeps the 18-decimal ETH rendering it has always had; a provider that states a
+// currency carries the symbol and decimals with it.
+export type StageCurrency = { symbol: string; decimals: number }
+
 export type DropStage = {
   uuid: string
   stageType: string
@@ -71,6 +77,9 @@ export type DropStage = {
   maxPerWallet: string
   startTime: string
   endTime: string
+  // Absent and 1 both mean one NFT per quantity step. OpenSea never sets it.
+  unitSize?: number
+  currency?: StageCurrency
 }
 
 export type DropInfo = {
@@ -78,6 +87,9 @@ export type DropInfo = {
   name: string
   chain: string
   contractAddress: string
+  // The source that produced this drop, so a run can reach its provider without
+  // reading the task.
+  source: CollectionSource
   dropType: string
   isMinting: boolean
   maxSupply: string
@@ -543,6 +555,7 @@ export async function getDrop(slug: string): Promise<DropInfo> {
     name: body.collection_name ?? '',
     chain: body.chain,
     contractAddress: body.contract_address,
+    source: 'opensea',
     dropType: body.drop_type ?? '',
     isMinting: body.is_minting === true,
     maxSupply: body.max_supply ?? '0',

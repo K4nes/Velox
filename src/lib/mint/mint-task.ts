@@ -1,4 +1,4 @@
-import { formatEther } from 'viem'
+import { formatUnits } from 'viem'
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
 
@@ -28,6 +28,9 @@ export type RunStatus =
   | 'broadcast'
   | 'confirmed'
   | 'failed'
+  // The provider refused something the operator must fix in the task, such as a list
+  // priced in an ERC-20. Distinct from `failed`, which is a request that errored.
+  | 'blocked'
 
 export type WalletRun = {
   walletId: string
@@ -63,6 +66,7 @@ export const RUN_LABEL: Record<RunStatus, string> = {
   broadcast: 'Broadcast',
   confirmed: 'Confirmed',
   failed: 'Failed',
+  blocked: 'Blocked',
 }
 
 export const RUN_TONE: Record<RunStatus, string> = {
@@ -74,6 +78,7 @@ export const RUN_TONE: Record<RunStatus, string> = {
   broadcast: 'text-muted-foreground',
   confirmed: 'text-success',
   failed: 'text-destructive',
+  blocked: 'text-warning',
 }
 
 export type Task = {
@@ -112,23 +117,37 @@ export function reachedChain(row: WalletRun): boolean {
   return row.mintedStages.length > 0
 }
 
-// The quantity ceiling is OpenSea's number, never a constant here. Two server
-// fields carry it: `max_per_wallet` on the stage, which exists before the stage
-// opens, and `max_total_mintable_by_wallet` from the eligibility check, which is
-// the tighter of the two once the stage is live. Zero means the server has not
-// answered yet, so the input carries no max at all.
+// A provider can answer with a cap no operator typed: Scatter reports 0xffffffff to
+// mean "no stated limit". Anything above this is read as no cap at all, so a sentinel
+// never reaches the input as a nine-digit number.
+const STATED_CAP_LIMIT = 1000
+
+// The row cap a provider that states no limit earns. It is large enough to pass the
+// mintable check and finite enough to stay out of any arithmetic the ceiling does.
+export const NO_STATED_CAP = Number.MAX_SAFE_INTEGER
+
+function statedCap(value: number): number {
+  return Number.isFinite(value) && value > 0 && value <= STATED_CAP_LIMIT
+    ? value
+    : 0
+}
+
+// The quantity ceiling is the provider's number, never a constant here. Two server
+// fields carry it: the stage's per-wallet cap, which exists before the stage opens,
+// and the cap from the eligibility check, which is the tighter of the two once the
+// stage is live. Zero means no stated ceiling, so the input carries no max at all.
 export function quantityCeiling(walletMax: number, stage: DropStage | null): number {
   const perWallet = Number.parseInt(stage?.maxPerWallet ?? '', 10)
-  const bounds = [walletMax, perWallet].filter(
-    (value) => Number.isFinite(value) && value > 0
-  )
+  const bounds = [walletMax, perWallet].map(statedCap).filter((value) => value > 0)
   return bounds.length > 0 ? Math.min(...bounds) : 0
 }
 
 export function initialQuantity(walletMax: number, stage: DropStage | null): string {
-  return walletMax >= 1
-    ? String(Math.min(walletMax, quantityCeiling(walletMax, stage)))
-    : '1'
+  // Zero means the check found no cap; the stage's own number still bounds the input,
+  // and the old prefill of 1 stands when neither does.
+  if (!(walletMax >= 1)) return '1'
+  const ceiling = quantityCeiling(walletMax, stage)
+  return ceiling > 0 ? String(ceiling) : '1'
 }
 
 export const placeholderTask: Task = {
@@ -173,9 +192,13 @@ export function weiFromDecimal(value: string): bigint | null {
   }
 }
 
-export function ethLabel(wei: bigint): string {
-  const value = Number(formatEther(wei))
-  return value === 0 ? '0 ETH' : `${value.toFixed(4)} ETH`
+// The amount is carried in base units. A provider that states a currency says how to
+// read it; without one the stage keeps the 18-decimal ETH reading it always had.
+export function amountLabel(wei: bigint, stage: DropStage | null): string {
+  const decimals = stage?.currency?.decimals ?? 18
+  const symbol = stage?.currency?.symbol ?? 'ETH'
+  const value = Number(formatUnits(wei, decimals))
+  return value === 0 ? `0 ${symbol}` : `${value.toFixed(4)} ${symbol}`
 }
 
 export function countdownLabel(ms: number): string {
@@ -290,6 +313,9 @@ export function quantityMaxFor(
 
 export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   if (row.checkFailed) return false
+  // A blocked row's fix is in the task, not in the wallet. It must never reach a
+  // batch, and a stale rows map must not leak one in.
+  if (row.status === 'blocked') return false
   // A mint on another stage says nothing about this one: each stage carries its
   // own cap, so only a landing on this exact stage retires the wallet.
   if (row.mintedStages.includes(stageUuid)) return false
@@ -321,6 +347,23 @@ export function stageStatusFor(
   return verdict()
 }
 
+// This issue loads Scatter lists but does not build Scatter mints. The refusal names
+// the missing step instead of leaving a disabled button without a reason.
+export const SCATTER_MINT_REFUSAL =
+  'Scatter minting is not available yet. This build can load Scatter lists but cannot build a Scatter mint transaction.'
+
+// A task that cannot start says why: a provider that cannot build its mint, or a
+// wallet the provider blocked, whose fix is in the task rather than in the wallet.
+export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
+  if (task.drop?.source === 'scatter') return SCATTER_MINT_REFUSAL
+
+  const blocked = rows.filter(
+    (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'
+  )
+  if (blocked.length === 0) return null
+  return `${blocked.length} selected wallet${blocked.length === 1 ? ' is' : 's are'} blocked. Clear the block before starting.`
+}
+
 export type TaskView = {
   activeRuns: WalletRun[]
   stageItems: DropStage[]
@@ -334,8 +377,10 @@ export type TaskView = {
   mintWalletCount: number
   readyWalletCount: number
   quantityLimit: number
+  quantityHint: string | null
   mintQuantity: number
   quantityReady: boolean
+  startRefusal: string | null
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
@@ -386,16 +431,26 @@ export function taskView(input: {
   const quantityLimit = selectedStage
     ? quantityCeiling(task.quantityMax, selectedStage)
     : 0
+  const quantityHint =
+    selectedStage === null
+      ? null
+      : task.drop?.source === 'scatter' && selectedStage.maxPerWallet === ''
+        ? 'No stated cap'
+        : quantityLimit > 0
+          ? `Max ${quantityLimit} per wallet`
+          : null
   const mintQuantity = Number.parseInt(task.quantity, 10)
   const quantityReady = Number.isInteger(mintQuantity) && mintQuantity >= 1
   const isMintingThisTask = input.runningIds.includes(task.id)
 
+  const startRefusal = startRefusalFor(task, activeRuns)
   const canStartMint =
     !locked &&
     task.checked &&
     task.drop !== null &&
     selectedStage !== null &&
     task.arm === null &&
+    startRefusal === null &&
     !stageClosed &&
     (isLiveStage || Number.isFinite(stageStartMs)) &&
     quantityReady &&
@@ -424,8 +479,10 @@ export function taskView(input: {
     mintWalletCount,
     readyWalletCount,
     quantityLimit,
+    quantityHint,
     mintQuantity,
     quantityReady,
+    startRefusal,
     canStartMint,
     mintStage,
     stagePriceWei,

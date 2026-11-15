@@ -7,6 +7,8 @@ import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
+import { resolveCollectionSource } from '@/lib/collection-source'
+import { checkScatterLists } from '@/lib/scatter/eligibility'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import {
@@ -40,6 +42,7 @@ import {
   quantityMaxFor,
   reachedChain,
   rowsFromCheck,
+  startRefusalFor,
   stageStatusFor,
   taskView,
 } from '@/lib/mint/mint-task'
@@ -52,7 +55,6 @@ import type {
   WalletRun,
 } from '@/lib/mint/mint-task'
 import { fetchMintDrop } from '@/lib/mint/mint-provider'
-import { slugFromUrl } from '@/lib/opensea/index'
 import type { DropInfo } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -285,9 +287,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     updateTask(id, { status: 'running', checked: false })
 
     const stale = () => runsRef.get(id) !== run
-    const slug = slugFromUrl(url)
+    const collection = resolveCollectionSource(url)
 
-    if (!slug) {
+    if (!collection) {
       updateTask(id, {
         name: 'Task',
         status: 'failed',
@@ -308,11 +310,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         drop = dropOverride
         step = 'eligibility'
       } else {
-        drop = await fetchMintDrop(slug)
+        drop = await fetchMintDrop(collection.source, collection.slug)
         if (stale()) return null
       }
 
-      if (drop.dropType !== 'seadrop_v1_erc721') {
+      // The SeaDrop restriction describes the OpenSea route. Scatter mints any
+      // contract type through one endpoint, so the guard must not apply to it.
+      if (drop.source === 'opensea' && drop.dropType !== 'seadrop_v1_erc721') {
         updateTask(id, {
           status: 'failed',
           checked: false,
@@ -346,7 +350,10 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         return null
       }
 
-      const rows = await checkWalletEligibility(drop, selected)
+      const rows =
+        drop.source === 'scatter'
+          ? await checkScatterLists(drop, selected)
+          : await checkWalletEligibility(drop, selected)
       if (stale()) return null
 
       // The operator can pick a stage while the check runs. Read the live task,
@@ -361,7 +368,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
       updateRuns((current) => ({ ...current, [id]: mergedRows }))
       updateTask(id, {
-        name: drop.name || slug,
+        name: drop.name || collection.slug,
         status: 'idle',
         checked: true,
         drop,
@@ -404,6 +411,16 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
     const id = task.id
     const drop = options.drop ?? prepared?.drop ?? task.drop
+    const refusal = startRefusalFor(
+      task,
+      prepared?.rows ?? scoped.get().runs[id] ?? []
+    )
+    // A blocked task builds nothing: the fix is in the task, and a run would only
+    // spend gas discovering the same refusal wallet by wallet.
+    if (refusal !== null) {
+      toast.error(refusal)
+      return
+    }
     const stage =
       drop.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
     const quantity = mintQuantityFor(
@@ -445,7 +462,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     updateRunningIds((current) => [...current, id])
 
     try {
-      const fresh = options.drop ?? (await fetchMintDrop(drop.slug))
+      const fresh = options.drop ?? (await fetchMintDrop(drop.source, drop.slug))
       if (stopped()) return
       if (!options.stageVerified && fresh.activeStage === null) {
         updateRuns((current) => ({
@@ -546,7 +563,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         const preparedEntry = preparedEntries?.get(wallet.id)
         try {
           const result = await mintForWallet({
-            slug: drop.slug,
+            drop,
             wallet,
             quantity,
             gas: preparedEntry?.gasLimit
@@ -603,6 +620,15 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
   function armStage() {
     if (!realActive || !active.drop) return
+    const refusal = startRefusalFor(
+      realActive,
+      scoped.get().runs[realActive.id] ?? []
+    )
+    // An arm is a promised fire; a task that cannot start must not count down to one.
+    if (refusal !== null) {
+      toast.error(refusal)
+      return
+    }
     const stage =
       active.drop.stages.find((entry) => entry.uuid === active.stageUuid) ?? null
     if (!stage?.startTime) return
@@ -712,7 +738,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       // copy.
       const pendingPrepare = prepareTaskRef.get(taskId)
       if (pendingPrepare) await pendingPrepare
-      const drop = await fetchMintDrop(task.drop.slug)
+      const drop = await fetchMintDrop(task.drop.source, task.drop.slug)
       // The operator can disarm, or arm a different stage, while the drop is in
       // flight. Re-read before acting, or a cancelled run still spends gas.
       const latest = scoped.get().tasks.find((entry) => entry.id === taskId)

@@ -1,14 +1,17 @@
+import type { CollectionSource } from '@/lib/collection-source'
+import { SCATTER_MINT_REFUSAL } from '@/lib/mint/mint-task'
 import { buildMintTransaction, getDrop } from '@/lib/opensea/index'
 import type { DropInfo, MintTransaction } from '@/lib/opensea/index'
 import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
 import { getEligibilityToken } from '@/lib/opensea/eligibility'
+import { getScatterDrop } from '@/lib/scatter/drop'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea/index'
 
 type MintProvider = {
   fetchDrop: (slug: string) => Promise<DropInfo>
-  buildTransaction: (
+  buildTransaction?: (
     slug: string,
     minter: string,
     quantity: number
@@ -16,31 +19,60 @@ type MintProvider = {
   warmAuth?: (wallet: StoredWallet) => Promise<void>
 }
 
-// One provider today. A provider that omits warmAuth skips the credential step.
+// The registry is keyed by the source axis, so a third source adds one entry and
+// re-types no caller. A provider that omits warmAuth skips the credential step.
 // Live OpenSea answers 409 NOT_MINTING to the mint build before a stage opens, so a
 // pre-open build stays best effort; the open-time path builds the same calldata.
-const provider: MintProvider = {
-  fetchDrop: getDrop,
-  buildTransaction: buildMintTransaction,
-  warmAuth: async (wallet) => {
-    await cachedEligibilityToken(wallet.address, () =>
-      getEligibilityToken(wallet.privateKey)
-    )
+const providers: Record<CollectionSource, MintProvider> = {
+  opensea: {
+    fetchDrop: getDrop,
+    buildTransaction: buildMintTransaction,
+    warmAuth: async (wallet) => {
+      await cachedEligibilityToken(wallet.address, () =>
+        getEligibilityToken(wallet.privateKey)
+      )
+    },
+  },
+  // Scatter lists load here; the mint build belongs to the next issue, so the
+  // provider deliberately has no buildTransaction and no credential.
+  scatter: {
+    fetchDrop: getScatterDrop,
   },
 }
 
-export function fetchMintDrop(slug: string): Promise<DropInfo> {
+export function fetchMintDrop(
+  source: CollectionSource,
+  slug: string
+): Promise<DropInfo> {
+  const provider: MintProvider | undefined = providers[source]
+  if (!provider) {
+    return Promise.reject(new Error(`Unknown mint source: ${source}`))
+  }
   return provider.fetchDrop(slug)
 }
 
-export async function warmMintAuth(wallet: StoredWallet): Promise<void> {
-  await provider.warmAuth?.(wallet)
+export async function warmMintAuth(
+  source: CollectionSource,
+  wallet: StoredWallet
+): Promise<void> {
+  const provider: MintProvider | undefined = providers[source]
+  await provider?.warmAuth?.(wallet)
 }
 
 export function buildMintTransactionFor(
-  slug: string,
+  drop: DropInfo,
   minter: string,
   quantity: number
 ): Promise<MintTransaction> {
-  return provider.buildTransaction(slug, minter, quantity)
+  const provider: MintProvider | undefined = providers[drop.source]
+  if (!provider?.buildTransaction) {
+    return Promise.reject(
+      new Error(
+        drop.source === 'scatter'
+          ? SCATTER_MINT_REFUSAL
+          : `Mint building is not available for ${drop.source}.`
+      )
+    )
+  }
+  return provider.buildTransaction(drop.slug, minter, quantity)
 }

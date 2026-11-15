@@ -17,8 +17,8 @@ import {
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import {
+  amountLabel,
   countdownLabel,
-  ethLabel,
   mintModes,
 } from '@/lib/mint/mint-task'
 import type { Task, TaskPatch, TaskView } from '@/lib/mint/mint-task'
@@ -61,8 +61,10 @@ export function MintPanel({
     isLiveStage,
     blockNow,
     quantityLimit,
+    quantityHint,
     mintQuantity,
     quantityReady,
+    startRefusal,
     canStartMint,
     stagePriceWei,
     totalWei,
@@ -133,10 +135,8 @@ export function MintPanel({
             value={active.quantity}
             onChange={(event) => onPatch({ quantity: event.target.value })}
           />
-          {quantityLimit > 0 ? (
-            <p className="text-muted-foreground text-[11px]">
-              Max {quantityLimit} per wallet
-            </p>
+          {quantityHint ? (
+            <p className="text-muted-foreground text-[11px]">{quantityHint}</p>
           ) : null}
         </div>
 
@@ -247,13 +247,17 @@ export function MintPanel({
           <div className="flex items-center justify-between py-1">
             <span>NFT Price</span>
             <span className="text-muted-foreground tabular-nums">
-              {stagePriceWei !== null ? ethLabel(stagePriceWei) : '—'}
+              {stagePriceWei !== null
+                ? amountLabel(stagePriceWei, selectedStage)
+                : '—'}
             </span>
           </div>
           <div className="mt-1 flex items-center justify-between border-t pt-2 font-semibold">
             <span>Cost</span>
             <span className="text-success tabular-nums">
-              {totalWei !== null ? ethLabel(totalWei) : '0 ETH'}
+              {totalWei !== null
+                ? amountLabel(totalWei, selectedStage)
+                : `0 ${selectedStage?.currency?.symbol ?? 'ETH'}`}
             </span>
           </div>
         </div>
@@ -276,13 +280,22 @@ export function MintPanel({
             </Button>
           </div>
         ) : (
-          <Button
-            className="h-10 w-full"
-            onClick={() => (isLiveStage ? onStart() : onArm())}
-            disabled={!canStartMint}
-          >
-            {isMinting ? 'Minting…' : 'Start Mint'}
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="h-10 w-full"
+              onClick={() => (isLiveStage ? onStart() : onArm())}
+              disabled={!canStartMint}
+            >
+              {isMinting ? 'Minting…' : 'Start Mint'}
+            </Button>
+            {/* The fix belongs beside the disabled action, not in a tooltip and not
+                only in the run table. */}
+            {startRefusal ? (
+              <p role="alert" className="text-warning text-center text-xs">
+                {startRefusal}
+              </p>
+            ) : null}
+          </div>
         )}
       </div>
     </Card>
