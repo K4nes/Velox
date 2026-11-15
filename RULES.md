@@ -3,6 +3,16 @@
 Conventions for this repository, as decided during the build. Follow them unless a
 request says otherwise.
 
+**Contents.** [Components](#components) · [Pages and routing](#pages-and-routing) ·
+[Editing `ui/`](#editing-ui) · [UI conventions](#ui-conventions) · [Theme](#theme) ·
+[Verification](#verification) · [E2E live data and mocks](#e2e-live-data-and-mocks)
+
+Read the section a change touches, not the whole file. Under **UI conventions** there is one
+heading per shape: [Type scale](#type-scale), [Page shell](#page-shell),
+[Panel header](#panel-header), [Scan bar](#scan-bar), [Table](#table), [Rail](#rail),
+[Controls](#controls), [Stat tile](#stat-tile),
+[Deliberate exceptions](#deliberate-exceptions).
+
 ## Components
 
 ### One folder for library components: `src/components/ui/`
