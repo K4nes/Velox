@@ -197,10 +197,10 @@ export function amountLabel(wei: bigint, stage: DropStage | null): string {
   const decimals = stage?.currency?.decimals ?? 18
   const symbol = stage?.currency?.symbol ?? 'ETH'
   if (wei === 0n) return `0 ${symbol}`
-  const value = Number(formatUnits(wei, decimals))
-  // A nonzero amount below the printed precision must not claim the mint is free.
-  if (value === 0) return `<0.0001 ${symbol}`
-  return `${value.toFixed(4)} ${symbol}`
+  // Round before comparing: 0.00003 ETH prints four places as `0.0000`, which
+  // reads as a free mint. The comparison used to look at the unrounded value.
+  const shown = Number(formatUnits(wei, decimals)).toFixed(4)
+  return Number(shown) === 0 ? `<0.0001 ${symbol}` : `${shown} ${symbol}`
 }
 
 export function countdownLabel(ms: number): string {

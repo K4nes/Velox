@@ -144,6 +144,47 @@ test('a Scatter collection fills the picker and prices each list in its own curr
   expect(calls.lists[1]?.minter?.toLowerCase()).toBe(wallet.address.toLowerCase())
 })
 
+test('a price below the printed precision never reads as free', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Tiny Price')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    lists: [
+      {
+        id: 'tiny',
+        name: 'Tiny Price',
+        price: '0.00003',
+        currencySymbol: 'ETH',
+        decimals: 18,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+        walletLimit: 1,
+      },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // 0.00003 ETH rounds to four places as 0.0000, which would read as a free mint.
+  await expect(screen.getByText('<0.0001 ETH').first()).toBeVisible()
+  await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
+})
+
 test('a Scatter price follows the next stage when none is selected', async ({
   app,
   browser,
