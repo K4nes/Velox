@@ -19,6 +19,11 @@ Identify actionable defects introduced by the current changeset.
 6. Performance issues with a concrete impact
 7. Missing or inadequate tests for changed behavior
 
+An upstream client counts as changed behaviour: a new or edited request path under
+`src/lib/<provider>/` ships a recorded response in `tests/contract/` (written by
+`node scripts/contract-record.mjs`) or a live-lane case for that path. The mocked lane
+answers whatever path the client was written against, so a wrong one stays green in both.
+
 ## Finding Requirements
 Every finding must:
 - Identify a specific defect, not merely a possible improvement.

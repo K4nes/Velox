@@ -17,7 +17,9 @@ import type { ScatterCollection, ScatterMintList } from '@/lib/scatter/index'
 export const SCATTER_DROP_TYPE = 'scatter_v1'
 
 // Scatter deploys to more chains than Velox signs for. The name is what the refusal
-// says, so an operator knows which chain to move away from.
+// says, so an operator knows which chain to move away from. The provider's table is
+// https://docs.scatter.art/api/chain-ids; src/config/chains.ts lists only the chains
+// Velox signs for, so it cannot answer for the rest.
 const SCATTER_CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum',
   137: 'Polygon',
