@@ -511,10 +511,12 @@ export const SCATTER_OPEN_END = '2106-02-07T06:28:15.000Z'
 export const SCATTER_NO_LIMIT = 4294967295
 export const SCATTER_CONTRACT = '0x2222222222222222222222222222222222222222'
 
-/** One mint list as the Scatter API states it; defaults are a live, capped list. */
+/** One mint list as the Scatter API states it; defaults are a live, capped public list. */
 export type ScatterList = {
   id: string
   name: string
+  /** Granted to named minters only, so a bare read never returns it. */
+  private?: boolean
   price?: string
   currencySymbol?: string
   currencyAddress?: string
@@ -529,14 +531,15 @@ export type ScatterList = {
 /** What the mocked Scatter API saw, in arrival order. */
 export type ScatterCalls = {
   collections: string[]
-  lists: { slug: string; minter: string | null }[]
+  lists: { slug: string; minter: string | null; at: number }[]
   mints: number
 }
 
 /**
- * Answers Scatter's collection and eligible-invite-lists endpoints in memory. With
- * `eligible`, a wallet's list read returns only the ids that function names, which is
- * how the API narrows lists per minter. A bare collection read returns every list.
+ * Answers Scatter's collection and eligible-invite-lists endpoints in memory. A bare
+ * read returns the public lists only, which is the live contract; a minter read adds
+ * the private lists `eligible` names for that address. `failMinters` fails one
+ * address's read, so a test can prove the failure stays on its own row.
  */
 export async function mockScatterNetwork(options: {
   browser: Browser
@@ -544,10 +547,26 @@ export async function mockScatterNetwork(options: {
   chainId?: number
   lists: ScatterList[]
   eligible?: (minter: string | null) => string[]
+  failMinters?: string[]
 }): Promise<ScatterCalls> {
   const calls: ScatterCalls = { collections: [], lists: [], mints: 0 }
   const { lists } = options
+  const publicLists = lists.filter((list) => list.private !== true)
   const now = Date.now()
+
+  function visibleLists(minter: string | null): ScatterList[] {
+    if (minter === null) return publicLists
+    const granted = new Set(options.eligible?.(minter) ?? [])
+    return lists.filter((list) => list.private !== true || granted.has(list.id))
+  }
+
+  function refused(minter: string | null): boolean {
+    if (minter === null) return false
+    const address = minter.toLowerCase()
+    return (options.failMinters ?? []).some(
+      (failed) => failed.toLowerCase() === address,
+    )
+  }
 
   function body(list: ScatterList) {
     return {
@@ -574,13 +593,18 @@ export async function mockScatterNetwork(options: {
       const url = new URL(route.request.url)
       const slug = decodeURIComponent(url.pathname.split('/').at(-2) ?? '')
       const minter = url.searchParams.get('minterAddress')
-      calls.lists.push({ slug, minter })
-      const ids = new Set(
-        options.eligible ? options.eligible(minter) : lists.map((list) => list.id),
-      )
+      // Recorded before the failure branch, so a refused read still proves it happened.
+      calls.lists.push({ slug, minter, at: Date.now() })
+      if (refused(minter)) {
+        await route.fulfill({
+          status: 500,
+          json: { error: 'Scatter list read failed' },
+        })
+        return
+      }
       await route.fulfill({
         status: 200,
-        json: lists.filter((list) => ids.has(list.id)).map(body),
+        json: visibleLists(minter).map(body),
       })
     },
   )

@@ -42,6 +42,7 @@ export type Seed = {
   wallets?: WalletRow[]
   connections?: Record<string, unknown>[]
   pnlRecords?: SeedPnlRecord[]
+  snapshots?: unknown[]
 }
 
 type Evaluator = {
@@ -74,6 +75,7 @@ export async function seedVelox(page: Evaluator, seed: Seed): Promise<void> {
     if (data.wallets !== undefined) await write('wallets', data.wallets)
     if (data.connections !== undefined) await write('connections', data.connections)
     if (data.pnlRecords !== undefined) await write('pnl-records', data.pnlRecords)
+    if (data.snapshots !== undefined) await write('snapshots', data.snapshots)
 
     db.close()
   }, seed)
