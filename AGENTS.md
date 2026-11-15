@@ -90,7 +90,7 @@ was written against, so a wrong upstream path stays green in both.
 | Path | Holds |
 | --- | --- |
 | `src/config/routes.tsx` | The route table: `path`, `title`, icon and element per route. `src/router.tsx` builds the data router from it. |
-| `src/pages/` | Route components; the path mirrors the URL. Feature components colocate in `src/pages/<feature>/`. |
+| `src/pages/` | Route components; the path mirrors the URL. `<page>.tsx` is the route entry and its parts live in `src/pages/<page>/`, so a search for the page name returns both — open the entry first. |
 | `src/components/ui/` | Vendored shadcn + Animate UI primitives. |
 | `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`, `app-context-menu`. |
 | `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `body-message`, `summary-row`, `run-status-cell`, `tx-hash-link`, `token-image`), plus the `dither-kit/` chart primitives, `lightswind/` toggle and `theme/` provider. |
