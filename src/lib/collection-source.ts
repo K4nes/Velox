@@ -1,11 +1,15 @@
 import { slugFromUrl } from '@/lib/opensea/index'
 
+export const SCATTER_READ_REFUSAL =
+  'Scatter is mint-only in Velox — mint it from the Mint page.'
+
 // The provider axis is a registry, not a two-member union. A third source adds one
 // entry here and one entry in each module that maps over `CollectionSource`; no
-// caller signature changes and no caller has to learn its name.
+// caller signature changes and no caller has to learn its name. `readRefusal` is
+// what a holdings reader says instead of asking the provider.
 const collectionSources = {
-  opensea: { marketplace: 'OpenSea' },
-  scatter: { marketplace: 'Scatter' },
+  opensea: { marketplace: 'OpenSea', readRefusal: null },
+  scatter: { marketplace: 'Scatter', readRefusal: SCATTER_READ_REFUSAL },
 } as const
 
 export type CollectionSource = keyof typeof collectionSources
@@ -29,6 +33,11 @@ export function isCollectionSource(value: unknown): value is CollectionSource {
 // absent or unknown value routes there; the old marketplace label is not evidence.
 export function storedDropSource(stored: { source?: unknown }): CollectionSource {
   return isCollectionSource(stored.source) ? stored.source : 'opensea'
+}
+
+// Resolved first, so a reader never parses the URL a second time to decide.
+export function readRefusalFor(collection: ResolvedCollection): string | null {
+  return collectionSources[collection.source].readRefusal
 }
 
 // The one detector every caller routes and labels a collection with. The host decides

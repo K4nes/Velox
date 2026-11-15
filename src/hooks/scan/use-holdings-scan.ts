@@ -6,9 +6,10 @@ import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import { scanFailureMessage } from '@/lib/opensea/failure-message'
 import { failureLine } from '@/lib/core/run-engine'
-import { getCollection, slugFromUrl } from '@/lib/opensea/index'
+import { getCollection } from '@/lib/opensea/index'
 import type { CollectionInfo } from '@/lib/opensea/index'
-import { resolveScanTarget } from '@/lib/inventory/scan-target'
+import { resolveReadTarget } from '@/lib/inventory/scan-target'
+import { resolveCollectionSource } from '@/lib/collection-source'
 import { EMPTY_HOLDINGS } from '@/lib/inventory/holdings-fields'
 import type { HoldingsFields } from '@/lib/inventory/holdings-fields'
 
@@ -37,7 +38,7 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
     const { url, walletIds } = scoped.get()
 
     try {
-      const target = await resolveScanTarget(url, walletIds)
+      const target = await resolveReadTarget(url, walletIds)
       if (!run.live()) return
       if (target.status === 'failed') {
         scoped.set({ state: { status: 'failed', message: target.message } })
@@ -117,7 +118,7 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
     running: scanning,
     canScan:
       !scanning &&
-      slugFromUrl(fields.url) !== null &&
+      resolveCollectionSource(fields.url) !== null &&
       fields.walletIds.length > 0,
     collection: fields.state.status === 'ready' ? fields.state.collection : null,
     changeUrl,

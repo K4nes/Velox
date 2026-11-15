@@ -1,4 +1,4 @@
-import { resolveCollectionSource } from '@/lib/collection-source'
+import { readRefusalFor, resolveCollectionSource } from '@/lib/collection-source'
 import type { CollectionSource } from '@/lib/collection-source'
 import { toMessage } from '@/lib/core/message'
 import { listWallets } from '@/lib/wallet/wallets'
@@ -45,4 +45,24 @@ export async function resolveScanTarget(
     source: collection.source,
     wallets,
   }
+}
+
+// The entry point the read-only pages call. The refusal is decided before the
+// wallet read, so a collection this page cannot serve answers the same way
+// whatever is selected. Mint Eligibility keeps calling the preamble above.
+export async function resolveReadTarget(
+  url: string,
+  selectedIds: readonly string[]
+): Promise<ScanTarget> {
+  const collection = resolveCollectionSource(url)
+  if (collection === null) {
+    return { status: 'failed', message: 'Collection URL not recognised' }
+  }
+
+  const refusal = readRefusalFor(collection)
+  if (refusal !== null) {
+    return { status: 'failed', message: refusal }
+  }
+
+  return resolveScanTarget(url, selectedIds)
 }
