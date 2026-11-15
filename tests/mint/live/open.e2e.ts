@@ -12,7 +12,8 @@ import {
 } from '../../support/mint'
 
 const ready = Boolean(
-  process.env.E2E_DROP_SLUG &&
+  process.env.E2E_ALLOW_MINT === '1' &&
+    process.env.E2E_DROP_SLUG &&
     process.env.E2E_WALLET_KEY &&
     process.env.E2E_WALLET_LABEL &&
     process.env.E2E_WALLET_FOLDER &&
@@ -25,7 +26,7 @@ test(
   {
     skip: ready
       ? false
-      : 'set E2E_DROP_SLUG, E2E_WALLET_KEY, E2E_WALLET_LABEL, E2E_WALLET_FOLDER, E2E_RH_RPC_URL and E2E_OPEN_SEA_KEY',
+      : 'set E2E_ALLOW_MINT=1 plus E2E_DROP_SLUG, E2E_WALLET_KEY, E2E_WALLET_LABEL, E2E_WALLET_FOLDER, E2E_RH_RPC_URL and E2E_OPEN_SEA_KEY; this case spends gas',
   },
   async ({ app, browser, screen }) => {
     const slug = requireEnv('E2E_DROP_SLUG')

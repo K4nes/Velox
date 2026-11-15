@@ -38,7 +38,7 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
 | `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Loads `.env.e2e.local` and fails before the browser when a required value is missing, so a skipped lane cannot read as green. |
-| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file; a case that needs a value still skips, and `scatter.e2e.ts` runs without one. |
+| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file. The two minting cases run only with `E2E_ALLOW_MINT=1`, because they spend gas; `scatter.e2e.ts` reads and needs no value. |
 | `npm run verify` | `build`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
