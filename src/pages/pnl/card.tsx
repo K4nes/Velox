@@ -15,7 +15,8 @@ import { exportCard as saveCard } from '@/lib/card/card-export'
 import { persistImages, readImageFile } from '@/lib/card/card-images'
 import { quoteFailureMessage } from '@/lib/chain/price'
 import { toMessage } from '@/lib/core/message'
-import { getCollection, slugFromUrl } from '@/lib/opensea/index'
+import { getCollection } from '@/lib/opensea/index'
+import { readRefusalFor, resolveCollectionSource } from '@/lib/collection-source'
 import { backfillQuote, upsertPnlRecord } from '@/lib/pnl/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
@@ -257,9 +258,14 @@ export function PnlCardPage() {
     active === null ? DEFAULT_POSITION : (positions[active.id] ?? DEFAULT_POSITION)
 
   async function check() {
-    const slug = slugFromUrl(collectionUrl)
-    if (slug === null) {
+    const source = resolveCollectionSource(collectionUrl)
+    if (source === null) {
       toast.error('Collection URL not recognised')
+      return
+    }
+    const refusal = readRefusalFor(source)
+    if (refusal !== null) {
+      toast.error(refusal)
       return
     }
     if (walletIds.length === 0) {
@@ -273,7 +279,7 @@ export function PnlCardPage() {
 
     setRunning(true)
     try {
-      const info = await getCollection(slug)
+      const info = await getCollection(source.slug)
       pnlCard.setCollection(info)
       void pnlCard.loadQuote()
       const chainEntry = chainBySlug(info.chain)
@@ -353,13 +359,13 @@ export function PnlCardPage() {
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug (OpenSea / Scatter)
+            Collection URL or slug (OpenSea)
           </label>
           <Input
             id="collection-url"
             value={collectionUrl}
             onChange={(event) => pnlCard.setCollectionUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+            placeholder="https://opensea.io/collection/… or a contract address"
           />
         </div>
         <div
