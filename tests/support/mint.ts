@@ -164,8 +164,11 @@ export async function mockMintNetwork(options: {
   slug: string
   wallets: { address: string; calldataDelayMs?: number; sendDelayMs?: number }[]
   receiptDelayMs?: number
+  /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
+  maxPerWallet?: string
 }): Promise<{ events: MintEvent[] }> {
   const { browser, slug, receiptDelayMs = 0 } = options
+  const maxPerWallet = options.maxPerWallet ?? '1'
   const events: MintEvent[] = []
   const delayByAddress = new Map(
     options.wallets.map((wallet) => [
@@ -185,7 +188,7 @@ export async function mockMintNetwork(options: {
     stage_type: 'public',
     label: 'Public',
     price: '0',
-    max_per_wallet: '1',
+    max_per_wallet: maxPerWallet,
     start_time: new Date(now - 60_000).toISOString(),
     end_time: new Date(now + 3_600_000).toISOString(),
   }
@@ -326,7 +329,7 @@ export async function mockMintNetwork(options: {
           {
             stage_uuid: stage.uuid,
             is_eligible: true,
-            max_total_mintable_by_wallet: '1',
+            max_total_mintable_by_wallet: maxPerWallet,
             price: '0',
           },
         ],

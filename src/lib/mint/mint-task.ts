@@ -36,7 +36,9 @@ export type WalletRun = {
   walletId: string
   label: string
   address: string
-  caps: Record<string, number>
+  // A number is the provider's cap; `null` is a stage the provider states no cap
+  // for, which is still eligible; an absent entry is a stage the check did not report.
+  caps: Record<string, number | null>
   status: RunStatus
   txHash?: string
   // The chain the hash was broadcast on. A re-check can drop the detected drop, so
@@ -117,19 +119,16 @@ export function reachedChain(row: WalletRun): boolean {
   return row.mintedStages.length > 0
 }
 
-// A provider can answer with a cap no operator typed: Scatter reports 0xffffffff to
-// mean "no stated limit". Anything above this is read as no cap at all, so a sentinel
-// never reaches the input as a nine-digit number.
-const STATED_CAP_LIMIT = 1000
-
-// The row cap a provider that states no limit earns. It is large enough to pass the
-// mintable check and finite enough to stay out of any arithmetic the ceiling does.
-export const NO_STATED_CAP = Number.MAX_SAFE_INTEGER
-
+// The provider's own number is the cap. Absence, as `''`, NaN or zero, is no cap at
+// all, so a real provider limit is never mistaken for a sentinel.
 function statedCap(value: number): number {
-  return Number.isFinite(value) && value > 0 && value <= STATED_CAP_LIMIT
-    ? value
-    : 0
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+// A stage the provider states no cap for is still eligible. An absent entry does not
+// describe the stage, and zero means the check found the wallet outside the list.
+function capEligible(cap: number | null | undefined): boolean {
+  return cap === null || (cap ?? 0) >= 1
 }
 
 // The quantity ceiling is the provider's number, never a constant here. Two server
@@ -197,8 +196,11 @@ export function weiFromDecimal(value: string): bigint | null {
 export function amountLabel(wei: bigint, stage: DropStage | null): string {
   const decimals = stage?.currency?.decimals ?? 18
   const symbol = stage?.currency?.symbol ?? 'ETH'
+  if (wei === 0n) return `0 ${symbol}`
   const value = Number(formatUnits(wei, decimals))
-  return value === 0 ? `0 ${symbol}` : `${value.toFixed(4)} ${symbol}`
+  // A nonzero amount below the printed precision must not claim the mint is free.
+  if (value === 0) return `<0.0001 ${symbol}`
+  return `${value.toFixed(4)} ${symbol}`
 }
 
 export function countdownLabel(ms: number): string {
@@ -235,10 +237,18 @@ export function createTask(): Task {
 
 export function rowsFromCheck(rows: EligibilityRow[], stageUuid: string): WalletRun[] {
   return rows.map((row) => {
-    const caps: Record<string, number> = {}
+    const caps: Record<string, number | null> = {}
     for (const entry of row.stages) {
       const max = Number.parseInt(entry.maxMintable, 10)
-      caps[entry.stageUuid] = Number.isFinite(max) && max > 0 ? max : 0
+      // An empty string is the provider saying it states no cap. A parsed number is
+      // the cap itself, and a zero or unreadable one means the wallet is outside the
+      // list. The two absences must not collapse into the same value.
+      caps[entry.stageUuid] =
+        entry.maxMintable === ''
+          ? null
+          : Number.isFinite(max) && max > 0
+            ? max
+            : 0
     }
     return {
       walletId: row.walletId,
@@ -249,7 +259,7 @@ export function rowsFromCheck(rows: EligibilityRow[], stageUuid: string): Wallet
         ? 'failed'
         : stageUuid === ''
           ? 'scheduled'
-          : (caps[stageUuid] ?? 0) > 0
+          : capEligible(caps[stageUuid])
             ? 'eligible'
             : 'ineligible',
       error: row.error,
@@ -307,8 +317,12 @@ export function quantityMaxFor(
 ): number {
   const caps = rows
     .filter((row) => wallets.includes(row.walletId) && mintableRow(row, stageUuid))
-    .map((row) => row.caps[stageUuid] ?? 0)
-  return caps.length > 0 ? Math.min(...caps) : 0
+    .map((row) => row.caps[stageUuid])
+  // One wallet with no stated cap leaves nothing to enforce, and zero is how the
+  // ceiling carries "no ceiling". It cannot be the minimum of a mix with real caps.
+  if (caps.includes(null)) return 0
+  const numbers = caps.filter((cap): cap is number => typeof cap === 'number')
+  return numbers.length > 0 ? Math.min(...numbers) : 0
 }
 
 export function mintableRow(row: WalletRun, stageUuid: string): boolean {
@@ -319,7 +333,7 @@ export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   // A mint on another stage says nothing about this one: each stage carries its
   // own cap, so only a landing on this exact stage retires the wallet.
   if (row.mintedStages.includes(stageUuid)) return false
-  return (row.caps[stageUuid] ?? 0) >= 1
+  return capEligible(row.caps[stageUuid])
 }
 
 // A row's check status follows the selected stage; a mint status only speaks for
@@ -332,7 +346,7 @@ export function stageStatusFor(
   const verdict = (): RunStatus =>
     run.mintedStages.includes(stageUuid)
       ? 'failed'
-      : (run.caps[stageUuid] ?? 0) > 0
+      : capEligible(run.caps[stageUuid])
         ? 'eligible'
         : stageNotOpen
           ? 'scheduled'

@@ -3,10 +3,6 @@ import { ScatterError } from '@/lib/scatter/error'
 
 const SCATTER_BASE_URL = 'https://api.scatter.art/v1'
 
-// `0x000…000` is the chain's native currency. A list priced in it carries the chain's
-// symbol; every other list carries its own.
-export const SCATTER_NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
-
 // Scatter reports `0xffffffff` for "no end" and "no limit". Left raw, an end time
 // becomes an expiry a century out and a limit becomes a nine-digit number in the
 // quantity field, so the client normalises both once, here.
@@ -39,6 +35,7 @@ export type ScatterMintList = {
 async function request(path: string): Promise<unknown> {
   const outcome = await httpExchange(`${SCATTER_BASE_URL}${path}`, {
     headers: { accept: 'application/json' },
+    timeoutMs: SCATTER_TIMEOUT_MS,
   })
 
   if (outcome.kind === 'timeout') {

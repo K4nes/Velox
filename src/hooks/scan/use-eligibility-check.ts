@@ -3,6 +3,7 @@ import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import { checkEligibility } from '@/lib/opensea/eligibility'
 import type { EligibilityTableState } from '@/lib/opensea/eligibility'
+import { checkScatterEligibility } from '@/lib/scatter/eligibility'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
 import { marketplaceFor } from '@/lib/collection-source'
 import { buildSnapshotPayload } from '@/lib/mint/snapshots'
@@ -68,7 +69,10 @@ export function useEligibilityCheck(
         return
       }
 
-      const result = await checkEligibility(resolved.slug, resolved.wallets)
+      const result =
+        resolved.source === 'scatter'
+          ? await checkScatterEligibility(resolved.slug, resolved.wallets)
+          : await checkEligibility(resolved.slug, resolved.wallets)
       if (!run.live()) return
       scoped.set({
         checked: buildSnapshotPayload(

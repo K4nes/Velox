@@ -112,6 +112,9 @@ test('a Scatter collection fills the picker and prices each list in its own curr
 
   // The picker defaults to the live list and names it as the list is named.
   await expect(screen.getByLabel('Mint Stage')).toHaveText('Friends Discount')
+  // The no-limit sentinel is not a quantity: the row names the absence.
+  await expect(row.getByRole('cell').nth(2)).toHaveText('No cap')
+  await expect(screen.getByText('9007199254740991')).toHaveCount(0)
   // The no-limit sentinel reads as no cap and never pre-fills the field.
   await expect(screen.getByText('No stated cap')).toBeVisible()
   await expect(screen.getByLabel('Quantity')).toHaveValue('1')
@@ -139,6 +142,93 @@ test('a Scatter collection fills the picker and prices each list in its own curr
   expect(calls.lists).toHaveLength(2)
   expect(calls.lists[0]?.minter).toBeNull()
   expect(calls.lists[1]?.minter?.toLowerCase()).toBe(wallet.address.toLowerCase())
+})
+
+test('a Scatter price follows the next stage when none is selected', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Future')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    lists: [
+      {
+        id: 'future',
+        name: 'Future',
+        price: '0.5',
+        currencySymbol: 'USDC',
+        decimals: 6,
+        startTime: new Date(now + 3_600_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+        walletLimit: 5,
+      },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Scheduled', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // No stage is selected, so the picker shows its placeholder and the price comes
+  // from the next stage. It must still use that stage's currency and decimals.
+  await expect(screen.getByLabel('Mint Stage')).toHaveText('Select a stage')
+  await expect(screen.getByText('0.5000 USDC').first()).toBeVisible()
+  await expect(screen.getByText('0 USDC')).toBeVisible()
+  await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
+})
+
+test('an unnamed Scatter token keeps its decimals instead of reading as ETH', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Unnamed')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    lists: [
+      {
+        id: 'unnamed',
+        name: 'Unnamed Token',
+        price: '0.5',
+        currencySymbol: '',
+        currencyAddress: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+        decimals: 6,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+        walletLimit: 1,
+      },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // A 6-decimal token with no ticker is named by address. Reading its base units as
+  // 18-decimal ETH would show 0.0000 ETH for a 0.5 price.
+  await expect(screen.getByText('0.5000 0x8335…2913')).toHaveCount(2)
+  await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
 })
 
 test('a Scatter token URL resolves the collection rather than the token', async ({

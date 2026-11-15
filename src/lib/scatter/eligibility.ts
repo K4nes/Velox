@@ -1,7 +1,7 @@
 import { toMessage } from '@/lib/core/message'
-import { NO_STATED_CAP } from '@/lib/mint/mint-task'
-import type { EligibilityRow } from '@/lib/opensea/eligibility'
+import type { EligibilityResult, EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo } from '@/lib/opensea/index'
+import { getScatterDrop } from '@/lib/scatter/drop'
 import { getScatterMintLists } from '@/lib/scatter/index'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
@@ -41,10 +41,14 @@ export async function checkScatterLists(
           stageUuid: stage.uuid,
           label: stage.label || '—',
           eligible: list !== undefined,
+          // Empty means the list states no cap; the run keeps that apart from a
+          // zero cap, which means the wallet is outside the list.
           maxMintable:
             list === undefined
               ? '0'
-              : String(list.walletLimit ?? NO_STATED_CAP),
+              : list.walletLimit === null
+                ? ''
+                : String(list.walletLimit),
           priceWei: stage.priceWei,
         }
       })
@@ -66,4 +70,14 @@ export async function checkScatterLists(
   }
 
   return rows
+}
+
+// The eligibility page checks a collection the same way the mint task does, so a
+// Scatter URL gets Scatter rows instead of an OpenSea 404.
+export async function checkScatterEligibility(
+  slug: string,
+  wallets: StoredWallet[]
+): Promise<EligibilityResult> {
+  const drop = await getScatterDrop(slug)
+  return { drop, imageUrl: '', rows: await checkScatterLists(drop, wallets) }
 }

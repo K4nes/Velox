@@ -2,6 +2,7 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { mintWallets, openseaConnection, walletFolder } from '../support/data'
 import { dropFixture } from '../support/fixtures/drop'
+import { mockScatterNetwork } from '../support/mint'
 import {
   guardOpenSeaHost,
   mockAuth,
@@ -221,4 +222,54 @@ test('page state survives a round trip while the check is running', async ({
   await expect(
     screen.getByRole('row').filter({ hasText: wallet.address }),
   ).toContainText('Eligible')
+})
+
+test('a Scatter URL produces Scatter rows instead of an OpenSea read', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Eligibility Scatter')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: 'scatter-eligibility',
+    lists: [
+      {
+        id: 'friends',
+        name: 'Friends Discount',
+        currencySymbol: 'USDC',
+        decimals: 6,
+      },
+    ],
+  })
+
+  await app.open('/mint/eligibility')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [openseaConnection('deterministic-key')],
+  })
+  await app.open('/mint/eligibility')
+
+  await screen
+    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
+    .fill('https://scatter.art/c/scatter-eligibility')
+  await screen.getByRole('button', { name: /Select wallets/ }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
+  await browser.keyboard.press('Escape')
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  // The label comes from the source that answered, not from the OpenSea reader.
+  await expect(screen.getByText('Scatter', { exact: true })).toBeVisible()
+
+  expect(calls.collections).toEqual(['scatter-eligibility'])
 })

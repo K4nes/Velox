@@ -1,5 +1,5 @@
-// The client's error type lives on its own, with no imports, so a module that only needs
-// to read a status does not pull in the API client and its transport.
+// The client's error type, with the status and code a caller may name. It has no
+// imports, so a module that only needs to throw it stays off the API client.
 
 export class ScatterError extends Error {
   readonly status: number
@@ -11,10 +11,4 @@ export class ScatterError extends Error {
     this.status = status
     this.code = code
   }
-}
-
-// Callers branch on the answer, not on the exception type. 404 is a missing collection
-// or list, 422 a collection Velox cannot sign for, 504 the request's deadline.
-export function scatterStatus(error: unknown): number | null {
-  return error instanceof ScatterError ? error.status : null
 }

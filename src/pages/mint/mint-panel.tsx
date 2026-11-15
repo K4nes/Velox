@@ -68,6 +68,7 @@ export function MintPanel({
     canStartMint,
     stagePriceWei,
     totalWei,
+    mintStage,
   } = view
 
   return (
@@ -248,7 +249,7 @@ export function MintPanel({
             <span>NFT Price</span>
             <span className="text-muted-foreground tabular-nums">
               {stagePriceWei !== null
-                ? amountLabel(stagePriceWei, selectedStage)
+                ? amountLabel(stagePriceWei, mintStage)
                 : '—'}
             </span>
           </div>
@@ -256,8 +257,8 @@ export function MintPanel({
             <span>Cost</span>
             <span className="text-success tabular-nums">
               {totalWei !== null
-                ? amountLabel(totalWei, selectedStage)
-                : `0 ${selectedStage?.currency?.symbol ?? 'ETH'}`}
+                ? amountLabel(totalWei, mintStage)
+                : `0 ${mintStage?.currency?.symbol ?? 'ETH'}`}
             </span>
           </div>
         </div>

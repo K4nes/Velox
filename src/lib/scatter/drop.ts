@@ -6,10 +6,10 @@ import { byStageStart } from '@/lib/opensea/index'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
 import { ScatterError } from '@/lib/scatter/error'
 import {
-  SCATTER_NATIVE_CURRENCY,
   getScatterCollection,
   getScatterMintLists,
 } from '@/lib/scatter/index'
+import { stageCurrency, stageUnitSize } from '@/lib/scatter/stage-fields'
 import type { ScatterCollection, ScatterMintList } from '@/lib/scatter/index'
 
 // Scatter's own marker on the drop shape. OpenSea's SeaDrop restriction reads this
@@ -109,12 +109,8 @@ function stageFromList(list: ScatterMintList, chain: ChainEntry): DropStage {
     )
   }
 
-  const symbol =
-    list.currencySymbol !== ''
-      ? list.currencySymbol
-      : list.currencyAddress === SCATTER_NATIVE_CURRENCY
-        ? chain.currency.symbol
-        : ''
+  const currency = stageCurrency(list, chain.currency.symbol)
+  const unitSize = stageUnitSize(list.unitSize)
 
   return {
     uuid: list.id,
@@ -127,9 +123,7 @@ function stageFromList(list: ScatterMintList, chain: ChainEntry): DropStage {
     startTime: list.startTime,
     // Empty means no end; nothing downstream renders or compares a date.
     endTime: list.endTime,
-    ...(list.unitSize > 1 ? { unitSize: list.unitSize } : {}),
-    ...(symbol !== ''
-      ? { currency: { symbol, decimals: list.decimals } }
-      : {}),
+    ...(unitSize !== undefined ? { unitSize } : {}),
+    currency,
   }
 }

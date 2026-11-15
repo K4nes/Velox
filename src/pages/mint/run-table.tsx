@@ -57,7 +57,9 @@ export function RunTable({ runs, stageUuid, statusOf }: RunTableProps) {
                       {run.address}
                     </TableCell>
                     <TableCell className="px-3 text-[13px] tabular-nums">
-                      {run.caps[stageUuid] ?? 0}
+                      {run.caps[stageUuid] === null
+                        ? 'No cap'
+                        : (run.caps[stageUuid] ?? 0)}
                     </TableCell>
                     <TableCell className="px-3 text-xs">
                       <span className={cn('font-medium', RUN_TONE[rowStatus])}>
