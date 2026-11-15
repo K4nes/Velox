@@ -31,7 +31,7 @@ export type MintReadiness = {
 }
 
 export async function mintForWallet(input: {
-  slug: string
+  drop: DropInfo
   wallet: StoredWallet
   quantity: number
   gas: TxGas
@@ -41,7 +41,7 @@ export async function mintForWallet(input: {
   const transaction =
     input.transaction ??
     (await buildMintTransactionFor(
-      input.slug,
+      input.drop,
       input.wallet.address,
       input.quantity
     ))
@@ -113,7 +113,7 @@ export async function mintReadiness(input: {
       if (cached) return cached
       try {
         const transaction = await buildMintTransactionFor(
-          drop.slug,
+          drop,
           row.address,
           quantity
         )
@@ -174,7 +174,7 @@ export async function prepareMintEntries(input: {
     if (!input.isCurrent()) return null
 
     try {
-      await warmMintAuth(wallet)
+      await warmMintAuth(input.drop.source, wallet)
     } catch {
       // The check retries a sign-in; a failed warm must not fail prepare.
     }
@@ -183,7 +183,7 @@ export async function prepareMintEntries(input: {
       // A closed stage rejects the pre-open build. This stays best-effort; the
       // open-time path builds the same calldata when it does not.
       const transaction = await buildMintTransactionFor(
-        input.drop.slug,
+        input.drop,
         wallet.address,
         input.quantity
       )

@@ -3,8 +3,10 @@ import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import { checkEligibility } from '@/lib/opensea/eligibility'
 import type { EligibilityTableState } from '@/lib/opensea/eligibility'
+import { checkScatterEligibility } from '@/lib/scatter/eligibility'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
-import { buildSnapshotPayload, marketplaceFromSource } from '@/lib/mint/snapshots'
+import { marketplaceFor } from '@/lib/collection-source'
+import { buildSnapshotPayload } from '@/lib/mint/snapshots'
 import { createMintEligibilityState } from '@/pages/mint/state'
 import type { MintEligibilityState } from '@/pages/mint/state'
 
@@ -52,7 +54,6 @@ export function useEligibilityCheck(
 
     // Read off the raw input before the first await, so the saved payload
     // describes the URL that produced it.
-    const marketplace = marketplaceFromSource(scoped.get().url)
     const target = scoped.get()
     scoped.set({ checked: null })
     onResetSaveError()
@@ -68,9 +69,18 @@ export function useEligibilityCheck(
         return
       }
 
-      const result = await checkEligibility(resolved.slug, resolved.wallets)
+      const result =
+        resolved.source === 'scatter'
+          ? await checkScatterEligibility(resolved.slug, resolved.wallets)
+          : await checkEligibility(resolved.slug, resolved.wallets)
       if (!run.live()) return
-      scoped.set({ checked: buildSnapshotPayload(result, resolved.slug, marketplace) })
+      scoped.set({
+        checked: buildSnapshotPayload(
+          result,
+          resolved.slug,
+          marketplaceFor(resolved.source)
+        ),
+      })
     } catch (failure) {
       if (!run.live()) return
       scoped.set({ error: toMessage(failure) })

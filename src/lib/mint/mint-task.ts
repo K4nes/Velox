@@ -1,4 +1,3 @@
-import { formatEther } from 'viem'
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
 
@@ -28,12 +27,17 @@ export type RunStatus =
   | 'broadcast'
   | 'confirmed'
   | 'failed'
+  // The provider refused something the operator must fix in the task, such as a list
+  // priced in an ERC-20. Distinct from `failed`, which is a request that errored.
+  | 'blocked'
 
 export type WalletRun = {
   walletId: string
   label: string
   address: string
-  caps: Record<string, number>
+  // A number is the provider's cap; `null` is a stage the provider states no cap
+  // for, which is still eligible; an absent entry is a stage the check did not report.
+  caps: Record<string, number | null>
   status: RunStatus
   txHash?: string
   // The chain the hash was broadcast on. A re-check can drop the detected drop, so
@@ -63,6 +67,7 @@ export const RUN_LABEL: Record<RunStatus, string> = {
   broadcast: 'Broadcast',
   confirmed: 'Confirmed',
   failed: 'Failed',
+  blocked: 'Blocked',
 }
 
 export const RUN_TONE: Record<RunStatus, string> = {
@@ -74,6 +79,7 @@ export const RUN_TONE: Record<RunStatus, string> = {
   broadcast: 'text-muted-foreground',
   confirmed: 'text-success',
   failed: 'text-destructive',
+  blocked: 'text-warning',
 }
 
 export type Task = {
@@ -112,23 +118,34 @@ export function reachedChain(row: WalletRun): boolean {
   return row.mintedStages.length > 0
 }
 
-// The quantity ceiling is OpenSea's number, never a constant here. Two server
-// fields carry it: `max_per_wallet` on the stage, which exists before the stage
-// opens, and `max_total_mintable_by_wallet` from the eligibility check, which is
-// the tighter of the two once the stage is live. Zero means the server has not
-// answered yet, so the input carries no max at all.
+// The provider's own number is the cap. Absence, as `''`, NaN or zero, is no cap at
+// all, so a real provider limit is never mistaken for a sentinel.
+function statedCap(value: number): number {
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+// A stage the provider states no cap for is still eligible. An absent entry does not
+// describe the stage, and zero means the check found the wallet outside the list.
+function capEligible(cap: number | null | undefined): boolean {
+  return cap === null || (cap ?? 0) >= 1
+}
+
+// The quantity ceiling is the provider's number, never a constant here. Two server
+// fields carry it: the stage's per-wallet cap, which exists before the stage opens,
+// and the cap from the eligibility check, which is the tighter of the two once the
+// stage is live. Zero means no stated ceiling, so the input carries no max at all.
 export function quantityCeiling(walletMax: number, stage: DropStage | null): number {
   const perWallet = Number.parseInt(stage?.maxPerWallet ?? '', 10)
-  const bounds = [walletMax, perWallet].filter(
-    (value) => Number.isFinite(value) && value > 0
-  )
+  const bounds = [walletMax, perWallet].map(statedCap).filter((value) => value > 0)
   return bounds.length > 0 ? Math.min(...bounds) : 0
 }
 
 export function initialQuantity(walletMax: number, stage: DropStage | null): string {
-  return walletMax >= 1
-    ? String(Math.min(walletMax, quantityCeiling(walletMax, stage)))
-    : '1'
+  // Zero means the check found no cap; the stage's own number still bounds the input,
+  // and the old prefill of 1 stands when neither does.
+  if (!(walletMax >= 1)) return '1'
+  const ceiling = quantityCeiling(walletMax, stage)
+  return ceiling > 0 ? String(ceiling) : '1'
 }
 
 export const placeholderTask: Task = {
@@ -173,11 +190,6 @@ export function weiFromDecimal(value: string): bigint | null {
   }
 }
 
-export function ethLabel(wei: bigint): string {
-  const value = Number(formatEther(wei))
-  return value === 0 ? '0 ETH' : `${value.toFixed(4)} ETH`
-}
-
 export function countdownLabel(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000))
   const hours = Math.floor(total / 3600)
@@ -212,10 +224,18 @@ export function createTask(): Task {
 
 export function rowsFromCheck(rows: EligibilityRow[], stageUuid: string): WalletRun[] {
   return rows.map((row) => {
-    const caps: Record<string, number> = {}
+    const caps: Record<string, number | null> = {}
     for (const entry of row.stages) {
       const max = Number.parseInt(entry.maxMintable, 10)
-      caps[entry.stageUuid] = Number.isFinite(max) && max > 0 ? max : 0
+      // An empty string is the provider saying it states no cap. A parsed number is
+      // the cap itself, and a zero or unreadable one means the wallet is outside the
+      // list. The two absences must not collapse into the same value.
+      caps[entry.stageUuid] =
+        entry.maxMintable === ''
+          ? null
+          : Number.isFinite(max) && max > 0
+            ? max
+            : 0
     }
     return {
       walletId: row.walletId,
@@ -226,7 +246,7 @@ export function rowsFromCheck(rows: EligibilityRow[], stageUuid: string): Wallet
         ? 'failed'
         : stageUuid === ''
           ? 'scheduled'
-          : (caps[stageUuid] ?? 0) > 0
+          : capEligible(caps[stageUuid])
             ? 'eligible'
             : 'ineligible',
       error: row.error,
@@ -284,16 +304,23 @@ export function quantityMaxFor(
 ): number {
   const caps = rows
     .filter((row) => wallets.includes(row.walletId) && mintableRow(row, stageUuid))
-    .map((row) => row.caps[stageUuid] ?? 0)
-  return caps.length > 0 ? Math.min(...caps) : 0
+    .map((row) => row.caps[stageUuid])
+  // One wallet with no stated cap leaves nothing to enforce, and zero is how the
+  // ceiling carries "no ceiling". It cannot be the minimum of a mix with real caps.
+  if (caps.includes(null)) return 0
+  const numbers = caps.filter((cap): cap is number => typeof cap === 'number')
+  return numbers.length > 0 ? Math.min(...numbers) : 0
 }
 
 export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   if (row.checkFailed) return false
+  // A blocked row's fix is in the task, not in the wallet. It must never reach a
+  // batch, and a stale rows map must not leak one in.
+  if (row.status === 'blocked') return false
   // A mint on another stage says nothing about this one: each stage carries its
   // own cap, so only a landing on this exact stage retires the wallet.
   if (row.mintedStages.includes(stageUuid)) return false
-  return (row.caps[stageUuid] ?? 0) >= 1
+  return capEligible(row.caps[stageUuid])
 }
 
 // A row's check status follows the selected stage; a mint status only speaks for
@@ -306,7 +333,7 @@ export function stageStatusFor(
   const verdict = (): RunStatus =>
     run.mintedStages.includes(stageUuid)
       ? 'failed'
-      : (run.caps[stageUuid] ?? 0) > 0
+      : capEligible(run.caps[stageUuid])
         ? 'eligible'
         : stageNotOpen
           ? 'scheduled'
@@ -319,6 +346,23 @@ export function stageStatusFor(
     return run.status
   }
   return verdict()
+}
+
+// This issue loads Scatter lists but does not build Scatter mints. The refusal names
+// the missing step instead of leaving a disabled button without a reason.
+export const SCATTER_MINT_REFUSAL =
+  'Scatter minting is not available yet. This build can load Scatter lists but cannot build a Scatter mint transaction.'
+
+// A task that cannot start says why: a provider that cannot build its mint, or a
+// wallet the provider blocked, whose fix is in the task rather than in the wallet.
+export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
+  if (task.drop?.source === 'scatter') return SCATTER_MINT_REFUSAL
+
+  const blocked = rows.filter(
+    (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'
+  )
+  if (blocked.length === 0) return null
+  return `${blocked.length} selected wallet${blocked.length === 1 ? ' is' : 's are'} blocked. Clear the block before starting.`
 }
 
 export type TaskView = {
@@ -334,8 +378,10 @@ export type TaskView = {
   mintWalletCount: number
   readyWalletCount: number
   quantityLimit: number
+  quantityHint: string | null
   mintQuantity: number
   quantityReady: boolean
+  startRefusal: string | null
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
@@ -386,16 +432,26 @@ export function taskView(input: {
   const quantityLimit = selectedStage
     ? quantityCeiling(task.quantityMax, selectedStage)
     : 0
+  const quantityHint =
+    selectedStage === null
+      ? null
+      : task.drop?.source === 'scatter' && selectedStage.maxPerWallet === ''
+        ? 'No stated cap'
+        : quantityLimit > 0
+          ? `Max ${quantityLimit} per wallet`
+          : null
   const mintQuantity = Number.parseInt(task.quantity, 10)
   const quantityReady = Number.isInteger(mintQuantity) && mintQuantity >= 1
   const isMintingThisTask = input.runningIds.includes(task.id)
 
+  const startRefusal = startRefusalFor(task, activeRuns)
   const canStartMint =
     !locked &&
     task.checked &&
     task.drop !== null &&
     selectedStage !== null &&
     task.arm === null &&
+    startRefusal === null &&
     !stageClosed &&
     (isLiveStage || Number.isFinite(stageStartMs)) &&
     quantityReady &&
@@ -424,8 +480,10 @@ export function taskView(input: {
     mintWalletCount,
     readyWalletCount,
     quantityLimit,
+    quantityHint,
     mintQuantity,
     quantityReady,
+    startRefusal,
     canStartMint,
     mintStage,
     stagePriceWei,

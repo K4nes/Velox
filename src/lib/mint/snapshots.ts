@@ -1,10 +1,9 @@
 import { chainBySlug } from '@/config/chains'
 import { getAll, put, remove } from '@/lib/db/db'
+import type { Marketplace } from '@/lib/collection-source'
 import { buildStageColumns } from '@/lib/opensea/eligibility'
 import type { EligibilityResult, EligibilityRow, StageColumn } from '@/lib/opensea/eligibility'
 import type { DropInfo } from '@/lib/opensea/index'
-
-export type Marketplace = 'OpenSea' | 'Scatter'
 
 export type EligibilitySnapshotPayload = {
   slug: string
@@ -25,10 +24,6 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
 })
-
-export function marketplaceFromSource(raw: string): Marketplace {
-  return /scatter\.art/i.test(raw) ? 'Scatter' : 'OpenSea'
-}
 
 export function buildSnapshotPayload(
   result: EligibilityResult,

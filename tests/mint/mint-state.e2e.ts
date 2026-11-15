@@ -122,6 +122,43 @@ test('the mint task survives a round trip while the check is running', async ({
   await expect(screen.getByLabel('Max Fee (Gwei)')).toHaveValue('1')
 })
 
+test('a stated OpenSea cap above 1000 stays a cap', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Mint Cap')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  await mockMintNetwork({
+    browser,
+    slug: SLUG,
+    wallets: [{ address: wallet.address }],
+    maxPerWallet: '1001',
+  })
+  await seedMintPage(app, browser, folder, wallet)
+
+  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
+  await screen.getByRole('button', { name: /Select wallets/ }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
+  await browser.keyboard.press('Escape')
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // A real provider number is the cap: the input keeps it, the hint names it, and
+  // the prefill starts there.
+  await expect(screen.getByLabel('Quantity')).toHaveAttribute('max', '1001')
+  await expect(screen.getByLabel('Quantity')).toHaveValue('1001')
+  await expect(screen.getByText('Max 1001 per wallet')).toBeVisible()
+})
+
 test('a mint run blocks another batch flow and keeps reporting across pages', async ({
   app,
   browser,

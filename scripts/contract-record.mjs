@@ -7,16 +7,21 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const OUT_DIR = join(ROOT, 'tests', 'contract')
-const OPEN_SEA_BASE_URL = 'https://api.opensea.io/api/v2'
 // Cloudflare answers 403 `error 1010` to a client it does not read as a browser.
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
+// `auth` names the env var holding the key; a public endpoint names none.
 const FAMILIES = {
-  collectionListings: (slug) => ({
-    path: `/listings/collection/${encodeURIComponent(slug)}/all`,
-    query: 'limit=2',
-  }),
+  collectionListings: {
+    base: 'https://api.opensea.io/api/v2',
+    auth: 'E2E_OPEN_SEA_KEY',
+    path: (slug) => `/listings/collection/${encodeURIComponent(slug)}/all?limit=2`,
+  },
+  scatterLists: {
+    base: 'https://api.scatter.art/v1',
+    path: (slug) => `/collection/${encodeURIComponent(slug)}/eligible-invite-lists`,
+  },
 }
 
 function fail(message) {
@@ -48,21 +53,19 @@ if (existsSync(envFile)) {
   process.loadEnvFile(envFile)
 }
 
-const apiKey = process.env.E2E_OPEN_SEA_KEY
-if (apiKey === undefined || apiKey === '') {
-  fail('Missing E2E_OPEN_SEA_KEY; put it in .env.e2e.local at the repo root')
+const { base, auth, path } = target
+const url = `${base}${path(slug)}`
+
+const headers = { 'user-agent': USER_AGENT, accept: 'application/json' }
+if (auth !== undefined) {
+  const key = process.env[auth]
+  if (key === undefined || key === '') {
+    fail(`Missing ${auth}; put it in .env.e2e.local at the repo root`)
+  }
+  headers['x-api-key'] = key
 }
 
-const { path, query } = target(slug)
-const url = `${OPEN_SEA_BASE_URL}${path}?${query}`
-
-const response = await fetch(url, {
-  headers: {
-    'x-api-key': apiKey,
-    'user-agent': USER_AGENT,
-    accept: 'application/json',
-  },
-})
+const response = await fetch(url, { headers })
 
 const text = await response.text()
 if (!response.ok) {

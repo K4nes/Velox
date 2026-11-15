@@ -164,8 +164,11 @@ export async function mockMintNetwork(options: {
   slug: string
   wallets: { address: string; calldataDelayMs?: number; sendDelayMs?: number }[]
   receiptDelayMs?: number
+  /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
+  maxPerWallet?: string
 }): Promise<{ events: MintEvent[] }> {
   const { browser, slug, receiptDelayMs = 0 } = options
+  const maxPerWallet = options.maxPerWallet ?? '1'
   const events: MintEvent[] = []
   const delayByAddress = new Map(
     options.wallets.map((wallet) => [
@@ -185,7 +188,7 @@ export async function mockMintNetwork(options: {
     stage_type: 'public',
     label: 'Public',
     price: '0',
-    max_per_wallet: '1',
+    max_per_wallet: maxPerWallet,
     start_time: new Date(now - 60_000).toISOString(),
     end_time: new Date(now + 3_600_000).toISOString(),
   }
@@ -326,7 +329,7 @@ export async function mockMintNetwork(options: {
           {
             stage_uuid: stage.uuid,
             is_eligible: true,
-            max_total_mintable_by_wallet: '1',
+            max_total_mintable_by_wallet: maxPerWallet,
             price: '0',
           },
         ],
@@ -501,4 +504,121 @@ export async function pinMintGas(screen: Screen): Promise<void> {
   await screen.getByRole('button', { name: 'Advanced Gas' }).click()
   await screen.getByLabel('Max Fee (Gwei)').fill('1')
   await screen.getByLabel('Priority Fee (Gwei)').fill('0.1')
+}
+
+/** Scatter's sentinel for "no end" and "no limit": Unix `0xffffffff`. */
+export const SCATTER_OPEN_END = '2106-02-07T06:28:15.000Z'
+export const SCATTER_NO_LIMIT = 4294967295
+export const SCATTER_CONTRACT = '0x2222222222222222222222222222222222222222'
+
+/** One mint list as the Scatter API states it; defaults are a live, capped list. */
+export type ScatterList = {
+  id: string
+  name: string
+  price?: string
+  currencySymbol?: string
+  currencyAddress?: string
+  decimals?: number
+  startTime?: string
+  endTime?: string
+  walletLimit?: number
+  listLimit?: number
+  unitSize?: number
+}
+
+/** What the mocked Scatter API saw, in arrival order. */
+export type ScatterCalls = {
+  collections: string[]
+  lists: { slug: string; minter: string | null }[]
+  mints: number
+}
+
+/**
+ * Answers Scatter's collection and eligible-invite-lists endpoints in memory. With
+ * `eligible`, a wallet's list read returns only the ids that function names, which is
+ * how the API narrows lists per minter. A bare collection read returns every list.
+ */
+export async function mockScatterNetwork(options: {
+  browser: Browser
+  slug: string
+  chainId?: number
+  lists: ScatterList[]
+  eligible?: (minter: string | null) => string[]
+}): Promise<ScatterCalls> {
+  const calls: ScatterCalls = { collections: [], lists: [], mints: 0 }
+  const { lists } = options
+  const now = Date.now()
+
+  function body(list: ScatterList) {
+    return {
+      id: list.id,
+      root: `0x${'00'.repeat(32)}`,
+      address: SCATTER_CONTRACT,
+      name: list.name,
+      currency_address:
+        list.currencyAddress ?? '0x0000000000000000000000000000000000000000',
+      currency_symbol: list.currencySymbol ?? 'ETH',
+      token_price: list.price ?? '0.01',
+      decimals: list.decimals ?? 18,
+      start_time: list.startTime ?? new Date(now - 60_000).toISOString(),
+      end_time: list.endTime ?? new Date(now + 3_600_000).toISOString(),
+      wallet_limit: list.walletLimit ?? 1,
+      list_limit: list.listLimit ?? SCATTER_NO_LIMIT,
+      unit_size: list.unitSize ?? 1,
+    }
+  }
+
+  await options.browser.route(
+    /api\.scatter\.art\/v1\/collection\/[^/?]+\/eligible-invite-lists/,
+    async (route) => {
+      const url = new URL(route.request.url)
+      const slug = decodeURIComponent(url.pathname.split('/').at(-2) ?? '')
+      const minter = url.searchParams.get('minterAddress')
+      calls.lists.push({ slug, minter })
+      const ids = new Set(
+        options.eligible ? options.eligible(minter) : lists.map((list) => list.id),
+      )
+      await route.fulfill({
+        status: 200,
+        json: lists.filter((list) => ids.has(list.id)).map(body),
+      })
+    },
+  )
+
+  await options.browser.route(
+    /api\.scatter\.art\/v1\/collection\/[^/?]+$/,
+    async (route) => {
+      const url = new URL(route.request.url)
+      const slug = decodeURIComponent(url.pathname.split('/').at(-1) ?? '')
+      calls.collections.push(slug)
+      await route.fulfill({
+        status: 200,
+        json: {
+          id: slug,
+          name: 'Scatter Drop',
+          symbol: 'SD',
+          address: SCATTER_CONTRACT,
+          chain_id: options.chainId ?? 4663,
+          avatar_uri: '',
+          banner_uri: '',
+          description: '',
+          max_items: 100,
+          num_items: 0,
+          num_owners: 0,
+        },
+      })
+    },
+  )
+
+  // The mint build belongs to a later issue. Counting the calls proves a refused task
+  // builds nothing, and the 501 would fail a task that asked anyway.
+  await options.browser.route(/api\.scatter\.art\/v1\/mint$/, async (route) => {
+    calls.mints += 1
+    await route.fulfill({
+      status: 501,
+      json: { error: 'the deterministic Scatter mock has no mint route' },
+    })
+  })
+
+  return calls
 }

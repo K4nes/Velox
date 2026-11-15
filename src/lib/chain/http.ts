@@ -1,5 +1,6 @@
 export const OPENSEA_BASE_URL = 'https://api.opensea.io/api/v2'
 export const OPENSEA_TIMEOUT_MS = 15_000
+export const SCATTER_TIMEOUT_MS = 15_000
 
 export type HttpInit = {
   method?: string
