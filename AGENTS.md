@@ -41,8 +41,9 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Needs the same values as `test:e2e:live`. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
-Two test runners exist: the `e2e` package drives a headless browser, and `cargo test` drives
-the Rust commands. Do not claim a suite ran unless you ran it.
+Three test runners exist: the `e2e` package drives a headless browser, `cargo test` drives
+the Rust commands, and `npm run test:release` runs `node --test` over `scripts/`. Do not
+claim a suite ran unless you ran it.
 
 ## Verify
 
