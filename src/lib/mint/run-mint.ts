@@ -32,6 +32,7 @@ export type MintReadiness = {
 
 export async function mintForWallet(input: {
   drop: DropInfo
+  stageUuid: string
   wallet: StoredWallet
   quantity: number
   gas: TxGas
@@ -40,11 +41,12 @@ export async function mintForWallet(input: {
 }): Promise<{ txHash: string; chain: string }> {
   const transaction =
     input.transaction ??
-    (await buildMintTransactionFor(
-      input.drop,
-      input.wallet.address,
-      input.quantity
-    ))
+    (await buildMintTransactionFor({
+      drop: input.drop,
+      stageUuid: input.stageUuid,
+      minter: input.wallet.address,
+      quantity: input.quantity,
+    }))
 
   return sendTransaction({
     wallet: input.wallet,
@@ -68,11 +70,13 @@ export function mintQuantityFor(
   return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
 }
 
-// Everything that must match for prepared calldata to still describe this fire. A stage
-// or quantity change rebuilds rather than signing stale data.
+// Everything that must match for prepared calldata to still describe this fire. A stage,
+// a token or a quantity change rebuilds rather than signing stale data.
 export function prepareKeyFor(task: Task, quantity: number): string {
   return [
     task.stageUuid,
+    // The token a Scatter URL names, so two tokens on one list never trade calldata.
+    task.drop?.tokenId ?? '',
     quantity,
     task.gasLimit,
     task.maxFee,
@@ -112,11 +116,12 @@ export async function mintReadiness(input: {
       const cached = prepared?.get(row.walletId)
       if (cached) return cached
       try {
-        const transaction = await buildMintTransactionFor(
+        const transaction = await buildMintTransactionFor({
           drop,
-          row.address,
-          quantity
-        )
+          stageUuid: task.stageUuid,
+          minter: row.address,
+          quantity,
+        })
         return {
           walletId: row.walletId,
           from: row.address as `0x${string}`,
@@ -182,11 +187,12 @@ export async function prepareMintEntries(input: {
     try {
       // A closed stage rejects the pre-open build. This stays best-effort; the
       // open-time path builds the same calldata when it does not.
-      const transaction = await buildMintTransactionFor(
-        input.drop,
-        wallet.address,
-        input.quantity
-      )
+      const transaction = await buildMintTransactionFor({
+        drop: input.drop,
+        stageUuid: input.task.stageUuid,
+        minter: wallet.address,
+        quantity: input.quantity,
+      })
       let gasLimit = input.pinnedGasLimit
       if (gasLimit === undefined) {
         try {

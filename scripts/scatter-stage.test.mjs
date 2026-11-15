@@ -23,7 +23,7 @@ test('the native sentinel takes the chain symbol', { skip }, () => {
       },
       'ETH'
     ),
-    { symbol: 'ETH', decimals: 18 }
+    { symbol: 'ETH', decimals: 18, address: SCATTER_NATIVE_CURRENCY }
   )
 })
 
@@ -37,7 +37,7 @@ test('a named token keeps its own symbol and decimals', { skip }, () => {
       },
       'ETH'
     ),
-    { symbol: 'USDC', decimals: 6 }
+    { symbol: 'USDC', decimals: 6, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }
   )
 })
 
@@ -51,7 +51,7 @@ test('an unnamed token is named by address and keeps its decimals', { skip }, ()
       },
       'ETH'
     ),
-    { symbol: '0x8335…2913', decimals: 6 }
+    { symbol: '0x8335…2913', decimals: 6, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }
   )
 })
 
@@ -61,7 +61,7 @@ test('a token with neither symbol nor address reads as a unit count', { skip }, 
       { currencySymbol: '', currencyAddress: '', decimals: 6 },
       'ETH'
     ),
-    { symbol: 'tokens', decimals: 6 }
+    { symbol: 'tokens', decimals: 6, address: '' }
   )
 })
 

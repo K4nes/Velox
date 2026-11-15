@@ -9,6 +9,7 @@ import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
 import { resolveCollectionSource } from '@/lib/collection-source'
 import { checkScatterLists } from '@/lib/scatter/eligibility'
+import { isErc20Refusal } from '@/lib/scatter/erc20-refusal'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import {
@@ -313,6 +314,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         drop = await fetchMintDrop(collection.source, collection.slug)
         if (stale()) return null
       }
+      // The collection URL is the only place a token ID is stated, so the drop carries
+      // what the operator typed rather than what the provider answered.
+      drop = { ...drop, tokenId: collection.tokenId }
 
       // The SeaDrop restriction describes the OpenSea route. Scatter mints any
       // contract type through one endpoint, so the guard must not apply to it.
@@ -564,6 +568,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         try {
           const result = await mintForWallet({
             drop,
+            stageUuid: liveStageUuid,
             wallet,
             quantity,
             gas: preparedEntry?.gasLimit
@@ -586,8 +591,11 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           })
         } catch (error) {
           if (stopped()) return
+          // A list priced in an ERC-20 is fixed in the task, not in the wallet: the row
+          // is blocked so it cannot join another batch, and the message names the token.
+          const blocked = isErc20Refusal(error)
           updateRun(wallet.id, () => ({
-            status: 'failed',
+            status: blocked ? 'blocked' : 'failed',
             error: toMessage(error),
           }))
         }

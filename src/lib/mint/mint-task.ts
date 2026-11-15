@@ -1,5 +1,6 @@
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
+import { erc20RefusalForStage } from '@/lib/scatter/erc20-refusal'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
 
@@ -348,15 +349,17 @@ export function stageStatusFor(
   return verdict()
 }
 
-// This issue loads Scatter lists but does not build Scatter mints. The refusal names
-// the missing step instead of leaving a disabled button without a reason.
-export const SCATTER_MINT_REFUSAL =
-  'Scatter minting is not available yet. This build can load Scatter lists but cannot build a Scatter mint transaction.'
-
-// A task that cannot start says why: a provider that cannot build its mint, or a
-// wallet the provider blocked, whose fix is in the task rather than in the wallet.
+// A task that cannot start says why: a list Velox refuses to mint, or a wallet the
+// provider blocked, whose fix is in the task rather than in the wallet.
 export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
-  if (task.drop?.source === 'scatter') return SCATTER_MINT_REFUSAL
+  if (task.drop?.source === 'scatter') {
+    // The list states its own currency, so an ERC-20 price is refused before any
+    // wallet is built for.
+    const stage =
+      task.drop.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
+    const refusal = erc20RefusalForStage(stage)
+    if (refusal !== null) return refusal
+  }
 
   const blocked = rows.filter(
     (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'

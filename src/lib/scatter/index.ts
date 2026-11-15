@@ -1,4 +1,9 @@
 import { SCATTER_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
+import {
+  ERC20_REFUSAL_CODE,
+  erc20RefusalForAllowances,
+} from '@/lib/scatter/erc20-refusal'
+import type { ScatterAllowance } from '@/lib/scatter/erc20-refusal'
 import { ScatterError } from '@/lib/scatter/error'
 
 const SCATTER_BASE_URL = 'https://api.scatter.art/v1'
@@ -32,9 +37,19 @@ export type ScatterMintList = {
   unitSize: number
 }
 
-async function request(path: string): Promise<unknown> {
+async function request(
+  path: string,
+  init: { method?: string; body?: string } = {}
+): Promise<unknown> {
+  const headers: Record<string, string> = { accept: 'application/json' }
+  if (init.body !== undefined) {
+    headers['content-type'] = 'application/json'
+  }
+
   const outcome = await httpExchange(`${SCATTER_BASE_URL}${path}`, {
-    headers: { accept: 'application/json' },
+    method: init.method ?? 'GET',
+    headers,
+    body: init.body,
     timeoutMs: SCATTER_TIMEOUT_MS,
   })
 
@@ -161,4 +176,71 @@ export function toMintList(value: unknown): ScatterMintList {
     walletLimit: statedLimit(record?.wallet_limit),
     unitSize: Math.max(1, statedLimit(record?.unit_size) ?? 1),
   }
+}
+
+export type ScatterMintBuild = { to: string; data: string; value: string }
+
+// One list entry per build: the id is the list the operator picked, and the quantity
+// lives inside the entry rather than at the top level.
+export type ScatterMintRequest = {
+  collectionAddress: string
+  chainId: number
+  minterAddress: string
+  listId: string
+  quantity: number
+}
+
+// The build answers with unsigned calldata and every token allowance the mint wants.
+// Velox signs a native-currency mint only, so an allowance list is refused here, before
+// anything is signed or sent, and nothing is ever granted.
+export async function buildScatterMintTransaction(
+  input: ScatterMintRequest
+): Promise<ScatterMintBuild> {
+  const body = await request('/mint', {
+    method: 'POST',
+    body: JSON.stringify({
+      collectionAddress: input.collectionAddress,
+      chainId: input.chainId,
+      minterAddress: input.minterAddress,
+      lists: [{ id: input.listId, quantity: input.quantity }],
+    }),
+  })
+
+  const record = asRecord(body)
+  const transaction = asRecord(record?.mintTransaction)
+  const to = transaction?.to
+  const data = transaction?.data
+  const value = transaction?.value
+  if (
+    typeof to !== 'string' ||
+    to === '' ||
+    typeof data !== 'string' ||
+    data === '' ||
+    value === undefined ||
+    value === null
+  ) {
+    throw unexpected('/mint')
+  }
+
+  const allowances = toAllowances(record?.erc20s)
+  if (allowances.length > 0) {
+    throw new ScatterError(
+      422,
+      ERC20_REFUSAL_CODE,
+      erc20RefusalForAllowances(allowances)
+    )
+  }
+
+  return { to, data, value: String(value) }
+}
+
+function toAllowances(value: unknown): ScatterAllowance[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    const record = asRecord(entry)
+    const address = record?.address
+    return typeof address === 'string' && address !== ''
+      ? [{ address, amount: String(record?.amount ?? '') }]
+      : []
+  })
 }
