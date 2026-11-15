@@ -140,7 +140,7 @@ export async function getScatterMintLists(
   return body.map(toMintList)
 }
 
-function toMintList(value: unknown): ScatterMintList {
+export function toMintList(value: unknown): ScatterMintList {
   const record = asRecord(value)
   const id = record?.id
   if (id === undefined || id === null || String(id) === '') {
