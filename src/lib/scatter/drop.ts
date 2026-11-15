@@ -30,6 +30,8 @@ const SCATTER_CHAIN_NAMES: Record<number, string> = {
   33139: 'ApeChain',
   42161: 'Arbitrum',
   57073: 'Ink',
+  // The one Scatter testnet. Velox signs on no testnet, so the refusal names it.
+  11155111: 'Ethereum Sepolia (Testnet)',
 }
 
 export async function getScatterDrop(slug: string): Promise<DropInfo> {
