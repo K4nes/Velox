@@ -404,7 +404,9 @@ test('the armed run prepares and fires near startMs', async ({
 
   const armedAt = await armMockStage(screen)
 
-  await expect.poll(() => calls.send.length, { timeout: 40_000 }).toBe(1)
+  // 15s lead plus the post-open 1s/2s/4s ramp, all on real timers: 40s flaked
+  // under the full suite's parallel load while this file alone passed.
+  await expect.poll(() => calls.send.length, { timeout: 60_000 }).toBe(1)
   await expect(screen.getByText('Confirmed', { exact: true }).first()).toBeVisible(
     { timeout: 30_000 }
   )
@@ -489,7 +491,7 @@ test('a failed open-time calldata read backs off and recovers', async ({
   await checkOnce(screen)
   await armMockStage(screen)
 
-  await expect.poll(() => calls.send.length, { timeout: 40_000 }).toBe(1)
+  await expect.poll(() => calls.send.length, { timeout: 60_000 }).toBe(1)
   const trace = await browser.evaluate<TraceEvent[]>(
     () => window.__veloxMintTrace?.snapshot() ?? []
   )
