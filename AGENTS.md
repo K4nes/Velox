@@ -122,11 +122,11 @@ every reported overwrite and re-apply the local edits.
 pure resolvers, so a type-stripped copy loads without a bundler or the `@/` alias. A
 runtime import ends that. The rule holds even though nothing loads it that way today.
 
-**The same holds for the files `npm run test:release` loads.** `src/lib/core/page-store.ts`
-and `src/lib/inventory/holdings-fields.ts` have no runtime imports, and
-`src/pages/bulk-sell/state.ts` imports only types and `holdings-fields`, and names that
-module with a relative `.ts` path, because node strips the types without a bundler or the
-`@/` alias.
+**The same holds for the files `npm run test:release` loads.** `src/lib/core/page-store.ts`,
+`src/lib/inventory/holdings-fields.ts` and `src/lib/scatter/stage-fields.ts` have no runtime
+imports, and `src/pages/bulk-sell/state.ts` imports only types and `holdings-fields`, and
+names that module with a relative `.ts` path, because node strips the types without a
+bundler or the `@/` alias.
 
 **Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
 step in the `migrations` table in `src/lib/db/db-migrations.ts`. Those steps run from

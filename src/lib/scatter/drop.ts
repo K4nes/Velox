@@ -56,7 +56,7 @@ function chainLabel(chainId: number): string {
 
 // A mint list is carried as a mint stage, so the picker, caps and run keep working
 // without a second phase type.
-export function dropFromScatter(
+function dropFromScatter(
   collection: ScatterCollection,
   lists: ScatterMintList[],
   slug: string,

@@ -600,7 +600,9 @@ export async function getEligibility(
     stages: body.stages.map((stage) => ({
       stageUuid: stage.stage_uuid ?? '',
       eligible: stage.is_eligible === true,
-      maxMintable: stage.max_total_mintable_by_wallet ?? '0',
+      // `''` is the no-cap sentinel Scatter emits. OpenSea never states one, so an
+      // empty value keeps reading as the zero it always has.
+      maxMintable: stage.max_total_mintable_by_wallet || '0',
       priceWei: stage.price ?? '0',
     })),
   }

@@ -44,19 +44,14 @@ export function fetchMintDrop(
   source: CollectionSource,
   slug: string
 ): Promise<DropInfo> {
-  const provider: MintProvider | undefined = providers[source]
-  if (!provider) {
-    return Promise.reject(new Error(`Unknown mint source: ${source}`))
-  }
-  return provider.fetchDrop(slug)
+  return providers[source].fetchDrop(slug)
 }
 
 export async function warmMintAuth(
   source: CollectionSource,
   wallet: StoredWallet
 ): Promise<void> {
-  const provider: MintProvider | undefined = providers[source]
-  await provider?.warmAuth?.(wallet)
+  await providers[source].warmAuth?.(wallet)
 }
 
 export function buildMintTransactionFor(
@@ -64,8 +59,8 @@ export function buildMintTransactionFor(
   minter: string,
   quantity: number
 ): Promise<MintTransaction> {
-  const provider: MintProvider | undefined = providers[drop.source]
-  if (!provider?.buildTransaction) {
+  const provider = providers[drop.source]
+  if (!provider.buildTransaction) {
     return Promise.reject(
       new Error(
         drop.source === 'scatter'

@@ -8,6 +8,14 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ## [Unreleased]
 
+### Added
+
+- A `scatter.art` collection URL loads on the Mint page: the collection resolves, its mint
+  lists fill the Mint Stage picker under their own names, each price reads in the currency
+  its list states, a list with no end or no cap reads as what it is, and a chain Velox
+  cannot sign for is refused by name. Start Mint on a Scatter task names the missing step
+  instead of building a transaction ([#121]).
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
