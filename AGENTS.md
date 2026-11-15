@@ -51,7 +51,7 @@ claim a suite ran unless you ran it.
 Cheapest check that settles the change, in order:
 
 0. `npm run verify` — `build`, `lint`, `test:release` and `test:e2e` in one command, about
-   three minutes. This is the default, and its tail is what a pull request body quotes. Drop
+   four minutes. This is the default, and its tail is what a pull request body quotes. Drop
    to the rungs below only when one gate is already known red, or the change is not reachable
    from the browser suite.
 1. Read the diff.
@@ -133,8 +133,8 @@ runtime import ends that. The rule holds even though nothing loads it that way t
 strips the types without a bundler or the alias, so each such file says so in its header
 comment, imports through the alias only as a type, and reaches a bare package
 (`viem`) the ordinary way. `src/pages/bulk-sell/state.ts` is the model for a file that
-needs a sibling: a relative `.ts` path, types only. A new file the suite loads carries
-that header comment; the loader fails loudly when it does not.
+needs a sibling: a relative `.ts` path, types only. A runtime alias import fails the suite
+at load, so the header comment is what warns the next reader before they try.
 
 **Storage.** IndexedDB schema changes need a `DB_VERSION` bump in `src/lib/db/db.ts` plus a
 step in the `migrations` table in `src/lib/db/db-migrations.ts`. Those steps run from
