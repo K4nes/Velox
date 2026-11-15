@@ -49,6 +49,18 @@ from user/branch` are written by git and stay as generated. Do not edit them to 
 6. If changes are unrelated, recommend separate commits when practical.
 7. If the change is ambiguous, choose a conservative description or ask for clarification.
 
+### Test Evidence
+
+A commit that changes behaviour names the check that proves it, in a footer:
+
+```text
+Test: tests/bulk-sell/bulk-sell.e2e.ts
+```
+
+A fix says the check failed before the change: `Test: <path> (red before the fix)`. A commit
+that carries no test says why: `No test: copy change, no behaviour`. A commit with neither
+reads as unverified, and a reviewer treats it that way.
+
 ### Breaking Changes
 
 For intentional breaking changes, use the `!` marker and explain the impact in the commit body.
