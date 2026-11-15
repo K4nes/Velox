@@ -449,43 +449,48 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
   expect(rpc.events).toHaveLength(0)
 })
 
-test('a Scatter build that wants an ERC-20 allowance blocks the row and sends nothing', async ({
+test('an allowance answer from one wallet stops the batch before any wallet signs', async ({
   app,
   browser,
   screen,
 }) => {
-  const folder = walletFolder('Scatter Allowance')
-  const wallet = oneWallet(folder)
-  // The list states the native currency, so only the build can tell the mint is priced
-  // in a token. Nothing may be signed, and the row must stop the next batch.
+  const folder = walletFolder('Scatter Batch Allowance')
+  const wallets = mintWallets(2, folder.id)
+  const [first, second] = wallets
+  if (!first || !second) throw new Error('mintWallets(2) returned too few')
+  // The list states the native currency, so only a build can tell that this mint is
+  // priced in a token, and only the second wallet's build does.
   const calls = await mockScatterNetwork({
     browser,
     slug: SLUG,
     chainId: SCATTER_CHAIN_ID,
     lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
-    mint: { erc20s: [{ address: USDC_ADDRESS, amount: '5000000' }] },
+    mint: (body) =>
+      body.minterAddress?.toLowerCase() === second.address.toLowerCase()
+        ? { erc20s: [{ address: USDC_ADDRESS, amount: '5000000' }] }
+        : {},
   })
-  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+  const rpc = await mockMintRpc({ browser, wallets })
 
-  await seedMintPage(app, browser, folder, [wallet])
+  await seedMintPage(app, browser, folder, wallets)
   await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
   await selectFolder(browser, screen, folder)
   await screen.getByRole('button', { name: 'Check' }).click()
 
-  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  const row = screen.getByRole('row').filter({ hasText: first.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
 
   await screen.getByRole('button', { name: 'Start Mint' }).click()
 
-  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+  // The refusal belongs to the task, so both rows stop and neither wallet signs.
+  await expect(screen.getByText('Blocked', { exact: true })).toHaveCount(2, {
     timeout: 60_000,
   })
   await expect(row).toContainText('5000000 base units of 0x8335…2913')
   await expect(row).toContainText('Velox mints native-currency lists only')
-  // One build was read, and nothing was signed or sent.
-  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies).toHaveLength(2)
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })
 

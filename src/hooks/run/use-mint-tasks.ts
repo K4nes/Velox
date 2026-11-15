@@ -22,6 +22,7 @@ import type { RunSlot } from '@/lib/core/run-slot'
 import { mintFailureMessage } from '@/lib/opensea/failure-message'
 import { traceMint } from '@/lib/mint/mint-trace'
 import {
+  buildMintBatch,
   mintForWallet,
   mintQuantityFor,
   mintReadiness,
@@ -528,14 +529,15 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         maxFeePerGas: gweiToWei(task.maxFee),
         maxPriorityFeePerGas: gweiToWei(task.priorityFee),
       }
-
+      // The row reports progress from the first build, and every build now happens before
+      // any send, so the whole batch reads Minting while its calldata is read.
       updateRuns((current) => ({
         ...current,
         [id]: (current[id] ?? []).map((row) =>
           mintable.has(row.walletId)
             ? {
                 ...row,
-                status: 'queued' as const,
+                status: 'minting' as const,
                 txHash: undefined,
                 chain: undefined,
                 error: undefined,
@@ -543,6 +545,31 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
             : row
         ),
       }))
+
+      // A build can ask for an ERC-20 allowance its list did not state. That refusal is
+      // the task's, not the wallet's, so every build is read before any wallet signs.
+      const batch = await buildMintBatch({
+        drop,
+        stageUuid: liveStageUuid,
+        quantity,
+        wallets: selected,
+        prepared: preparedEntries,
+        isCurrent: () => !stopped(),
+      })
+      if (batch.refusal !== null) {
+        const refusal = batch.refusal
+        updateRuns((current) => ({
+          ...current,
+          [id]: (current[id] ?? []).map((row) =>
+            mintable.has(row.walletId)
+              ? { ...row, status: 'blocked' as const, error: refusal }
+              : row
+          ),
+        }))
+        toast.error(refusal)
+        return
+      }
+      const calldata = batch.entries
 
       const updateRun = (
         walletId: string,
@@ -563,8 +590,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       // in the first pair.
       await mapLimit(selected, WALLET_CONCURRENCY, async (wallet) => {
         if (stopped()) return
-        updateRun(wallet.id, () => ({ status: 'minting' }))
-        const preparedEntry = preparedEntries?.get(wallet.id)
+        const preparedEntry = calldata.get(wallet.id)
         try {
           const result = await mintForWallet({
             drop,

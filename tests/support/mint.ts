@@ -595,7 +595,8 @@ export async function mockScatterNetwork(options: {
   lists: ScatterList[]
   eligible?: (minter: string | null) => string[]
   failMinters?: string[]
-  mint?: ScatterMintAnswer
+  // A wallet's own answer can differ: the allowance a build asks for is stated per build.
+  mint?: ScatterMintAnswer | ((body: ScatterMintBody) => ScatterMintAnswer)
 }): Promise<ScatterCalls> {
   const calls: ScatterCalls = { collections: [], lists: [], mintBodies: [] }
   const { lists } = options
@@ -685,18 +686,19 @@ export async function mockScatterNetwork(options: {
   // The build is unsigned calldata the client signs locally. A one-entry `lists` body
   // is the only shape Velox sends, so the mock states the same contract it answers.
   await options.browser.route(/api\.scatter\.art\/v1\/mint$/, async (route) => {
-    calls.mintBodies.push(
-      JSON.parse(route.request.postData ?? '{}') as ScatterMintBody,
-    )
+    const body = JSON.parse(route.request.postData ?? '{}') as ScatterMintBody
+    calls.mintBodies.push(body)
+    const answer =
+      typeof options.mint === 'function' ? options.mint(body) : options.mint
     await route.fulfill({
       status: 200,
       json: {
         mintTransaction: {
-          to: options.mint?.to ?? SCATTER_CONTRACT,
-          data: options.mint?.data ?? '0x4a21a2df',
-          value: options.mint?.value ?? '0',
+          to: answer?.to ?? SCATTER_CONTRACT,
+          data: answer?.data ?? '0x4a21a2df',
+          value: answer?.value ?? '0',
         },
-        erc20s: options.mint?.erc20s ?? [],
+        erc20s: answer?.erc20s ?? [],
       },
     })
   })

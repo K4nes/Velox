@@ -9,8 +9,12 @@ import type {
 } from '@/lib/mint/mint-provider'
 import { callTransaction, estimateGasFor, sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
+import { mapLimit } from '@/lib/core/async'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { toMessage } from '@/lib/core/message'
 import { mintableRow, quantityCeiling } from '@/lib/mint/mint-task'
 import type { Task, WalletRun } from '@/lib/mint/mint-task'
+import { isErc20Refusal } from '@/lib/scatter/erc20-refusal'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type PreparedMintEntry = {
@@ -87,6 +91,43 @@ export function prepareKeyFor(task: Task, quantity: number): string {
 export function pinnedGasLimitOf(task: Task): bigint | undefined {
   const value = Number.parseInt(task.gasLimit, 10)
   return Number.isFinite(value) && value > 0 ? BigInt(value) : undefined
+}
+
+// Reads every selected wallet's build before any wallet signs. A build that answers with an
+// ERC-20 allowance is refused here, because that fix is in the task, and a run that sent
+// one wallet first would spend before the refusal was known. Any other build failure is
+// left to the wallet's own row, as before.
+export async function buildMintBatch(input: {
+  drop: DropInfo
+  stageUuid: string
+  quantity: number
+  wallets: readonly StoredWallet[]
+  prepared: Map<string, PreparedMintEntry> | null
+  isCurrent: () => boolean
+}): Promise<{ entries: Map<string, PreparedMintEntry>; refusal: string | null }> {
+  const entries = new Map<string, PreparedMintEntry>(input.prepared)
+  let refusal: string | null = null
+
+  await mapLimit(input.wallets, WALLET_CONCURRENCY, async (wallet) => {
+    if (refusal !== null || entries.has(wallet.id) || !input.isCurrent()) return
+    try {
+      const transaction = await buildMintTransactionFor({
+        drop: input.drop,
+        stageUuid: input.stageUuid,
+        minter: wallet.address,
+        quantity: input.quantity,
+      })
+      entries.set(wallet.id, {
+        walletId: wallet.id,
+        from: wallet.address as `0x${string}`,
+        transaction,
+      })
+    } catch (error) {
+      if (isErc20Refusal(error)) refusal = toMessage(error)
+    }
+  })
+
+  return { entries, refusal }
 }
 
 // A closed stage rejects the pre-open build, so the open-time batch is the real path.
