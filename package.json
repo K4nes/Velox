@@ -15,7 +15,8 @@
     "test:e2e:mint": "e2e run --config e2e.live.config.ts tests/mint/live",
     "release:desktop": "node scripts/release-desktop.mjs",
     "release:verify": "node scripts/release-desktop.mjs --verify-only",
-    "test:release": "node --test scripts/"
+    "test:release": "node --test scripts/",
+    "verify": "npm run build && npm run lint && npm run test:release && npm run test:e2e"
   },
   "dependencies": {
     "@animate-ui/react": "^2.0.0",

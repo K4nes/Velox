@@ -39,6 +39,7 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
 | `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Needs the `E2E_*` values in `.env.e2e.local`. |
 | `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Needs the same values as `test:e2e:live`. |
+| `npm run verify` | `build`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
 Three test runners exist: the `e2e` package drives a headless browser, `cargo test` drives
@@ -49,6 +50,10 @@ claim a suite ran unless you ran it.
 
 Cheapest check that settles the change, in order:
 
+0. `npm run verify` — `build`, `lint`, `test:release` and `test:e2e` in one command, about a
+   minute. This is the default, and its tail is what a pull request body quotes. Drop to the
+   rungs below only when one gate is already known red, or the change is not reachable from
+   the browser suite.
 1. Read the diff.
 2. `npx tsc -b --force`
 3. `npm run build`
@@ -64,6 +69,21 @@ CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
 `node scripts/check-workflow-secrets.mjs`, `node scripts/check-workflow-width.mjs` and the PR
 title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
 settle style rather than behaviour.
+
+A stale install is the most common false red. `npm run build` then fails with `Cannot find
+module '@tauri-apps/...'`, and the browser suite dies with a `500` on a source import rather
+than a failing assertion. Run `npm ci` once in a fresh worktree before believing a red gate.
+
+A change to `src/lib/opensea/` or `src/lib/chain/` also runs the live lane for the folder it
+touches, and pastes the last 20 lines in the pull request body:
+
+```bash
+npx e2e run --config e2e.live.config.ts tests/portfolio/live/scan.e2e.ts
+```
+
+CI holds no `E2E_*` secrets, so that lane cannot run there and the evidence rides in the
+pull request. The mocked lane cannot stand in for it: it answers whatever path the client
+was written against, so a wrong upstream path stays green in both.
 
 ## Layout
 
