@@ -190,22 +190,10 @@ export type ScatterMintRequest = {
   quantity: number
 }
 
-// The build answers with unsigned calldata and every token allowance the mint wants.
-// Velox signs a native-currency mint only, so an allowance list is refused here, before
-// anything is signed or sent, and nothing is ever granted.
-export async function buildScatterMintTransaction(
-  input: ScatterMintRequest
-): Promise<ScatterMintBuild> {
-  const body = await request('/mint', {
-    method: 'POST',
-    body: JSON.stringify({
-      collectionAddress: input.collectionAddress,
-      chainId: input.chainId,
-      minterAddress: input.minterAddress,
-      lists: [{ id: input.listId, quantity: input.quantity }],
-    }),
-  })
-
+// The answer is parsed apart from the request, so a recorded upstream body can be run
+// through it without a network. The allowance list is refused here, before the caller
+// can see a transaction to sign.
+export function toScatterMintBuild(body: unknown): ScatterMintBuild {
   const record = asRecord(body)
   const transaction = asRecord(record?.mintTransaction)
   const to = transaction?.to
@@ -232,6 +220,24 @@ export async function buildScatterMintTransaction(
   }
 
   return { to, data, value: String(value) }
+}
+
+// Sends one build for one list and hands the answer to the parser above, which refuses an
+// allowance list before any caller sees a transaction to sign.
+export async function buildScatterMintTransaction(
+  input: ScatterMintRequest
+): Promise<ScatterMintBuild> {
+  const body = await request('/mint', {
+    method: 'POST',
+    body: JSON.stringify({
+      collectionAddress: input.collectionAddress,
+      chainId: input.chainId,
+      minterAddress: input.minterAddress,
+      lists: [{ id: input.listId, quantity: input.quantity }],
+    }),
+  })
+
+  return toScatterMintBuild(body)
 }
 
 function toAllowances(value: unknown): ScatterAllowance[] {

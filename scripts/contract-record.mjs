@@ -22,6 +22,33 @@ const FAMILIES = {
     base: 'https://api.scatter.art/v1',
     path: (slug) => `/collection/${encodeURIComponent(slug)}/eligible-invite-lists`,
   },
+  // A mint build is a POST that names the collection, the chain and a list, so the
+  // recorder reads the collection and its first list the way the app does, then mints
+  // one quantity of it. The build is unsigned calldata: nothing is signed or sent.
+  scatterMint: {
+    base: 'https://api.scatter.art/v1',
+    path: () => '/mint',
+    method: 'POST',
+    request: async (base, slug) => {
+      const collection = await readJson(
+        `${base}/collection/${encodeURIComponent(slug)}`
+      )
+      const lists = await readJson(
+        `${base}/collection/${encodeURIComponent(slug)}/eligible-invite-lists`
+      )
+      const list = Array.isArray(lists) ? lists[0] : undefined
+      if (collection?.address === undefined || list?.id === undefined) {
+        fail(`${slug} has no collection address or no mint list`)
+      }
+      return {
+        collectionAddress: collection.address,
+        chainId: collection.chain_id,
+        // A build signs nothing, so the minter is a placeholder rather than a key.
+        minterAddress: '0x0000000000000000000000000000000000000001',
+        lists: [{ id: list.id, quantity: 1 }],
+      }
+    },
+  },
 }
 
 function fail(message) {
@@ -32,6 +59,22 @@ function fail(message) {
 function flag(name) {
   const index = process.argv.indexOf(`--${name}`)
   return index === -1 ? undefined : process.argv[index + 1]
+}
+
+// A family that builds its request reads the endpoints that describe it before recording.
+async function readJson(url) {
+  const response = await fetch(url, {
+    headers: { 'user-agent': USER_AGENT, accept: 'application/json' },
+  })
+  const text = await response.text()
+  if (!response.ok) {
+    fail(`${String(response.status)} from ${url}: ${text.slice(0, 300)}`)
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    fail(`${url} did not answer JSON: ${text.slice(0, 300)}`)
+  }
 }
 
 const family = flag('family')
@@ -53,7 +96,7 @@ if (existsSync(envFile)) {
   process.loadEnvFile(envFile)
 }
 
-const { base, auth, path } = target
+const { base, auth, path, method, request } = target
 const url = `${base}${path(slug)}`
 
 const headers = { 'user-agent': USER_AGENT, accept: 'application/json' }
@@ -65,7 +108,16 @@ if (auth !== undefined) {
   headers['x-api-key'] = key
 }
 
-const response = await fetch(url, { headers })
+const requestBody = request === undefined ? undefined : await request(base, slug)
+if (requestBody !== undefined) {
+  headers['content-type'] = 'application/json'
+}
+
+const response = await fetch(url, {
+  method: method ?? 'GET',
+  headers,
+  body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
+})
 
 const text = await response.text()
 if (!response.ok) {
@@ -81,7 +133,14 @@ try {
 
 mkdirSync(OUT_DIR, { recursive: true })
 const file = join(OUT_DIR, `${family}.json`)
-const recording = { recordedAt: new Date().toISOString(), url, body }
+// A POST is described by its body as well as its URL, so the recording keeps the request
+// it made.
+const recording = {
+  recordedAt: new Date().toISOString(),
+  url,
+  ...(requestBody === undefined ? {} : { request: requestBody }),
+  body,
+}
 writeFileSync(file, `${JSON.stringify(recording, null, 2)}\n`)
 
 console.log(`recorded ${file} from ${url}`)
