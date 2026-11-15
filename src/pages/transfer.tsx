@@ -32,13 +32,13 @@ export function TransferPage() {
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug (OpenSea / Scatter)
+            Collection URL or slug (OpenSea)
           </label>
           <Input
             id="collection-url"
             value={scan.url}
             onChange={(event) => scan.changeUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+            placeholder="https://opensea.io/collection/… or a contract address"
             disabled={scan.running || run.running}
           />
         </div>

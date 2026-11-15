@@ -9,15 +9,23 @@ import {
   filterHeldInventory,
   INVENTORY_FILTER_LABEL,
 } from '../support/inventory'
-import { mockCollection, mockHoldings, mockRarityBatch } from '../support/opensea'
+import {
+  guardOpenSeaHost,
+  mockCollection,
+  mockHoldings,
+  mockRarityBatch,
+} from '../support/opensea'
 import { mockPrice } from '../support/price'
-import { scanCollection } from '../support/scan'
+import { COLLECTION_LABEL, scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 const SLUG = 'mock-collection'
 const CONTRACT = '0x00000000000000000000000000000000000000aa'
 const SECOND_SLUG = 'second-collection'
 const SECOND_CONTRACT = '0x00000000000000000000000000000000000000cc'
+const SCATTER_SLUG = 'scatter-portfolio'
+const SCATTER_REFUSAL =
+  'Scatter is mint-only in Velox — mint it from the Mint page.'
 
 test('a scan fills the inventory and the owned count', async ({
   app,
@@ -177,7 +185,7 @@ test('page state survives a round trip through another page', async ({
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel('Collection URL or slug (OpenSea)'),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
@@ -192,12 +200,12 @@ test('page state survives a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel('Collection URL or slug (OpenSea)'),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
 
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel('Collection URL or slug (OpenSea)'),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -236,7 +244,7 @@ test('page state survives a round trip through another page', async ({
   await screen.getByLabel(INVENTORY_FILTER_LABEL).fill('')
   await screen.getByRole('button', { name: /^All/ }).click()
   await screen
-    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
+    .getByLabel('Collection URL or slug (OpenSea)')
     .fill(SECOND_SLUG)
   await screen.getByRole('button', { name: 'Scan portfolio' }).click()
   await expect(
@@ -245,4 +253,58 @@ test('page state survives a round trip through another page', async ({
   await expect(
     screen.getByRole('row').filter({ hasText: /Mock #7[^0-9]/ }),
   ).toHaveCount(0)
+})
+
+test('a Scatter collection URL is refused without a provider request', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Portfolio Scatter')
+  const [wallet] = mintWallets(1, folder.id)
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+
+  // Registered first, so the mock below wins and any other OpenSea path aborts.
+  await guardOpenSeaHost(browser)
+  const collection = await mockCollection(browser, {
+    slug: SCATTER_SLUG,
+    body: collectionFixture({
+      slug: SCATTER_SLUG,
+      name: 'Scatter Collection',
+      contract: CONTRACT,
+    }),
+  })
+
+  await app.open('/portfolio')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [openseaConnection('deterministic-key')],
+  })
+  await app.open('/portfolio')
+
+  // The header's live region repeats the sentence for a screen reader, so the
+  // message the operator reads is queried on its own element.
+  const refusal = browser.locator('td').filter({ hasText: SCATTER_REFUSAL })
+
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'portfolio',
+    collection: `https://scatter.art/c/${SCATTER_SLUG}`,
+    folder: folder.name,
+  })
+  await expect(refusal).toBeVisible()
+
+  // The token-shaped URL is the shape the slug gate used to swallow, so the
+  // field is filled again and the wallet step is left as it stands. The message
+  // clearing on the edit is what makes the second refusal a new one.
+  await screen
+    .getByLabel(COLLECTION_LABEL)
+    .fill(`https://scatter.art/c/${SCATTER_SLUG}/42`)
+  await expect(screen.getByText(SCATTER_REFUSAL)).toHaveCount(0)
+  await screen.getByRole('button', { name: 'Scan portfolio' }).click()
+  await expect(refusal).toBeVisible()
+
+  expect(collection.count).toBe(0)
 })

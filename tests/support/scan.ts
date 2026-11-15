@@ -1,14 +1,23 @@
 import type { Browser } from '@e2e-dev/web'
 import type { Screen } from 'e2e'
 
+/** The collection field on the pages that read an OpenSea collection only. */
+export const COLLECTION_LABEL = 'Collection URL or slug (OpenSea)'
+
 /** The held-token pages that share the collection form. */
-export type ScanFeature = 'portfolio' | 'bulk-sell' | 'instant-sell' | 'transfer'
+export type ScanFeature =
+  | 'portfolio'
+  | 'bulk-sell'
+  | 'instant-sell'
+  | 'transfer'
+  | 'pnl-card'
 
 const SCAN_BUTTON: Record<ScanFeature, string> = {
   portfolio: 'Scan portfolio',
   'bulk-sell': 'Scan held NFTs',
   'instant-sell': 'Scan held NFTs',
   transfer: 'Rescan',
+  'pnl-card': 'Check PnL',
 }
 
 /**
@@ -26,9 +35,7 @@ export async function scanCollection(options: {
 }): Promise<void> {
   const { browser, screen, feature, collection, folder } = options
 
-  await screen
-    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
-    .fill(collection)
+  await screen.getByLabel(COLLECTION_LABEL).fill(collection)
 
   await screen.getByRole('button', { name: /Select wallets/ }).click()
   await screen.getByRole('checkbox', { name: `Select all in ${folder}` }).click()
