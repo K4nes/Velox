@@ -51,7 +51,8 @@ import type {
   TaskPatch,
   WalletRun,
 } from '@/lib/mint/mint-task'
-import { getDrop, slugFromUrl } from '@/lib/opensea/index'
+import { fetchMintDrop } from '@/lib/mint/mint-provider'
+import { slugFromUrl } from '@/lib/opensea/index'
 import type { DropInfo } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -307,7 +308,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         drop = dropOverride
         step = 'eligibility'
       } else {
-        drop = await getDrop(slug)
+        drop = await fetchMintDrop(slug)
         if (stale()) return null
       }
 
@@ -444,7 +445,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     updateRunningIds((current) => [...current, id])
 
     try {
-      const fresh = options.drop ?? (await getDrop(drop.slug))
+      const fresh = options.drop ?? (await fetchMintDrop(drop.slug))
       if (stopped()) return
       if (!options.stageVerified && fresh.activeStage === null) {
         updateRuns((current) => ({
@@ -711,7 +712,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       // copy.
       const pendingPrepare = prepareTaskRef.get(taskId)
       if (pendingPrepare) await pendingPrepare
-      const drop = await getDrop(task.drop.slug)
+      const drop = await fetchMintDrop(task.drop.slug)
       // The operator can disarm, or arm a different stage, while the drop is in
       // flight. Re-read before acting, or a cancelled run still spends gas.
       const latest = scoped.get().tasks.find((entry) => entry.id === taskId)

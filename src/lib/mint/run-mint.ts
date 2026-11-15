@@ -1,11 +1,12 @@
-import { buildMintTransaction } from '@/lib/opensea/index'
+import {
+  buildMintTransactionFor,
+  warmMintAuth,
+} from '@/lib/mint/mint-provider'
 import type {
   DropInfo,
   DropStage,
   MintTransaction,
-} from '@/lib/opensea/index'
-import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
-import { getEligibilityToken } from '@/lib/opensea/eligibility'
+} from '@/lib/mint/mint-provider'
 import { callTransaction, estimateGasFor, sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
 import { mintableRow, quantityCeiling } from '@/lib/mint/mint-task'
@@ -39,7 +40,7 @@ export async function mintForWallet(input: {
 }): Promise<{ txHash: string; chain: string }> {
   const transaction =
     input.transaction ??
-    (await buildMintTransaction(
+    (await buildMintTransactionFor(
       input.slug,
       input.wallet.address,
       input.quantity
@@ -84,9 +85,9 @@ export function pinnedGasLimitOf(task: Task): bigint | undefined {
   return Number.isFinite(value) && value > 0 ? BigInt(value) : undefined
 }
 
-// Live OpenSea answers 409 NOT_MINTING before a stage opens, so the open-time batch is
-// the real path. It builds every mintable wallet's calldata in one round trip, then the
-// commit reuses those entries instead of fetching again.
+// A closed stage rejects the pre-open build, so the open-time batch is the real path.
+// It builds every mintable wallet's calldata in one round trip, then the commit reuses
+// those entries instead of fetching again.
 export async function mintReadiness(input: {
   task: Task
   drop: DropInfo
@@ -111,7 +112,7 @@ export async function mintReadiness(input: {
       const cached = prepared?.get(row.walletId)
       if (cached) return cached
       try {
-        const transaction = await buildMintTransaction(
+        const transaction = await buildMintTransactionFor(
           drop.slug,
           row.address,
           quantity
@@ -173,18 +174,15 @@ export async function prepareMintEntries(input: {
     if (!input.isCurrent()) return null
 
     try {
-      await cachedEligibilityToken(wallet.address, () =>
-        getEligibilityToken(wallet.privateKey)
-      )
+      await warmMintAuth(wallet)
     } catch {
       // The check retries a sign-in; a failed warm must not fail prepare.
     }
 
     try {
-      // Measured 2026-11-09: live OpenSea answers 409 NOT_MINTING to this endpoint
-      // before a stage opens. This stays best-effort for providers that do answer; the
+      // A closed stage rejects the pre-open build. This stays best-effort; the
       // open-time path builds the same calldata when it does not.
-      const transaction = await buildMintTransaction(
+      const transaction = await buildMintTransactionFor(
         input.drop.slug,
         wallet.address,
         input.quantity
