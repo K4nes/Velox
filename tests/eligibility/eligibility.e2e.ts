@@ -55,8 +55,8 @@ async function checkScatterCollection(
   await screen.getByRole('button', { name: 'Check' }).click()
 }
 
-/** Fails every matching request and counts it, so a route the code should not call cannot reach the network. */
-async function countAbortedRequests(
+/** Aborts each matching request and counts it, so an unexpected call cannot reach the network. */
+async function abortAndCountRequests(
   browser: Browser,
   pattern: string,
 ): Promise<() => number> {
@@ -562,7 +562,7 @@ test('a saved Scatter snapshot reloads and refreshes through Scatter', async ({
     ],
     eligible: (minter) => grants.get((minter ?? '').toLowerCase()) ?? [],
   })
-  const openSeaRequests = await countAbortedRequests(
+  const openSeaRequests = await abortAndCountRequests(
     browser,
     '**/api.opensea.io/**',
   )
@@ -618,7 +618,6 @@ test('a saved Scatter snapshot reloads and refreshes through Scatter', async ({
   await expect(screen.getByRole('alert')).toHaveCount(0)
   await expect(screen.getByText('Scatter', { exact: true })).toBeVisible()
 
-  // The refresh read a new Scatter answer rather than an OpenSea one.
   expect(openSeaRequests()).toBe(0)
   expect(calls.collections).toHaveLength(2)
   expect(calls.lists.filter((call) => call.minter === null)).toHaveLength(2)
@@ -669,7 +668,7 @@ test('a snapshot written before the source was recorded refreshes through OpenSe
   const [wallet] = pickWallets(1, folder.id)
   if (!wallet) throw new Error('one wallet required')
 
-  const scatterRequests = await countAbortedRequests(
+  const scatterRequests = await abortAndCountRequests(
     browser,
     '**/api.scatter.art/**',
   )
