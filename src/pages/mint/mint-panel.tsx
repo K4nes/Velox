@@ -16,8 +16,8 @@ import {
 } from '@/components/ui/collapsible'
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
+import { amountLabel } from '@/lib/mint/amount'
 import {
-  amountLabel,
   countdownLabel,
   mintModes,
 } from '@/lib/mint/mint-task'
