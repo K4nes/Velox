@@ -2,7 +2,7 @@ import type { Browser } from '@e2e-dev/web'
 import type { Screen } from 'e2e'
 
 /** The collection field on the pages that read an OpenSea collection only. */
-export const COLLECTION_LABEL = 'Collection URL or slug (OpenSea)'
+export const COLLECTION_LABEL = 'Collection URL'
 
 /** The held-token pages that share the collection form. */
 export type ScanFeature =

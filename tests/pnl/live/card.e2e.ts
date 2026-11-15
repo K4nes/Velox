@@ -120,7 +120,7 @@ test(
     await app.open('/pnl/card')
 
     await screen
-      .getByLabel('Collection URL or slug (OpenSea)')
+      .getByLabel('Collection URL')
       .fill(slug)
     await screen.getByRole('button', { name: /Select wallets/ }).click()
     await screen

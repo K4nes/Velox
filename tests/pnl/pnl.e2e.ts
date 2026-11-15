@@ -250,7 +250,7 @@ test('the monthly filters survive a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await browser.locator('a[href="/pnl/monthly"]').first().click()
   await expect(browser).toHaveURL('/pnl/monthly')
@@ -293,7 +293,7 @@ test('the lifetime filters survive a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await browser.locator('a[href="/pnl/lifetime"]').first().click()
   await expect(browser).toHaveURL('/pnl/lifetime')

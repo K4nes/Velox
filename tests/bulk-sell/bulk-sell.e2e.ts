@@ -253,7 +253,7 @@ test('page state survives a round trip through another page', async ({
   await expect(screen.getByText('Scanning collection…')).toBeVisible()
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Bulk Sell' }).click()
   await expect(screen.getByText('Scanning collection…')).toBeVisible()
@@ -269,12 +269,12 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Bulk Sell' }).click()
 
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -296,7 +296,7 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Bulk Sell' }).click()
   await expect(row).toContainText('Submitting')

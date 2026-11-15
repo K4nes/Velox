@@ -185,7 +185,7 @@ test('page state survives a round trip through another page', async ({
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
@@ -200,12 +200,12 @@ test('page state survives a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
 
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea)'),
+    screen.getByLabel('Collection URL'),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -244,7 +244,7 @@ test('page state survives a round trip through another page', async ({
   await screen.getByLabel(INVENTORY_FILTER_LABEL).fill('')
   await screen.getByRole('button', { name: /^All/ }).click()
   await screen
-    .getByLabel('Collection URL or slug (OpenSea)')
+    .getByLabel('Collection URL')
     .fill(SECOND_SLUG)
   await screen.getByRole('button', { name: 'Scan portfolio' }).click()
   await expect(
