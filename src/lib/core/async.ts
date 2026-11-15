@@ -1,6 +1,10 @@
 // Bounded concurrency for the reads that fan out over wallets or tokens. The cursor loop
 // lives here once, so a fix to how it schedules work lands in every caller.
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function eachLimited<T>(
   items: readonly T[],
   limit: number,

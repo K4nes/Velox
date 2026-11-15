@@ -1,11 +1,9 @@
 import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
-import { checkEligibility } from '@/lib/opensea/eligibility'
 import type { EligibilityTableState } from '@/lib/opensea/eligibility'
-import { checkScatterEligibility } from '@/lib/scatter/eligibility'
+import { readEligibility } from '@/lib/mint/mint-provider'
 import { resolveScanTarget } from '@/lib/inventory/scan-target'
-import { marketplaceFor } from '@/lib/collection-source'
 import { buildSnapshotPayload } from '@/lib/mint/snapshots'
 import { createMintEligibilityState } from '@/pages/mint/state'
 import type { MintEligibilityState } from '@/pages/mint/state'
@@ -69,17 +67,14 @@ export function useEligibilityCheck(
         return
       }
 
-      const result =
-        resolved.source === 'scatter'
-          ? await checkScatterEligibility(resolved.slug, resolved.wallets)
-          : await checkEligibility(resolved.slug, resolved.wallets)
+      const result = await readEligibility(
+        resolved.source,
+        resolved.slug,
+        resolved.wallets
+      )
       if (!run.live()) return
       scoped.set({
-        checked: buildSnapshotPayload(
-          result,
-          resolved.slug,
-          marketplaceFor(resolved.source)
-        ),
+        checked: buildSnapshotPayload(result, resolved.slug),
       })
     } catch (failure) {
       if (!run.live()) return

@@ -66,7 +66,9 @@ function dropFromScatter(
   slug: string,
   chain: ChainEntry
 ): DropInfo {
-  const stages = lists.map((list) => stageFromList(list, chain)).sort(byStageStart)
+  const stages = lists
+    .map((list) => stageFromScatterList(list, chain))
+    .sort(byStageStart)
   const now = Date.now()
   const active =
     stages.find(
@@ -101,7 +103,10 @@ function dropFromScatter(
   return drop
 }
 
-function stageFromList(list: ScatterMintList, chain: ChainEntry): DropStage {
+export function stageFromScatterList(
+  list: ScatterMintList,
+  chain: ChainEntry
+): DropStage {
   let priceWei: string
   try {
     priceWei = parseUnits(list.tokenPrice, list.decimals).toString()

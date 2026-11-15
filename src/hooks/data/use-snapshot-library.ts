@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useSnapshots } from '@/hooks/data/use-snapshots'
 import { get } from '@/lib/db/db'
-import { checkEligibility } from '@/lib/opensea/eligibility'
+import { storedDropSource } from '@/lib/collection-source'
+import { readEligibility } from '@/lib/mint/mint-provider'
 import { toMessage } from '@/lib/core/message'
 import {
   buildSnapshotPayload,
@@ -107,7 +108,11 @@ export function useSnapshotLibrary() {
         throw new Error('No saved wallet matches this snapshot')
       }
 
-      const result = await checkEligibility(snapshot.slug, wallets)
+      const result = await readEligibility(
+        storedDropSource(snapshot.drop),
+        snapshot.slug,
+        wallets
+      )
       // A wallet that failed mid-run comes back as an empty row, and writing it
       // over a good one would look like the collection changed.
       const failed = result.rows.filter((row) => row.error)
@@ -125,7 +130,7 @@ export function useSnapshotLibrary() {
       }
       await updateSnapshot(
         snapshot.id,
-        buildSnapshotPayload(result, snapshot.slug, snapshot.marketplace)
+        buildSnapshotPayload(result, snapshot.slug)
       )
 
       const dropped = snapshot.rows.length - wallets.length

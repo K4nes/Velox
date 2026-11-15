@@ -2,6 +2,8 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { signInNonce, signInToken } from '@/lib/chain/transport'
 import type { TransportReply } from '@/lib/chain/transport'
 import { cachedEligibilityToken, forgetEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
+import { sleep } from '@/lib/core/async'
+import { WALLET_READ_SPACING_MS } from '@/lib/core/concurrency'
 import { toMessage } from '@/lib/core/message'
 import {
   getCollection,
@@ -74,9 +76,8 @@ async function readAuth<T>(reply: Promise<TransportReply>): Promise<T> {
 // an `authorization` header, so a 429 here cannot rotate to the next key. It
 // waits out its retry budget, or gives up at once when the server asks for a wait
 // longer than that budget allows, and either way that wallet's row fails. Pacing
-// is the only lever this loop has, and 250 ms is a guess at a limit this repo does
-// not record, not a published number.
-const ELIGIBILITY_WALLET_SPACING_MS = 250
+// is the only lever this loop has, and the shared constant is a guess at a limit
+// this repo does not record, not a published number.
 
 export async function checkWalletEligibility(
   drop: DropInfo,
@@ -94,9 +95,7 @@ export async function checkWalletEligibility(
 
   for (const [index, wallet] of unique.entries()) {
     if (index > 0) {
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, ELIGIBILITY_WALLET_SPACING_MS)
-      )
+      await sleep(WALLET_READ_SPACING_MS)
     }
 
     try {
