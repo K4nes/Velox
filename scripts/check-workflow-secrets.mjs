@@ -4,7 +4,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 // any install script can read it. The signing secrets belong to the steps that
 // use them, so the check fails on a `secrets.` reference above `steps:`.
 const WORKFLOWS = '.github/workflows'
-const SECRET = /secrets\.[A-Za-z0-9_]+/
+// GitHub secret names are upper snake, and the file this lives in is
+// `check-workflow-secrets.mjs`, which matched the looser pattern as
+// `secrets.mjs` and failed its own check from the day it landed.
+const SECRET = /secrets\.[A-Z][A-Z0-9_]*/
 const JOB = /^ {2}[A-Za-z0-9_-]+:$/
 const STEPS = /^\s+steps:$/
 
