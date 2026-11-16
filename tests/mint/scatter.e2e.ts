@@ -4,6 +4,7 @@ import { expect } from 'e2e'
 import type { Screen } from 'e2e'
 import {
   mintWallets,
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
@@ -31,14 +32,7 @@ async function seedMintPage(
   folder: FolderRow,
   wallets: WalletRow[],
 ): Promise<void> {
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {
-      // The chain is a preference, not a requirement: an origin that blocks storage
-      // keeps the default chain.
-    }
-  })
+  await pinWalletChain(browser)
   await app.open('/mint/tasks')
   await seedVelox(browser, {
     folders: [folder],

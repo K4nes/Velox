@@ -3,6 +3,7 @@ import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
 import {
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
@@ -113,14 +114,7 @@ export async function prepareMintRun(options: {
     ]
   const addresses = options.addresses ?? wallets.map((wallet) => wallet.address)
 
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {
-      // The chain is a preference, not a requirement: an origin that blocks storage
-      // keeps the default chain.
-    }
-  })
+  await pinWalletChain(browser)
 
   await app.open('/mint/tasks')
   await seedVelox(browser, {

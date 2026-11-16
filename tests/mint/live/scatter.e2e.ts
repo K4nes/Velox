@@ -2,6 +2,7 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import {
   mintWallets,
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
@@ -24,14 +25,7 @@ test(`the live Scatter collection ${SLUG} loads its lists`, async ({
   const [wallet] = mintWallets(1, folder.id)
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
 
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {
-      // The chain is a preference, not a requirement: an origin that blocks storage
-      // keeps the default chain.
-    }
-  })
+  await pinWalletChain(browser)
   await app.open('/mint/tasks')
   await seedVelox(browser, {
     folders: [folder],

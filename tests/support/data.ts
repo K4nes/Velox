@@ -1,8 +1,21 @@
 import './env'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import type { Browser } from '@e2e-dev/web'
 import type { FolderRow, WalletRow } from './seed'
 
 export const FIXED_NOW = 1_760_000_000_000
+
+// The app reads its chain from storage before the first render, so a lane that needs the
+// seeded Robinhood connection pins it in an init script, before the page opens.
+export async function pinWalletChain(browser: Browser): Promise<void> {
+  await browser.addInitScript(() => {
+    try {
+      window.localStorage.setItem('wallet-chain', 'robinhood')
+    } catch {
+      // An origin that blocks storage keeps the default chain, which is fine here.
+    }
+  })
+}
 
 /**
  * Wallets for the deterministic mint run. The keys are generated per run, so no
