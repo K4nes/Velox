@@ -350,12 +350,16 @@ export function stageStatusFor(
 }
 
 // A task that cannot start says why: a stage whose price is stated in a token, or a wallet
-// the provider blocked, whose fix is in the task rather than in the wallet.
-export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
+// the provider blocked, whose fix is in the task rather than in the wallet. The drop is the
+// caller's, because an armed fire re-reads it and the task still holds the older one.
+export function startRefusalFor(
+  task: Task,
+  rows: WalletRun[],
+  drop: DropInfo | null = task.drop
+): string | null {
   // A stage states the currency its price is in, whatever the provider, so the refusal
   // reads the stage and never the provider name. OpenSea stages carry no currency.
-  const stage =
-    task.drop?.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
+  const stage = drop?.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
   const refusal = erc20RefusalForStage(stage)
   if (refusal !== null) return refusal
 

@@ -33,30 +33,21 @@ export type MintReadiness = {
   entries: PreparedMintEntry[]
 }
 
+// Sends calldata that was already built. It cannot build: the batch reads every wallet's
+// build before any send starts, so an allowance refusal can never arrive after another
+// wallet has signed.
 export async function mintForWallet(input: {
-  drop: DropInfo
-  stageUuid: string
   wallet: StoredWallet
-  quantity: number
   gas: TxGas
-  transaction?: MintTransaction
+  transaction: MintTransaction
   shouldAbort?: () => boolean
 }): Promise<{ txHash: string; chain: string }> {
-  const transaction =
-    input.transaction ??
-    (await buildMintTransactionFor({
-      drop: input.drop,
-      stageUuid: input.stageUuid,
-      minter: input.wallet.address,
-      quantity: input.quantity,
-    }))
-
   return sendTransaction({
     wallet: input.wallet,
-    chainSlug: transaction.chain,
-    to: transaction.to as `0x${string}`,
-    data: transaction.data as `0x${string}`,
-    value: BigInt(transaction.value),
+    chainSlug: input.transaction.chain,
+    to: input.transaction.to as `0x${string}`,
+    data: input.transaction.data as `0x${string}`,
+    value: BigInt(input.transaction.value),
     gas: input.gas,
     shouldAbort: input.shouldAbort,
   })
@@ -103,8 +94,15 @@ export async function buildMintBatch(input: {
   wallets: readonly StoredWallet[]
   prepared: Map<string, PreparedMintEntry> | null
   isCurrent: () => boolean
-}): Promise<{ entries: Map<string, PreparedMintEntry>; refusal: string | null }> {
+}): Promise<{
+  entries: Map<string, PreparedMintEntry>
+  refusal: string | null
+  // Why a wallet has no calldata, when its build failed for a reason other than an
+  // allowance. The send loop reports it rather than building again.
+  failures: Map<string, string>
+}> {
   const entries = new Map<string, PreparedMintEntry>(input.prepared)
+  const failures = new Map<string, string>()
   let refusal: string | null = null
 
   // Waves, not one shared cursor. A cursor hands the next wallet to whichever worker frees
@@ -132,12 +130,13 @@ export async function buildMintBatch(input: {
             })
           } catch (error) {
             if (isErc20Refusal(error)) refusal = toMessage(error)
+            else failures.set(wallet.id, toMessage(error))
           }
         })
     )
   }
 
-  return { entries, refusal }
+  return { entries, refusal, failures }
 }
 
 // A closed stage rejects the pre-open build, so the open-time batch is the real path.

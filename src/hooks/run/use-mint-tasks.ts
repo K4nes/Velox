@@ -9,7 +9,6 @@ import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
 import { resolveCollectionSource } from '@/lib/collection-source'
 import { checkScatterLists } from '@/lib/scatter/eligibility'
-import { isErc20Refusal } from '@/lib/scatter/erc20-refusal'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import {
@@ -415,10 +414,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     if (!task || !task.drop || mintingRef.has(task.id)) return
 
     const id = task.id
-    const drop = options.drop ?? prepared?.drop ?? task.drop
+    // The re-checked drop wins: an armed fire re-reads the drop and re-applies the token
+    // from the URL, so the older copy must not be what the run mints against.
+    const drop = prepared?.drop ?? options.drop ?? task.drop
     const refusal = startRefusalFor(
       task,
-      prepared?.rows ?? scoped.get().runs[id] ?? []
+      prepared?.rows ?? scoped.get().runs[id] ?? [],
+      drop
     )
     // A blocked task builds nothing: the fix is in the task, and a run would only
     // spend gas discovering the same refusal wallet by wallet.
@@ -591,16 +593,25 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       await mapLimit(selected, WALLET_CONCURRENCY, async (wallet) => {
         if (stopped()) return
         const preparedEntry = calldata.get(wallet.id)
+        // No calldata means this wallet was never built, and the send path cannot build.
+        // That is what keeps an allowance refusal from arriving after another wallet has
+        // signed, so the row reports why it was skipped instead.
+        if (!preparedEntry) {
+          updateRun(wallet.id, () => ({
+            status: 'failed',
+            error:
+              batch.failures.get(wallet.id) ??
+              'No calldata was built for this wallet',
+          }))
+          return
+        }
         try {
           const result = await mintForWallet({
-            drop,
-            stageUuid: liveStageUuid,
             wallet,
-            quantity,
-            gas: preparedEntry?.gasLimit
+            gas: preparedEntry.gasLimit
               ? { ...gas, gasLimit: preparedEntry.gasLimit }
               : gas,
-            transaction: preparedEntry?.transaction,
+            transaction: preparedEntry.transaction,
             shouldAbort: stopped,
           })
           if (stopped()) return
@@ -617,11 +628,8 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           })
         } catch (error) {
           if (stopped()) return
-          // A list priced in an ERC-20 is fixed in the task, not in the wallet: the row
-          // is blocked so it cannot join another batch, and the message names the token.
-          const blocked = isErc20Refusal(error)
           updateRun(wallet.id, () => ({
-            status: blocked ? 'blocked' : 'failed',
+            status: 'failed',
             error: toMessage(error),
           }))
         }
