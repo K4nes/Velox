@@ -30,10 +30,10 @@ const FAMILIES = {
     path: () => '/mint',
     method: 'POST',
     request: async (base, slug) => {
-      const collection = await readJson(
+      const collection = await fetchJson(
         `${base}/collection/${encodeURIComponent(slug)}`
       )
-      const lists = await readJson(
+      const lists = await fetchJson(
         `${base}/collection/${encodeURIComponent(slug)}/eligible-invite-lists`
       )
       const list = Array.isArray(lists) ? lists[0] : undefined
@@ -61,11 +61,15 @@ function flag(name) {
   return index === -1 ? undefined : process.argv[index + 1]
 }
 
-// A family that builds its request reads the endpoints that describe it before recording.
-async function readJson(url) {
+// One fetch path for the endpoints a family reads and the endpoint it records, so a
+// status or parse failure reads the same whichever call produced it.
+async function fetchJson(url, init = {}) {
   const response = await fetch(url, {
-    headers: { 'user-agent': USER_AGENT, accept: 'application/json' },
+    method: init.method ?? 'GET',
+    headers: { 'user-agent': USER_AGENT, accept: 'application/json', ...init.headers },
+    body: init.body,
   })
+
   const text = await response.text()
   if (!response.ok) {
     fail(`${String(response.status)} from ${url}: ${text.slice(0, 300)}`)
@@ -99,7 +103,7 @@ if (existsSync(envFile)) {
 const { base, auth, path, method, request } = target
 const url = `${base}${path(slug)}`
 
-const headers = { 'user-agent': USER_AGENT, accept: 'application/json' }
+const headers = {}
 if (auth !== undefined) {
   const key = process.env[auth]
   if (key === undefined || key === '') {
@@ -113,23 +117,11 @@ if (requestBody !== undefined) {
   headers['content-type'] = 'application/json'
 }
 
-const response = await fetch(url, {
-  method: method ?? 'GET',
+const body = await fetchJson(url, {
+  method,
   headers,
   body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
 })
-
-const text = await response.text()
-if (!response.ok) {
-  fail(`${String(response.status)} from ${url}: ${text.slice(0, 300)}`)
-}
-
-let body
-try {
-  body = JSON.parse(text)
-} catch {
-  fail(`${url} did not answer JSON: ${text.slice(0, 300)}`)
-}
 
 mkdirSync(OUT_DIR, { recursive: true })
 const file = join(OUT_DIR, `${family}.json`)
