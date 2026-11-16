@@ -1,6 +1,10 @@
 import { Scan } from 'lucide-react'
 import { useMemo } from 'react'
 
+import {
+  COLLECTION_FIELD_LABEL,
+  COLLECTION_FIELD_PLACEHOLDER,
+} from '@/components/collection-field'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -56,13 +60,13 @@ export function BulkSellPage() {
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug (OpenSea / Scatter)
+            {COLLECTION_FIELD_LABEL}
           </label>
           <Input
             id="collection-url"
             value={scan.url}
             onChange={(event) => scan.changeUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+            placeholder={COLLECTION_FIELD_PLACEHOLDER}
             disabled={scan.running || run.running || cancel.running}
           />
         </div>

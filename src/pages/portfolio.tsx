@@ -1,5 +1,9 @@
 import { useMemo } from 'react'
 import { Image as ImageIcon, Scan, X } from 'lucide-react'
+import {
+  COLLECTION_FIELD_LABEL,
+  COLLECTION_FIELD_PLACEHOLDER,
+} from '@/components/collection-field'
 import { HeldInventoryHeader, scanAnnouncement } from '@/components/held-inventory-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -295,14 +299,14 @@ export function PortfolioPage() {
         <Card className="gap-3 p-4 lg:flex-row lg:items-end">
           <div className="flex flex-1 flex-col gap-1.5">
             <label htmlFor="collection-url" className="text-xs font-medium">
-              Collection URL or slug (OpenSea / Scatter)
+              {COLLECTION_FIELD_LABEL}
             </label>
             <div className="relative">
               <Input
                 id="collection-url"
                 value={scan.url}
                 onChange={(event) => scan.changeUrl(event.target.value)}
-                placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+                placeholder={COLLECTION_FIELD_PLACEHOLDER}
                 className="pr-8"
                 disabled={scan.running}
               />

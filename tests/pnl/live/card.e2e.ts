@@ -7,6 +7,7 @@ import {
   openseaConnection,
 } from '../../support/data'
 import { requireEnv } from '../../support/env'
+import { READ_COLLECTION_LABEL } from '../../support/scan'
 import { seedVelox } from '../../support/seed'
 
 const ETH_FIGURE = /^-?\d+\.\d{4}(?: ETH)?$/
@@ -120,7 +121,7 @@ test(
     await app.open('/pnl/card')
 
     await screen
-      .getByLabel('Collection URL or slug (OpenSea / Scatter)')
+      .getByLabel(READ_COLLECTION_LABEL, { exact: true })
       .fill(slug)
     await screen.getByRole('button', { name: /Select wallets/ }).click()
     await screen

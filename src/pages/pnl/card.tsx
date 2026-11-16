@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ChartLine, Download, Plus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import {
+  COLLECTION_FIELD_LABEL,
+  COLLECTION_FIELD_PLACEHOLDER,
+} from '@/components/collection-field'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,7 +19,12 @@ import { exportCard as saveCard } from '@/lib/card/card-export'
 import { persistImages, readImageFile } from '@/lib/card/card-images'
 import { quoteFailureMessage } from '@/lib/chain/price'
 import { toMessage } from '@/lib/core/message'
-import { getCollection, slugFromUrl } from '@/lib/opensea/index'
+import { getCollection } from '@/lib/opensea/index'
+import {
+  COLLECTION_NOT_RECOGNISED,
+  readRefusalFor,
+  resolveCollectionSource,
+} from '@/lib/collection-source'
 import { backfillQuote, upsertPnlRecord } from '@/lib/pnl/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
@@ -257,9 +266,14 @@ export function PnlCardPage() {
     active === null ? DEFAULT_POSITION : (positions[active.id] ?? DEFAULT_POSITION)
 
   async function check() {
-    const slug = slugFromUrl(collectionUrl)
-    if (slug === null) {
-      toast.error('Collection URL not recognised')
+    const source = resolveCollectionSource(collectionUrl)
+    if (source === null) {
+      toast.error(COLLECTION_NOT_RECOGNISED)
+      return
+    }
+    const refusal = readRefusalFor(source)
+    if (refusal !== null) {
+      toast.error(refusal)
       return
     }
     if (walletIds.length === 0) {
@@ -273,7 +287,7 @@ export function PnlCardPage() {
 
     setRunning(true)
     try {
-      const info = await getCollection(slug)
+      const info = await getCollection(source.slug)
       pnlCard.setCollection(info)
       void pnlCard.loadQuote()
       const chainEntry = chainBySlug(info.chain)
@@ -353,13 +367,13 @@ export function PnlCardPage() {
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL or slug (OpenSea / Scatter)
+            {COLLECTION_FIELD_LABEL}
           </label>
           <Input
             id="collection-url"
             value={collectionUrl}
             onChange={(event) => pnlCard.setCollectionUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/… or https://scatter.art/…"
+            placeholder={COLLECTION_FIELD_PLACEHOLDER}
           />
         </div>
         <div

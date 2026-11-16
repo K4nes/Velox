@@ -183,7 +183,7 @@ The "collection URL + wallets + action" card.
 ```tsx
 <Card className="gap-3 p-4 lg:flex-row lg:items-end">
   <div className="flex flex-1 flex-col gap-1.5">
-    <label className="text-xs font-medium">Collection URL or slug (OpenSea / Scatter)</label>
+    <label className="text-xs font-medium">Collection URL</label>
     <Input />
   </div>
   <div className="flex flex-col gap-1.5 lg:w-[280px]" role="group">…WalletSelect…</div>
@@ -194,6 +194,13 @@ The "collection URL + wallets + action" card.
 Visible 12px labels, controls at the `Input` default (32px), wallet column 280px. The
 wallet field is labelled `Wallet` on every page. `mint/tasks` keeps this shape without a
 wallet field — its wallets live in the config panel.
+
+The read-only pages name no provider in the label, because a list of supported
+marketplaces belongs in the docs. The two Mint cards label the field
+`Collection URL or slug (OpenSea / Scatter)`, because both providers work there.
+
+Both strings live in `components/collection-field.ts`, and the five pages read them from
+there. A page that spells its own is caught by `scripts/check-collection-label.mjs`.
 
 ### Table
 
@@ -309,6 +316,13 @@ in `wallet-profiles`.
 `AGENTS.md` owns the verification ladder. Run it in order and stop at the first rung that
 settles the change. This file adds no rungs of its own, which is what stopped the two lists
 drifting apart.
+
+## E2E assertions
+
+- One test asserts one thing. The runner reports the API name (`expect.toBeEnabled`) and
+  the `test(` line, not the call site, and it drops the message on a locator assertion
+  while keeping it on a scalar one. Two locator assertions in one test therefore fail
+  identically, and reading which one broke costs a run per guess. Split them.
 
 ## E2E live data and mocks
 

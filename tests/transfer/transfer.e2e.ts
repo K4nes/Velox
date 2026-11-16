@@ -14,9 +14,9 @@ import {
   INVENTORY_FILTER_LABEL,
 } from '../support/inventory'
 import { collectionFixture } from '../support/fixtures/collection'
-import { mockCollection, mockHoldings } from '../support/opensea'
+import { guardOpenSeaHost, mockCollection, mockHoldings } from '../support/opensea'
 import { mockRpc, word } from '../support/rpc'
-import { scanCollection } from '../support/scan'
+import { READ_COLLECTION_LABEL, scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 const SLUG = 'mock-transfer'
@@ -24,6 +24,9 @@ const CONTRACT = '0x00000000000000000000000000000000000000aa'
 const RPC_URL = 'http://127.0.0.1:8545'
 const DESTINATION = '0x0000000000000000000000000000000000000001'
 const SUPPORTS_INTERFACE = '0x01ffc9a7'
+const SCATTER_SLUG = 'scatter-transfer'
+const SCATTER_REFUSAL =
+  'Scatter is mint-only in Velox — mint it from the Mint page.'
 
 test('a pasted destination arms the transfer', async ({
   app,
@@ -150,7 +153,7 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Transfer' }).click()
   await expect(screen.getByText('Scanning collection…')).toBeVisible()
@@ -168,12 +171,12 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Transfer' }).click()
 
   await expect(
-    screen.getByLabel('Collection URL or slug (OpenSea / Scatter)'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -191,4 +194,57 @@ test('page state survives a round trip through another page', async ({
 
   expect(rpc.count('eth_sendRawTransaction')).toBe(0)
   expect(holdings.count).toBe(1)
+})
+
+test('a Scatter collection URL is refused without a provider request', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Transfer Scatter')
+  const [wallet] = mintWallets(1, folder.id)
+
+  // Registered first, so the mock below wins and any other OpenSea path aborts.
+  await guardOpenSeaHost(browser)
+  const collection = await mockCollection(browser, {
+    slug: SCATTER_SLUG,
+    body: collectionFixture({
+      slug: SCATTER_SLUG,
+      name: 'Scatter Collection',
+      contract: CONTRACT,
+    }),
+  })
+
+  await app.open('/transfer')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets: [wallet],
+    connections: [robinhoodRpc(RPC_URL), openseaConnection('deterministic-key')],
+  })
+  await app.open('/transfer')
+
+  // The header's live region repeats the sentence for a screen reader, so the
+  // message the operator reads is queried on its own element.
+  const refusal = browser.locator('p').filter({ hasText: SCATTER_REFUSAL })
+
+  await scanCollection({
+    browser,
+    screen,
+    feature: 'transfer',
+    collection: `https://scatter.art/c/${SCATTER_SLUG}`,
+    folder: folder.name,
+  })
+  await expect(refusal).toBeVisible()
+
+  // The token-shaped URL is the shape the slug gate used to swallow, so the
+  // field is filled again and the wallet step is left as it stands. The message
+  // clearing on the edit is what makes the second refusal a new one.
+  await screen
+    .getByLabel(READ_COLLECTION_LABEL, { exact: true })
+    .fill(`https://scatter.art/c/${SCATTER_SLUG}/42`)
+  await expect(screen.getByText(SCATTER_REFUSAL)).toHaveCount(0)
+  await screen.getByRole('button', { name: 'Rescan' }).click()
+  await expect(refusal).toBeVisible()
+
+  expect(collection.count).toBe(0)
 })

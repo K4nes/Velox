@@ -46,6 +46,7 @@ jobs:
       # line wider than the 80 columns the other workflows keep.
       - run: node scripts/check-command-table.mjs
       - run: node scripts/check-version-literal.mjs
+      - run: node scripts/check-collection-label.mjs
       - run: node scripts/check-lockfile.mjs
       - run: node scripts/check-workflow-secrets.mjs
       - run: node scripts/check-workflow-width.mjs

@@ -10,7 +10,7 @@ import type {
   PortfolioScanState,
   PortfolioTableState,
 } from '@/lib/inventory/portfolio'
-import { resolveScanTarget } from '@/lib/inventory/scan-target'
+import { resolveReadTarget } from '@/lib/inventory/scan-target'
 import { createPortfolioState } from '@/pages/portfolio/state'
 import type { PortfolioState } from '@/pages/portfolio/state'
 
@@ -110,7 +110,7 @@ export function usePortfolioScan(store?: PageStore<PortfolioState>) {
 
     try {
       const { url, walletIds } = scoped.get()
-      const target = await resolveScanTarget(url, walletIds)
+      const target = await resolveReadTarget(url, walletIds)
       if (!run.live()) return
       if (target.status === 'failed') {
         scoped.set({ state: { status: 'failed', message: target.message } })

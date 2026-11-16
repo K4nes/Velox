@@ -64,12 +64,23 @@ Cheapest check that settles the change, in order:
    runs. `npm run build` has to have produced `dist/` first.
 7. A browser run of the page — only when the task asks for it, or when the change cannot
    be settled any cheaper.
+8. One pass over your own diff, read as a reviewer with the issue's criteria beside it. It
+   is the last rung and it is not optional: a green gate says the code runs, not that it
+   answers the issue. Three review passes on one branch returned seven, six and three
+   findings after turns that had already reported green.
 
 CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
-`node scripts/check-version-literal.mjs`, `node scripts/check-lockfile.mjs`,
-`node scripts/check-workflow-secrets.mjs`, `node scripts/check-workflow-width.mjs` and the PR
+`node scripts/check-version-literal.mjs`, `node scripts/check-collection-label.mjs`,
+`node scripts/check-lockfile.mjs`, `node scripts/check-workflow-secrets.mjs`,
+`node scripts/check-workflow-width.mjs` and the PR
 title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
 settle style rather than behaviour.
+
+An upstream that moved is the other wrong gate. `npm run verify` starts with
+`node scripts/check-upstream-drift.mjs`, which fails when `HEAD` is behind its upstream:
+every later rung then describes code the reviewer will not see. A plan written against a
+tree four commits old is the cost this check exists to prevent. `VELOX_ALLOW_BEHIND=1` is
+the deliberate escape, for comparing against an old tree on purpose.
 
 A stale install is the most common wrong gate, in both directions. With `node_modules`
 absent, `npm run build` still starts: npm resolves `tsc` and `vite` through `PATH`, so the
