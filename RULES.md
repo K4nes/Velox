@@ -199,6 +199,9 @@ The read-only pages name no provider in the label, because a list of supported
 marketplaces belongs in the docs. The two Mint cards label the field
 `Collection URL or slug (OpenSea / Scatter)`, because both providers work there.
 
+Both strings live in `components/collection-field.ts`, and the five pages read them from
+there. A page that spells its own is caught by `scripts/check-collection-label.mjs`.
+
 ### Table
 
 - Header label: `text-muted-foreground px-3 text-xs font-medium` on every `TableHead`.
@@ -313,6 +316,13 @@ in `wallet-profiles`.
 `AGENTS.md` owns the verification ladder. Run it in order and stop at the first rung that
 settles the change. This file adds no rungs of its own, which is what stopped the two lists
 drifting apart.
+
+## E2E assertions
+
+- One test asserts one thing. The runner reports the API name (`expect.toBeEnabled`) and
+  the `test(` line, not the call site, and it drops the message on a locator assertion
+  while keeping it on a scalar one. Two locator assertions in one test therefore fail
+  identically, and reading which one broke costs a run per guess. Split them.
 
 ## E2E live data and mocks
 
