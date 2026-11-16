@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ChartLine, Download, Plus, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import {
+  COLLECTION_FIELD_LABEL,
+  COLLECTION_FIELD_PLACEHOLDER,
+} from '@/components/collection-field'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -363,13 +367,13 @@ export function PnlCardPage() {
       <Card className="gap-3 p-4 lg:flex-row lg:items-end">
         <div className="flex flex-1 flex-col gap-1.5">
           <label htmlFor="collection-url" className="text-xs font-medium">
-            Collection URL
+            {COLLECTION_FIELD_LABEL}
           </label>
           <Input
             id="collection-url"
             value={collectionUrl}
             onChange={(event) => pnlCard.setCollectionUrl(event.target.value)}
-            placeholder="https://opensea.io/collection/…"
+            placeholder={COLLECTION_FIELD_PLACEHOLDER}
           />
         </div>
         <div
