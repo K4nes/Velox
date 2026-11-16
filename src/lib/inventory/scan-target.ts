@@ -1,4 +1,8 @@
-import { readRefusalFor, resolveCollectionSource } from '@/lib/collection-source'
+import {
+  COLLECTION_NOT_RECOGNISED,
+  readRefusalFor,
+  resolveCollectionSource,
+} from '@/lib/collection-source'
 import type { CollectionSource } from '@/lib/collection-source'
 import { toMessage } from '@/lib/core/message'
 import { listWallets } from '@/lib/wallet/wallets'
@@ -21,7 +25,7 @@ export async function resolveScanTarget(
 ): Promise<ScanTarget> {
   const collection = resolveCollectionSource(url)
   if (collection === null) {
-    return { status: 'failed', message: 'Collection URL not recognised' }
+    return { status: 'failed', message: COLLECTION_NOT_RECOGNISED }
   }
 
   let records: StoredWallet[]
@@ -56,7 +60,7 @@ export async function resolveReadTarget(
 ): Promise<ScanTarget> {
   const collection = resolveCollectionSource(url)
   if (collection === null) {
-    return { status: 'failed', message: 'Collection URL not recognised' }
+    return { status: 'failed', message: COLLECTION_NOT_RECOGNISED }
   }
 
   const refusal = readRefusalFor(collection)

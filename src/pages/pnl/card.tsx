@@ -16,7 +16,11 @@ import { persistImages, readImageFile } from '@/lib/card/card-images'
 import { quoteFailureMessage } from '@/lib/chain/price'
 import { toMessage } from '@/lib/core/message'
 import { getCollection } from '@/lib/opensea/index'
-import { readRefusalFor, resolveCollectionSource } from '@/lib/collection-source'
+import {
+  COLLECTION_NOT_RECOGNISED,
+  readRefusalFor,
+  resolveCollectionSource,
+} from '@/lib/collection-source'
 import { backfillQuote, upsertPnlRecord } from '@/lib/pnl/pnl-records'
 import { fetchCollectionTrades, summarize } from '@/lib/pnl/pnl-trades'
 import { cn } from '@/lib/utils'
@@ -260,7 +264,7 @@ export function PnlCardPage() {
   async function check() {
     const source = resolveCollectionSource(collectionUrl)
     if (source === null) {
-      toast.error('Collection URL not recognised')
+      toast.error(COLLECTION_NOT_RECOGNISED)
       return
     }
     const refusal = readRefusalFor(source)

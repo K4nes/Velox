@@ -3,6 +3,8 @@ import { slugFromUrl } from '@/lib/opensea/index'
 export const SCATTER_READ_REFUSAL =
   'Scatter is mint-only in Velox — mint it from the Mint page.'
 
+export const COLLECTION_NOT_RECOGNISED = 'Collection URL not recognised'
+
 // The provider axis is a registry, not a two-member union. A third source adds one
 // entry here and one entry in each module that maps over `CollectionSource`; no
 // caller signature changes and no caller has to learn its name. `readRefusal` is
