@@ -1,11 +1,12 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { mintWallets, walletFolder } from '../support/data'
+import { walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsSpread } from '../support/fixtures/holdings'
 import {
   checkCollection,
   mockMintNetwork,
+  oneWallet,
   pinMintGas,
   seedMintPage,
 } from '../support/mint'
@@ -26,8 +27,7 @@ test('the mint task survives a round trip while the check is running', async ({
   screen,
 }) => {
   const folder = walletFolder('Mint State')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,
@@ -106,8 +106,7 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
   screen,
 }) => {
   const folder = walletFolder('Mint Cap')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,
@@ -142,8 +141,7 @@ test('a mint run blocks another batch flow and keeps reporting across pages', as
   screen,
 }) => {
   const folder = walletFolder('Mint Slot')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,

@@ -128,18 +128,12 @@ export async function prepareMintRun(options: {
   })
   await app.open('/mint/tasks')
 
-  await screen
-    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
-    .fill(`https://opensea.io/collection/${slug}`)
-
-  // The wallet row lives in a collapsed group, so the group checkbox is the
-  // way in; the picker closes on Escape.
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', 'Check').click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${slug}`
+  )
 
   for (const address of addresses) {
     const row = screen.getByRole('row').filter({ hasText: address })
@@ -427,6 +421,8 @@ export async function selectFolder(
   screen: Screen,
   folder: FolderRow,
 ): Promise<void> {
+  // The wallet row lives in a collapsed group, so the group checkbox is the
+  // way in; the picker closes on Escape.
   await screen.getByRole('button', { name: /Select wallets/ }).click()
   await screen
     .getByRole('checkbox', { name: `Select all in ${folder.name}` })
