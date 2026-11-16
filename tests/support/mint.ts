@@ -3,6 +3,7 @@ import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
 import {
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
@@ -113,11 +114,7 @@ export async function prepareMintRun(options: {
     ]
   const addresses = options.addresses ?? wallets.map((wallet) => wallet.address)
 
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {}
-  })
+  await pinWalletChain(browser)
 
   await app.open('/mint/tasks')
   await seedVelox(browser, {
@@ -153,45 +150,24 @@ export async function prepareMintRun(options: {
 }
 
 /**
- * Answers the collection, drop, eligibility, mint, sign-in and chain endpoints
- * in memory, so a mint runs without keys or funds. `calldataDelayMs` holds that
- * wallet's mint response open, `sendDelayMs` its broadcast response, and
- * `receiptDelayMs` the receipt response; each makes one overlap assertion
- * observable. The events keep each request's arrival time.
+ * Answers the chain's JSON-RPC in memory, so a mint broadcasts and settles without a
+ * node. `sendDelayMs` holds that wallet's broadcast open and `receiptDelayMs` the
+ * receipt, which makes one overlap assertion observable. The events keep each
+ * request's arrival time.
  */
-export async function mockMintNetwork(options: {
+export async function mockMintRpc(options: {
   browser: Browser
-  slug: string
-  wallets: { address: string; calldataDelayMs?: number; sendDelayMs?: number }[]
+  wallets: { address: string; sendDelayMs?: number }[]
   receiptDelayMs?: number
-  /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
-  maxPerWallet?: string
 }): Promise<{ events: MintEvent[] }> {
-  const { browser, slug, receiptDelayMs = 0 } = options
-  const maxPerWallet = options.maxPerWallet ?? '1'
+  const receiptDelayMs = options.receiptDelayMs ?? 0
   const events: MintEvent[] = []
-  const delayByAddress = new Map(
-    options.wallets.map((wallet) => [
-      wallet.address.toLowerCase(),
-      wallet.calldataDelayMs ?? 0,
-    ])
-  )
   const sendDelayByAddress = new Map(
     options.wallets.map((wallet) => [
       wallet.address.toLowerCase(),
       wallet.sendDelayMs ?? 0,
     ])
   )
-  const now = Date.now()
-  const stage = {
-    uuid: 'parallel-stage',
-    stage_type: 'public',
-    label: 'Public',
-    price: '0',
-    max_per_wallet: maxPerWallet,
-    start_time: new Date(now - 60_000).toISOString(),
-    end_time: new Date(now + 3_600_000).toISOString(),
-  }
 
   async function answer(route: WebRoute, result: JsonValue) {
     const request = JSON.parse(route.request.postData ?? '{}') as { id?: JsonValue }
@@ -297,6 +273,54 @@ export async function mockMintNetwork(options: {
     }
   }
 
+  await options.browser.route(/rpc\.velox\.test/, handleRpc)
+
+  return { events }
+}
+
+/**
+ * Answers the collection, drop, eligibility, mint, sign-in and chain endpoints
+ * in memory, so a mint runs without keys or funds. `calldataDelayMs` holds that
+ * wallet's mint response open, `sendDelayMs` its broadcast response, and
+ * `receiptDelayMs` the receipt response; each makes one overlap assertion
+ * observable. The events keep each request's arrival time.
+ */
+export async function mockMintNetwork(options: {
+  browser: Browser
+  slug: string
+  wallets: { address: string; calldataDelayMs?: number; sendDelayMs?: number }[]
+  receiptDelayMs?: number
+  /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
+  maxPerWallet?: string
+}): Promise<{ events: MintEvent[] }> {
+  // The chain is the same for every provider, so the RPC mock is shared.
+  const rpc = await mockMintRpc({
+    browser: options.browser,
+    wallets: options.wallets.map((wallet) => ({
+      address: wallet.address,
+      sendDelayMs: wallet.sendDelayMs,
+    })),
+    receiptDelayMs: options.receiptDelayMs ?? 0,
+  })
+  const { browser, slug } = options
+  const maxPerWallet = options.maxPerWallet ?? '1'
+  const delayByAddress = new Map(
+    options.wallets.map((wallet) => [
+      wallet.address.toLowerCase(),
+      wallet.calldataDelayMs ?? 0,
+    ])
+  )
+  const now = Date.now()
+  const stage = {
+    uuid: 'parallel-stage',
+    stage_type: 'public',
+    label: 'Public',
+    price: '0',
+    max_per_wallet: maxPerWallet,
+    start_time: new Date(now - 60_000).toISOString(),
+    end_time: new Date(now + 3_600_000).toISOString(),
+  }
+
   await browser.route(/\/api\/auth\/nonce$/, async (route) => {
     await route.fulfill({
       status: 200,
@@ -341,7 +365,7 @@ export async function mockMintNetwork(options: {
       minter?: string
     }
     const address = (body.minter ?? '').toLowerCase()
-    events.push({ kind: 'calldata', address, at: Date.now() })
+    rpc.events.push({ kind: 'calldata', address, at: Date.now() })
     const delayed = Promise.withResolvers<void>()
     setTimeout(delayed.resolve, delayByAddress.get(address) ?? 0)
     await delayed.promise
@@ -372,9 +396,7 @@ export async function mockMintNetwork(options: {
       },
     })
   })
-  await browser.route(/rpc\.velox\.test/, handleRpc)
-
-  return { events }
+  return rpc
 }
 
 /**
@@ -528,30 +550,54 @@ export type ScatterList = {
   unitSize?: number
 }
 
+/** One mint build as the Scatter API states it: unsigned calldata plus every token
+ * allowance the list wants. A native-currency list states none. */
+export type ScatterMintAnswer = {
+  to?: string
+  data?: string
+  value?: string
+  erc20s?: { address: string; amount: string }[]
+}
+
+/** A mint build the mocked Scatter API saw, parsed. */
+export type ScatterMintBody = {
+  collectionAddress?: string
+  chainId?: number
+  minterAddress?: string
+  lists?: { id: string; quantity: number }[]
+}
+
 /** What the mocked Scatter API saw, in arrival order. */
 export type ScatterCalls = {
   collections: string[]
   lists: { slug: string; minter: string | null; at: number }[]
-  mints: number
+  mintBodies: ScatterMintBody[]
 }
 
 /**
- * Answers Scatter's collection and eligible-invite-lists endpoints in memory. A bare
- * read returns the public lists only, which is the live contract; a minter read adds
- * the private lists `eligible` names for that address. `failMinters` fails one
- * address's read, so a test can prove the failure stays on its own row.
+ * Answers Scatter's collection, eligible-invite-lists and mint endpoints in memory. A
+ * bare read returns the public lists only, which is the live contract; a minter read
+ * adds the private lists `eligible` names for that address. `failMinters` fails one
+ * address's read, so a test can prove the failure stays on its own row. The mint route
+ * records the body it was given and answers with `mint`, so a test states the
+ * transaction and the allowances it wants to see refused.
  */
 export async function mockScatterNetwork(options: {
   browser: Browser
   slug: string
   chainId?: number
+  // The collection every answer describes. A test that needs another address names it.
+  collectionAddress?: string
   lists: ScatterList[]
   eligible?: (minter: string | null) => string[]
   failMinters?: string[]
+  // A wallet's own answer can differ: the allowance a build asks for is stated per build.
+  mint?: ScatterMintAnswer | ((body: ScatterMintBody) => ScatterMintAnswer)
 }): Promise<ScatterCalls> {
-  const calls: ScatterCalls = { collections: [], lists: [], mints: 0 }
+  const calls: ScatterCalls = { collections: [], lists: [], mintBodies: [] }
   const { lists } = options
   const publicLists = lists.filter((list) => list.private !== true)
+  const collectionAddress = options.collectionAddress ?? SCATTER_CONTRACT
   const now = Date.now()
 
   function visibleLists(minter: string | null): ScatterList[] {
@@ -572,7 +618,7 @@ export async function mockScatterNetwork(options: {
     return {
       id: list.id,
       root: `0x${'00'.repeat(32)}`,
-      address: SCATTER_CONTRACT,
+      address: collectionAddress,
       name: list.name,
       currency_address:
         list.currencyAddress ?? '0x0000000000000000000000000000000000000000',
@@ -621,7 +667,7 @@ export async function mockScatterNetwork(options: {
           id: slug,
           name: 'Scatter Drop',
           symbol: 'SD',
-          address: SCATTER_CONTRACT,
+          address: collectionAddress,
           chain_id: options.chainId ?? 4663,
           avatar_uri: '',
           banner_uri: '',
@@ -634,13 +680,23 @@ export async function mockScatterNetwork(options: {
     },
   )
 
-  // The mint build belongs to a later issue. Counting the calls proves a refused task
-  // builds nothing, and the 501 would fail a task that asked anyway.
+  // The build is unsigned calldata the client signs locally. A one-entry `lists` body
+  // is the only shape Velox sends, so the mock states the same contract it answers.
   await options.browser.route(/api\.scatter\.art\/v1\/mint$/, async (route) => {
-    calls.mints += 1
+    const body = JSON.parse(route.request.postData ?? '{}') as ScatterMintBody
+    calls.mintBodies.push(body)
+    const answer =
+      typeof options.mint === 'function' ? options.mint(body) : options.mint
     await route.fulfill({
-      status: 501,
-      json: { error: 'the deterministic Scatter mock has no mint route' },
+      status: 200,
+      json: {
+        mintTransaction: {
+          to: answer?.to ?? collectionAddress,
+          data: answer?.data ?? '0x4a21a2df',
+          value: answer?.value ?? '0',
+        },
+        erc20s: answer?.erc20s ?? [],
+      },
     })
   })
 

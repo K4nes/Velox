@@ -1,5 +1,4 @@
 import type { CollectionSource } from '@/lib/collection-source'
-import { SCATTER_MINT_REFUSAL } from '@/lib/mint/mint-task'
 import { buildMintTransaction, getDrop } from '@/lib/opensea/index'
 import type { DropInfo, MintTransaction } from '@/lib/opensea/index'
 import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
@@ -7,9 +6,19 @@ import { checkEligibility, getEligibilityToken } from '@/lib/opensea/eligibility
 import type { EligibilityResult } from '@/lib/opensea/eligibility'
 import { getScatterDrop } from '@/lib/scatter/drop'
 import { checkScatterEligibility } from '@/lib/scatter/eligibility'
+import { buildScatterMint } from '@/lib/scatter/mint'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea/index'
+
+// One wallet's mint build. The stage identifier is the provider's own stage or list,
+// carried from the task so a build names exactly one.
+export type MintBuild = {
+  drop: DropInfo
+  stageUuid: string
+  minter: string
+  quantity: number
+}
 
 type MintProvider = {
   fetchDrop: (slug: string) => Promise<DropInfo>
@@ -17,11 +26,7 @@ type MintProvider = {
     slug: string,
     wallets: StoredWallet[]
   ) => Promise<EligibilityResult>
-  buildTransaction?: (
-    slug: string,
-    minter: string,
-    quantity: number
-  ) => Promise<MintTransaction>
+  buildTransaction: (input: MintBuild) => Promise<MintTransaction>
   warmAuth?: (wallet: StoredWallet) => Promise<void>
 }
 
@@ -33,18 +38,21 @@ const providers: Record<CollectionSource, MintProvider> = {
   opensea: {
     fetchDrop: getDrop,
     readEligibility: checkEligibility,
-    buildTransaction: buildMintTransaction,
+    buildTransaction: ({ drop, minter, quantity }) =>
+      buildMintTransaction(drop.slug, minter, quantity),
     warmAuth: async (wallet) => {
       await cachedEligibilityToken(wallet.address, () =>
         getEligibilityToken(wallet.privateKey)
       )
     },
   },
-  // Scatter lists load here; the mint build belongs to the next issue, so the
-  // provider deliberately has no buildTransaction and no credential.
+  // The build takes no credential, so the entry has no warm step: omitting it is what
+  // keeps a Scatter task off the OpenSea sign-in chain.
   scatter: {
     fetchDrop: getScatterDrop,
     readEligibility: checkScatterEligibility,
+    buildTransaction: ({ drop, stageUuid, minter, quantity }) =>
+      buildScatterMint({ drop, listId: stageUuid, minter, quantity }),
   },
 }
 
@@ -71,19 +79,7 @@ export async function warmMintAuth(
 }
 
 export function buildMintTransactionFor(
-  drop: DropInfo,
-  minter: string,
-  quantity: number
+  input: MintBuild
 ): Promise<MintTransaction> {
-  const provider = providers[drop.source]
-  if (!provider.buildTransaction) {
-    return Promise.reject(
-      new Error(
-        drop.source === 'scatter'
-          ? SCATTER_MINT_REFUSAL
-          : `Mint building is not available for ${drop.source}.`
-      )
-    )
-  }
-  return provider.buildTransaction(drop.slug, minter, quantity)
+  return providers[input.drop.source].buildTransaction(input)
 }

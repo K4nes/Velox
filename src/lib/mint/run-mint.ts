@@ -9,8 +9,11 @@ import type {
 } from '@/lib/mint/mint-provider'
 import { callTransaction, estimateGasFor, sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
+import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { toMessage } from '@/lib/core/message'
 import { mintableRow, quantityCeiling } from '@/lib/mint/mint-task'
 import type { Task, WalletRun } from '@/lib/mint/mint-task'
+import { isErc20Refusal } from '@/lib/scatter/erc20-refusal'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type PreparedMintEntry = {
@@ -30,28 +33,21 @@ export type MintReadiness = {
   entries: PreparedMintEntry[]
 }
 
+// Sends calldata that was already built. It cannot build: the batch reads every wallet's
+// build before any send starts, so an allowance refusal can never arrive after another
+// wallet has signed.
 export async function mintForWallet(input: {
-  drop: DropInfo
   wallet: StoredWallet
-  quantity: number
   gas: TxGas
-  transaction?: MintTransaction
+  transaction: MintTransaction
   shouldAbort?: () => boolean
 }): Promise<{ txHash: string; chain: string }> {
-  const transaction =
-    input.transaction ??
-    (await buildMintTransactionFor(
-      input.drop,
-      input.wallet.address,
-      input.quantity
-    ))
-
   return sendTransaction({
     wallet: input.wallet,
-    chainSlug: transaction.chain,
-    to: transaction.to as `0x${string}`,
-    data: transaction.data as `0x${string}`,
-    value: BigInt(transaction.value),
+    chainSlug: input.transaction.chain,
+    to: input.transaction.to as `0x${string}`,
+    data: input.transaction.data as `0x${string}`,
+    value: BigInt(input.transaction.value),
     gas: input.gas,
     shouldAbort: input.shouldAbort,
   })
@@ -68,11 +64,13 @@ export function mintQuantityFor(
   return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
 }
 
-// Everything that must match for prepared calldata to still describe this fire. A stage
-// or quantity change rebuilds rather than signing stale data.
+// Everything that must match for prepared calldata to still describe this fire. A stage,
+// a token or a quantity change rebuilds rather than signing stale data.
 export function prepareKeyFor(task: Task, quantity: number): string {
   return [
     task.stageUuid,
+    // The token a Scatter URL names, so prepared calldata never crosses tokens.
+    task.drop?.tokenId ?? '',
     quantity,
     task.gasLimit,
     task.maxFee,
@@ -83,6 +81,62 @@ export function prepareKeyFor(task: Task, quantity: number): string {
 export function pinnedGasLimitOf(task: Task): bigint | undefined {
   const value = Number.parseInt(task.gasLimit, 10)
   return Number.isFinite(value) && value > 0 ? BigInt(value) : undefined
+}
+
+// Reads every selected wallet's build before any wallet signs. A build that answers with an
+// ERC-20 allowance is refused here, because that fix is in the task, and a run that sent
+// one wallet first would spend before the refusal was known. Any other build failure is
+// left to the wallet's own row, as before.
+export async function buildMintBatch(input: {
+  drop: DropInfo
+  stageUuid: string
+  quantity: number
+  wallets: readonly StoredWallet[]
+  prepared: Map<string, PreparedMintEntry> | null
+  isCurrent: () => boolean
+}): Promise<{
+  entries: Map<string, PreparedMintEntry>
+  refusal: string | null
+  // Why a wallet has no calldata, when its build failed for a reason other than an
+  // allowance. The send loop reports it rather than building again.
+  failures: Map<string, string>
+}> {
+  const entries = new Map<string, PreparedMintEntry>(input.prepared)
+  const failures = new Map<string, string>()
+  let refusal: string | null = null
+
+  // Waves, not one shared cursor. A cursor hands the next wallet to whichever worker frees
+  // first, so that wallet is already building when a sibling's allowance answer lands, and
+  // the refusal stops nothing. A wave waits for its own answers before the next starts.
+  for (let index = 0; index < input.wallets.length; index += WALLET_CONCURRENCY) {
+    if (refusal !== null || !input.isCurrent()) break
+
+    await Promise.all(
+      input.wallets
+        .slice(index, index + WALLET_CONCURRENCY)
+        .map(async (wallet) => {
+          if (refusal !== null || entries.has(wallet.id)) return
+          try {
+            const transaction = await buildMintTransactionFor({
+              drop: input.drop,
+              stageUuid: input.stageUuid,
+              minter: wallet.address,
+              quantity: input.quantity,
+            })
+            entries.set(wallet.id, {
+              walletId: wallet.id,
+              from: wallet.address as `0x${string}`,
+              transaction,
+            })
+          } catch (error) {
+            if (isErc20Refusal(error)) refusal = toMessage(error)
+            else failures.set(wallet.id, toMessage(error))
+          }
+        })
+    )
+  }
+
+  return { entries, refusal, failures }
 }
 
 // A closed stage rejects the pre-open build, so the open-time batch is the real path.
@@ -112,11 +166,12 @@ export async function mintReadiness(input: {
       const cached = prepared?.get(row.walletId)
       if (cached) return cached
       try {
-        const transaction = await buildMintTransactionFor(
+        const transaction = await buildMintTransactionFor({
           drop,
-          row.address,
-          quantity
-        )
+          stageUuid: task.stageUuid,
+          minter: row.address,
+          quantity,
+        })
         return {
           walletId: row.walletId,
           from: row.address as `0x${string}`,
@@ -182,11 +237,12 @@ export async function prepareMintEntries(input: {
     try {
       // A closed stage rejects the pre-open build. This stays best-effort; the
       // open-time path builds the same calldata when it does not.
-      const transaction = await buildMintTransactionFor(
-        input.drop,
-        wallet.address,
-        input.quantity
-      )
+      const transaction = await buildMintTransactionFor({
+        drop: input.drop,
+        stageUuid: input.task.stageUuid,
+        minter: wallet.address,
+        quantity: input.quantity,
+      })
       let gasLimit = input.pinnedGasLimit
       if (gasLimit === undefined) {
         try {

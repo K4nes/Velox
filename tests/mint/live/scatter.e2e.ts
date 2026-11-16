@@ -2,6 +2,7 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import {
   mintWallets,
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
@@ -11,7 +12,7 @@ import { seedVelox } from '../../support/seed'
 
 // The real Scatter read: the collection and its lists come from api.scatter.art,
 // not from a route mock. Nothing signs, so the wallet is a throwaway and the chain
-// connection is never read; Start is refused until the Scatter mint lands.
+// connection is never read; the run itself is proven by the mocked lane.
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
 const SLUG = process.env.E2E_SCATTER_SLUG ?? 'hoodimals'
 
@@ -24,11 +25,7 @@ test(`the live Scatter collection ${SLUG} loads its lists`, async ({
   const [wallet] = mintWallets(1, folder.id)
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
 
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {}
-  })
+  await pinWalletChain(browser)
   await app.open('/mint/tasks')
   await seedVelox(browser, {
     folders: [folder],
@@ -64,9 +61,10 @@ test(`the live Scatter collection ${SLUG} loads its lists`, async ({
   await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
   await expect(screen.getByText(/2106/)).toHaveCount(0)
 
-  // The Scatter mint is not built yet, so the panel names the missing step.
-  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  // The Scatter mint is wired now, so the panel names no missing step. Whether Start is
+  // offered depends on the list's own currency, which this lane does not fix, so the
+  // mocked lane owns that assertion and this one checks only that the refusal is gone.
   await expect(
     screen.getByText(/cannot build a Scatter mint transaction/),
-  ).toBeVisible()
+  ).toHaveCount(0)
 })

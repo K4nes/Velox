@@ -1,4 +1,10 @@
 import { SCATTER_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
+import {
+  ERC20_REFUSAL_CODE,
+  erc20RefusalForAllowances,
+  unreadableAllowanceRefusal,
+} from '@/lib/scatter/erc20-refusal'
+import type { ScatterAllowance } from '@/lib/scatter/erc20-refusal'
 import { ScatterError } from '@/lib/scatter/error'
 
 const SCATTER_BASE_URL = 'https://api.scatter.art/v1'
@@ -32,9 +38,19 @@ export type ScatterMintList = {
   unitSize: number
 }
 
-async function request(path: string): Promise<unknown> {
+async function request(
+  path: string,
+  init: { method?: string; body?: string } = {}
+): Promise<unknown> {
+  const headers: Record<string, string> = { accept: 'application/json' }
+  if (init.body !== undefined) {
+    headers['content-type'] = 'application/json'
+  }
+
   const outcome = await httpExchange(`${SCATTER_BASE_URL}${path}`, {
-    headers: { accept: 'application/json' },
+    method: init.method ?? 'GET',
+    headers,
+    body: init.body,
     timeoutMs: SCATTER_TIMEOUT_MS,
   })
 
@@ -161,4 +177,93 @@ export function toMintList(value: unknown): ScatterMintList {
     walletLimit: statedLimit(record?.wallet_limit),
     unitSize: Math.max(1, statedLimit(record?.unit_size) ?? 1),
   }
+}
+
+export type ScatterMintBuild = { to: string; data: string; value: string }
+
+// One list entry per build: the id is the list the operator picked, and the quantity
+// lives inside the entry rather than at the top level.
+export type ScatterMintRequest = {
+  collectionAddress: string
+  chainId: number
+  minterAddress: string
+  listId: string
+  quantity: number
+}
+
+// The answer is parsed apart from the request, so a recorded upstream body can be run
+// through it without a network. The allowance list is read first and fails closed: an
+// answer that names an allowance, or one whose allowance shape cannot be read, refuses
+// before the caller sees a transaction to sign.
+export function toScatterMintBuild(body: unknown): ScatterMintBuild {
+  const record = asRecord(body)
+
+  const allowances = toAllowances(record?.erc20s)
+  if (allowances.length > 0) {
+    throw new ScatterError(
+      422,
+      ERC20_REFUSAL_CODE,
+      erc20RefusalForAllowances(allowances)
+    )
+  }
+
+  const transaction = asRecord(record?.mintTransaction)
+  const to = transaction?.to
+  const data = transaction?.data
+  const value = transaction?.value
+  if (
+    typeof to !== 'string' ||
+    to === '' ||
+    typeof data !== 'string' ||
+    data === '' ||
+    value === undefined ||
+    value === null
+  ) {
+    throw unexpected('/mint')
+  }
+
+  return { to, data, value: String(value) }
+}
+
+// Sends one build for one list and hands the answer to the parser above, which refuses an
+// allowance list before any caller sees a transaction to sign.
+export async function buildScatterMintTransaction(
+  input: ScatterMintRequest
+): Promise<ScatterMintBuild> {
+  const body = await request('/mint', {
+    method: 'POST',
+    body: JSON.stringify({
+      collectionAddress: input.collectionAddress,
+      chainId: input.chainId,
+      minterAddress: input.minterAddress,
+      lists: [{ id: input.listId, quantity: input.quantity }],
+    }),
+  })
+
+  return toScatterMintBuild(body)
+}
+
+// An absent allowance list is a native-currency mint. Anything else this cannot read is an
+// allowance rather than an absence: the refusal exists to stop that mint, and guessing
+// wrong signs one.
+function toAllowances(value: unknown): ScatterAllowance[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw unreadableAllowances()
+
+  return value.map((entry) => {
+    const record = asRecord(entry)
+    const address = record?.address
+    if (typeof address !== 'string' || address === '') {
+      throw unreadableAllowances()
+    }
+    return { address, amount: String(record?.amount ?? '') }
+  })
+}
+
+function unreadableAllowances(): ScatterError {
+  return new ScatterError(
+    422,
+    ERC20_REFUSAL_CODE,
+    unreadableAllowanceRefusal()
+  )
 }

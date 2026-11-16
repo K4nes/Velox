@@ -21,6 +21,8 @@ export type Marketplace = (typeof collectionSources)[CollectionSource]['marketpl
 export type ResolvedCollection = {
   source: CollectionSource
   slug: string
+  // The token a Scatter URL points at; empty for a collection URL and for OpenSea.
+  tokenId: string
 }
 
 export function marketplaceFor(source: CollectionSource): Marketplace {
@@ -55,7 +57,7 @@ export function resolveCollectionSource(raw: string): ResolvedCollection | null 
   }
 
   const slug = slugFromUrl(value)
-  return slug === null ? null : { source: 'opensea', slug }
+  return slug === null ? null : { source: 'opensea', slug, tokenId: '' }
 }
 
 function parseUrl(value: string): URL | null {
@@ -87,7 +89,12 @@ function scatterCollection(url: URL): ResolvedCollection | null {
   const name = decodeSegment(slug)
   if (name === null) return null
 
-  return { source: 'scatter', slug: name.toLowerCase() }
+  const token = segments[marker + 2] ?? ''
+  return {
+    source: 'scatter',
+    slug: name.toLowerCase(),
+    tokenId: /^\d+$/.test(token) ? token : '',
+  }
 }
 
 // `decodeURIComponent` throws on malformed input, and the mint check calls this

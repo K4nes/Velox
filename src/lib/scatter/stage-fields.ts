@@ -15,11 +15,12 @@ type CurrencyFields = Pick<
 // Scatter states a blank symbol for a token it has no ticker for. The amount still
 // has the token's decimals, so the label names the token by address instead of
 // reading its base units as 18-decimal ETH. An address it also omits falls back to a
-// unit count, which is honest about the magnitude.
+// unit count, which is honest about the magnitude. The address travels with the
+// label, so a caller can tell a native price from an ERC-20 one.
 export function stageCurrency(
   list: CurrencyFields,
   nativeSymbol: string
-): { symbol: string; decimals: number } {
+): { symbol: string; decimals: number; address: string } {
   const symbol =
     list.currencySymbol !== ''
       ? list.currencySymbol
@@ -28,7 +29,11 @@ export function stageCurrency(
         : list.currencyAddress !== ''
           ? `${list.currencyAddress.slice(0, 6)}…${list.currencyAddress.slice(-4)}`
           : 'tokens'
-  return { symbol, decimals: list.decimals }
+  return {
+    symbol,
+    decimals: list.decimals,
+    address: list.currencyAddress,
+  }
 }
 
 // Absent and 1 both mean one NFT per quantity step. OpenSea never sets it.

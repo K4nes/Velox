@@ -1,5 +1,6 @@
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
+import { erc20RefusalForStage } from '@/lib/scatter/erc20-refusal'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
 
@@ -348,15 +349,19 @@ export function stageStatusFor(
   return verdict()
 }
 
-// This issue loads Scatter lists but does not build Scatter mints. The refusal names
-// the missing step instead of leaving a disabled button without a reason.
-export const SCATTER_MINT_REFUSAL =
-  'Scatter minting is not available yet. This build can load Scatter lists but cannot build a Scatter mint transaction.'
-
-// A task that cannot start says why: a provider that cannot build its mint, or a
-// wallet the provider blocked, whose fix is in the task rather than in the wallet.
-export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
-  if (task.drop?.source === 'scatter') return SCATTER_MINT_REFUSAL
+// A task that cannot start says why: a stage whose price is stated in a token, or a wallet
+// the provider blocked, whose fix is in the task rather than in the wallet. The drop is the
+// caller's, because an armed fire re-reads it and the task still holds the older one.
+export function startRefusalFor(
+  task: Task,
+  rows: WalletRun[],
+  drop: DropInfo | null = task.drop
+): string | null {
+  // A stage states the currency its price is in, whatever the provider, so the refusal
+  // reads the stage and never the provider name. OpenSea stages carry no currency.
+  const stage = drop?.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
+  const refusal = erc20RefusalForStage(stage)
+  if (refusal !== null) return refusal
 
   const blocked = rows.filter(
     (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'

@@ -21,6 +21,7 @@ import type { RunSlot } from '@/lib/core/run-slot'
 import { mintFailureMessage } from '@/lib/opensea/failure-message'
 import { traceMint } from '@/lib/mint/mint-trace'
 import {
+  buildMintBatch,
   mintForWallet,
   mintQuantityFor,
   mintReadiness,
@@ -313,6 +314,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         drop = await fetchMintDrop(collection.source, collection.slug)
         if (stale()) return null
       }
+      // The collection URL is the only place a token ID is stated, so the drop carries
+      // what the operator typed rather than what the provider answered.
+      drop = { ...drop, tokenId: collection.tokenId }
 
       // The SeaDrop restriction describes the OpenSea route. Scatter mints any
       // contract type through one endpoint, so the guard must not apply to it.
@@ -410,10 +414,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     if (!task || !task.drop || mintingRef.has(task.id)) return
 
     const id = task.id
-    const drop = options.drop ?? prepared?.drop ?? task.drop
+    // The re-checked drop wins: an armed fire re-reads the drop and re-applies the token
+    // from the URL, so the older copy must not be what the run mints against.
+    const drop = prepared?.drop ?? options.drop ?? task.drop
     const refusal = startRefusalFor(
       task,
-      prepared?.rows ?? scoped.get().runs[id] ?? []
+      prepared?.rows ?? scoped.get().runs[id] ?? [],
+      drop
     )
     // A blocked task builds nothing: the fix is in the task, and a run would only
     // spend gas discovering the same refusal wallet by wallet.
@@ -524,14 +531,15 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         maxFeePerGas: gweiToWei(task.maxFee),
         maxPriorityFeePerGas: gweiToWei(task.priorityFee),
       }
-
+      // The row reports progress from the first build, and every build now happens before
+      // any send, so the whole batch reads Minting while its calldata is read.
       updateRuns((current) => ({
         ...current,
         [id]: (current[id] ?? []).map((row) =>
           mintable.has(row.walletId)
             ? {
                 ...row,
-                status: 'queued' as const,
+                status: 'minting' as const,
                 txHash: undefined,
                 chain: undefined,
                 error: undefined,
@@ -539,6 +547,31 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
             : row
         ),
       }))
+
+      // A build can ask for an ERC-20 allowance its list did not state. That refusal is
+      // the task's, not the wallet's, so every build is read before any wallet signs.
+      const batch = await buildMintBatch({
+        drop,
+        stageUuid: liveStageUuid,
+        quantity,
+        wallets: selected,
+        prepared: preparedEntries,
+        isCurrent: () => !stopped(),
+      })
+      if (batch.refusal !== null) {
+        const refusal = batch.refusal
+        updateRuns((current) => ({
+          ...current,
+          [id]: (current[id] ?? []).map((row) =>
+            mintable.has(row.walletId)
+              ? { ...row, status: 'blocked' as const, error: refusal }
+              : row
+          ),
+        }))
+        toast.error(refusal)
+        return
+      }
+      const calldata = batch.entries
 
       const updateRun = (
         walletId: string,
@@ -559,17 +592,26 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       // in the first pair.
       await mapLimit(selected, WALLET_CONCURRENCY, async (wallet) => {
         if (stopped()) return
-        updateRun(wallet.id, () => ({ status: 'minting' }))
-        const preparedEntry = preparedEntries?.get(wallet.id)
+        const preparedEntry = calldata.get(wallet.id)
+        // No calldata means this wallet was never built, and the send path cannot build.
+        // That is what keeps an allowance refusal from arriving after another wallet has
+        // signed, so the row reports why it was skipped instead.
+        if (!preparedEntry) {
+          updateRun(wallet.id, () => ({
+            status: 'failed',
+            error:
+              batch.failures.get(wallet.id) ??
+              'No calldata was built for this wallet',
+          }))
+          return
+        }
         try {
           const result = await mintForWallet({
-            drop,
             wallet,
-            quantity,
-            gas: preparedEntry?.gasLimit
+            gas: preparedEntry.gasLimit
               ? { ...gas, gasLimit: preparedEntry.gasLimit }
               : gas,
-            transaction: preparedEntry?.transaction,
+            transaction: preparedEntry.transaction,
             shouldAbort: stopped,
           })
           if (stopped()) return

@@ -4,16 +4,20 @@ import { expect } from 'e2e'
 import type { Screen } from 'e2e'
 import {
   mintWallets,
+  pinWalletChain,
   openseaConnection,
   robinhoodRpc,
   walletFolder,
 } from '../support/data'
 import {
   MINT_TEST_RPC_URL,
+  SCATTER_CONTRACT,
   SCATTER_NO_LIMIT,
   SCATTER_OPEN_END,
   mockMintNetwork,
+  mockMintRpc,
   mockScatterNetwork,
+  pinMintGas,
 } from '../support/mint'
 import { seedVelox } from '../support/seed'
 import type { FolderRow, WalletRow } from '../support/seed'
@@ -28,11 +32,7 @@ async function seedMintPage(
   folder: FolderRow,
   wallets: WalletRow[],
 ): Promise<void> {
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {}
-  })
+  await pinWalletChain(browser)
   await app.open('/mint/tasks')
   await seedVelox(browser, {
     folders: [folder],
@@ -61,6 +61,26 @@ function oneWallet(folder: FolderRow): WalletRow {
   const wallet = mintWallets(1, folder.id)[0]
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
   return wallet
+}
+
+// Every Scatter collection in this suite is on Velox's Robinhood Chain, because the
+// chain the drop carries is the one the mint request must state.
+const SCATTER_CHAIN_ID = 4663
+
+/** The ERC-20 both refusal tests name, so each can be checked against its address. */
+const USDC_ADDRESS = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+
+/** Counts the OpenSea sign-in requests a task makes; a Scatter task must make none. */
+async function countOpenSeaAuth(browser: Browser): Promise<{ calls: number }> {
+  const calls = { calls: 0 }
+  await browser.route('**/api/auth/**', async (route) => {
+    calls.calls += 1
+    await route.fulfill({
+      status: 500,
+      json: { error: 'a Scatter task has no OpenSea credential to warm' },
+    })
+  })
+  return calls
 }
 
 test('a Scatter collection fills the picker and prices each list in its own currency', async ({
@@ -324,18 +344,83 @@ test('a collection on a chain Velox cannot sign for is refused by name before an
   )
 })
 
-test('Start Mint refuses a Scatter task and names what is missing', async ({
+test('a native Scatter list mints across the selected wallets and every row reaches Confirmed', async ({
   app,
   browser,
   screen,
 }) => {
-  const folder = walletFolder('Scatter Start')
+  const folder = walletFolder('Scatter Mint')
+  const wallets = mintWallets(2, folder.id)
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', price: '0.01', walletLimit: 1 }],
+  })
+  const rpc = await mockMintRpc({ browser, wallets })
+  const auth = await countOpenSeaAuth(browser)
+
+  await seedMintPage(app, browser, folder, wallets)
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const [first] = wallets
+  if (first === undefined) throw new Error('mintWallets(2) returned no wallet')
+  const row = screen.getByRole('row').filter({ hasText: first.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+
+  await expect(screen.getByText('Confirmed', { exact: true })).toHaveCount(2, {
+    timeout: 60_000,
+  })
+
+  // One build per wallet, each naming the collection, the chain, the minter, the list
+  // and the quantity. Scatter reads quantity inside the list entry, not on top.
+  expect(calls.mintBodies).toHaveLength(2)
+  expect(
+    calls.mintBodies.map((body) => body.minterAddress?.toLowerCase()).sort(),
+  ).toEqual(wallets.map((wallet) => wallet.address.toLowerCase()).sort())
+  for (const body of calls.mintBodies) {
+    expect(body.collectionAddress).toBe(SCATTER_CONTRACT)
+    expect(body.chainId).toBe(SCATTER_CHAIN_ID)
+    expect(body.lists).toEqual([{ id: 'public', quantity: 1 }])
+  }
+
+  // Every build was signed locally: one send per wallet, and no OpenSea credential was
+  // asked for on the way.
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(2)
+  expect(auth.calls).toBe(0)
+})
+
+test('an ERC-20 priced Scatter list refuses with the token and amount named', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Token Price')
   const wallet = oneWallet(folder)
   const calls = await mockScatterNetwork({
     browser,
     slug: SLUG,
-    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'usdc',
+        name: 'USDC List',
+        price: '0.5',
+        currencySymbol: 'USDC',
+        currencyAddress: USDC_ADDRESS,
+        decimals: 6,
+        walletLimit: 1,
+      },
+    ],
   })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
   await seedMintPage(app, browser, folder, [wallet])
   await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
@@ -347,11 +432,63 @@ test('Start Mint refuses a Scatter task and names what is missing', async ({
     timeout: 60_000,
   })
 
+  // The list states its currency, so the refusal arrives before any wallet is built
+  // for: the panel names the token and its price, and Start stays refused.
+  const refusal = screen.getByRole('alert')
+  await expect(refusal).toContainText('0.5000 USDC')
+  await expect(refusal).toContainText('0x8335…2913')
+  await expect(refusal).toContainText('Velox mints native-currency lists only')
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
-  await expect(
-    screen.getByText(/cannot build a Scatter mint transaction/),
-  ).toBeVisible()
-  expect(calls.mints).toBe(0)
+  expect(calls.mintBodies).toHaveLength(0)
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('an allowance answer from one wallet stops the batch before any wallet signs', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Batch Allowance')
+  // Three wallets, because the run builds two at a time: the third is the one a refusal
+  // has to stop from being built at all, and a two-wallet run cannot show that.
+  const wallets = mintWallets(3, folder.id)
+  const [first, second] = wallets
+  if (!first || !second) throw new Error('mintWallets(3) returned too few')
+  // The list states the native currency, so only a build can tell that this mint is
+  // priced in a token, and only the second wallet's build does.
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    mint: (body) =>
+      body.minterAddress?.toLowerCase() === second.address.toLowerCase()
+        ? { erc20s: [{ address: USDC_ADDRESS, amount: '5000000' }] }
+        : {},
+  })
+  const rpc = await mockMintRpc({ browser, wallets })
+
+  await seedMintPage(app, browser, folder, wallets)
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: first.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+
+  // The refusal belongs to the task, so every row stops and no wallet signs.
+  await expect(screen.getByText('Blocked', { exact: true })).toHaveCount(3, {
+    timeout: 60_000,
+  })
+  await expect(row).toContainText('5000000 base units of 0x8335…2913')
+  await expect(row).toContainText('Velox mints native-currency lists only')
+  // Two builds were read before the refusal landed, and the third was never built.
+  expect(calls.mintBodies).toHaveLength(2)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })
 
 test('a bare slug and a contract address keep routing to OpenSea', async ({

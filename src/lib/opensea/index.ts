@@ -66,8 +66,8 @@ export type NftRank = { tokenId: string; rank: number | null }
 
 // A list's price is always carried in base units. The currency is absent on OpenSea,
 // which keeps the 18-decimal ETH rendering it has always had; a provider that states a
-// currency carries the symbol and decimals with it.
-export type StageCurrency = { symbol: string; decimals: number }
+// currency carries the symbol, the decimals and the token with it.
+export type StageCurrency = { symbol: string; decimals: number; address: string }
 
 export type DropStage = {
   uuid: string
@@ -87,6 +87,9 @@ export type DropInfo = {
   name: string
   chain: string
   contractAddress: string
+  // The token a collection URL names, empty for an ERC-721 collection. The URL is
+  // the only place that states it, so the check fills it in.
+  tokenId: string
   // The source that produced this drop, so a run can reach its provider without
   // reading the task.
   source: CollectionSource
@@ -555,6 +558,7 @@ export async function getDrop(slug: string): Promise<DropInfo> {
     name: body.collection_name ?? '',
     chain: body.chain,
     contractAddress: body.contract_address,
+    tokenId: '',
     source: 'opensea',
     dropType: body.drop_type ?? '',
     isMinting: body.is_minting === true,
