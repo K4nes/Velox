@@ -4,19 +4,19 @@ import { expect } from 'e2e'
 import { mintWallets, walletFolder } from '../support/data'
 import {
   SCATTER_OPEN_END,
+  checkCollection,
   mockMintNetwork,
   mockScatterNetwork,
   oneWallet,
   seedMintPage,
-  selectFolder,
   summaryBox,
   summaryValue,
+  waitForEligible,
 } from '../support/mint'
 import type { ScatterList } from '../support/mint'
 
 const OPENSEA_SLUG = 'summary-drop'
 const SCATTER_SLUG = 'summary-scatter'
-const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
 const PUBLIC_LIST: ScatterList = {
   id: 'public',
   name: 'Public',
@@ -73,15 +73,13 @@ test('the OpenSea summary names every scope and closes at 20', async ({
   })
 
   await seedMintPage(app, browser, folder, wallets)
-  await screen
-    .getByLabel(URL_LABEL)
-    .fill(`https://opensea.io/collection/${OPENSEA_SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
-
-  await expect(screen.getByText('Eligible', { exact: true })).toHaveCount(20, {
-    timeout: 60_000,
-  })
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${OPENSEA_SLUG}`
+  )
+  await waitForEligible(screen, 20)
   await expectSummary(
     browser,
     'Total NFTs (20 Wallets)',
@@ -106,15 +104,13 @@ test('the Scatter summary names every scope and closes at 100', async ({
   })
 
   await seedMintPage(app, browser, folder, wallets)
-  await screen
-    .getByLabel(URL_LABEL)
-    .fill(`https://scatter.art/c/${SCATTER_SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
-
-  await expect(screen.getByText('Eligible', { exact: true })).toHaveCount(20, {
-    timeout: 60_000,
-  })
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SCATTER_SLUG}`
+  )
+  await waitForEligible(screen, 20)
   await expectSummary(
     browser,
     'Total NFTs (20 Wallets)',
@@ -139,15 +135,13 @@ test('a failed re-check clears the NFT total instead of pricing the old rows', a
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen
-    .getByLabel(URL_LABEL)
-    .fill(`https://scatter.art/c/${SCATTER_SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
-
-  await expect(screen.getByText('Eligible', { exact: true })).toBeVisible({
-    timeout: 60_000,
-  })
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SCATTER_SLUG}`
+  )
+  await waitForEligible(screen, 1)
 
   await browser.route(
     /api\.scatter\.art\/v1\/collection\/[^/?]+$/,

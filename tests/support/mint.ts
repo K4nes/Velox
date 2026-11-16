@@ -434,6 +434,28 @@ export async function selectFolder(
   await browser.keyboard.press('Escape')
 }
 
+export async function checkCollection(
+  browser: Browser,
+  screen: Screen,
+  folder: FolderRow,
+  url: string,
+): Promise<void> {
+  await screen
+    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
+    .fill(url)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+}
+
+export async function waitForEligible(
+  screen: Screen,
+  count: number,
+): Promise<void> {
+  await expect(screen.getByText('Eligible', { exact: true })).toHaveCount(count, {
+    timeout: 60_000,
+  })
+}
+
 export function oneWallet(folder: FolderRow): WalletRow {
   const wallet = mintWallets(1, folder.id)[0]
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
