@@ -16,7 +16,7 @@ const TYPES = [
 const subject = process.env.PR_TITLE ?? process.argv[2] ?? ''
 
 const failures = []
-const match = /^([a-z]+)(\([a-z0-9-]+\))?: .+$/.exec(subject)
+const match = /^([a-z]+)(\([a-z0-9-]+\))?!?: .+$/.exec(subject)
 
 if (!subject) {
   failures.push('no subject to check: set PR_TITLE or pass one as an argument')

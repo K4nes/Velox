@@ -12,6 +12,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 26
@@ -19,8 +22,16 @@ jobs:
 
       - run: npm ci
 
+      - name: commit messages
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-commit-message.mjs
+
       # The repo's own gates, in the order AGENTS.md documents them.
       - run: npm run build
+      - run: npm run typecheck:test
 
       # `tauri::generate_context!` embeds `dist/`, so the Rust steps run after
       # the build above. The toolchain is pinned: a floating stable could turn

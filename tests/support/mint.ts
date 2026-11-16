@@ -2,6 +2,7 @@ import type { JsonValue, Screen } from 'e2e'
 import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
+import type { TransactionSerialized } from 'viem'
 import {
   mintWallets,
   pinWalletChain,
@@ -79,7 +80,7 @@ export async function readDrop(slug: string): Promise<DropState> {
       (entry) => entry.start_time !== undefined && Date.parse(entry.start_time) > now,
     ) ?? null
 
-  return { active, future, live, now, stages }
+  return { stages, active, live, future, now }
 }
 
 /**
@@ -217,7 +218,7 @@ export async function mockMintRpc(options: {
         await answer(route, '0x0')
         return
       case 'eth_sendRawTransaction': {
-        const serialized = params[0] as `0x${string}`
+        const serialized = params[0] as TransactionSerialized
         const address = (
           await recoverTransactionAddress({ serializedTransaction: serialized })
         ).toLowerCase()

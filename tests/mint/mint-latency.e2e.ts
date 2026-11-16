@@ -2,7 +2,8 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Browser, WebApp } from '@e2e-dev/web'
-import type { Screen } from 'e2e'
+import type { JsonValue, Screen } from 'e2e'
+import type { MintTraceApi } from '@/lib/mint/mint-trace'
 import { openseaConnection, robinhoodRpc } from '../support/data'
 import { seedVelox } from '../support/seed'
 import type { FolderRow, WalletRow } from '../support/seed'
@@ -40,7 +41,7 @@ type TraceEvent = {
 
 declare global {
   interface Window {
-    __veloxMintTrace?: { snapshot: () => TraceEvent[] }
+    __veloxMintTrace?: MintTraceApi
   }
 }
 
@@ -173,7 +174,7 @@ async function serveRpc(
       method?: string
       params?: unknown[]
     }
-    const ok = (result: unknown) =>
+    const ok = (result: JsonValue) =>
       route.fulfill({
         status: 200,
         json: { jsonrpc: '2.0', id: request.id ?? null, result },
@@ -578,7 +579,11 @@ test('a far-future arm sleeps instead of spinning', async ({
     const original = window.setTimeout
     const delays: number[] = []
     ;(window as unknown as { __timerDelays: number[] }).__timerDelays = delays
-    window.setTimeout = ((handler, timeout, ...args) => {
+    window.setTimeout = ((
+      handler: TimerHandler,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
       if (typeof timeout === 'number') delays.push(timeout)
       return original(handler, timeout, ...args)
     }) as typeof window.setTimeout

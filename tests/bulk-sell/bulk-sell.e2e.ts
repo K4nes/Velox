@@ -552,12 +552,12 @@ test('the scan control answers an input that names no collection', async ({
 
   // A bare slug is a collection, so the control is live.
   await field.fill('control-slug')
-  await expect(scan, 'a bare slug enables the control').toBeEnabled()
+  await expect(scan).toBeEnabled()
 
   // A value that names no collection keeps the control live too. The page can
   // answer and does, which is the whole point of not disabling it.
   await field.fill('123')
-  await expect(scan, 'a value that is not a collection still answers').toBeEnabled()
+  await expect(scan).toBeEnabled()
   await scan.click()
   await expect(message).toBeVisible()
 

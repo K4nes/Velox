@@ -141,13 +141,14 @@ export async function mockRpc(
           tx: {
             type: '0x2',
             chainId: options.chainId ?? '0x1237',
-            nonce: request.nonce ?? '0x0',
-            gas: request.gas ?? '0x5208',
-            maxFeePerGas: request.maxFeePerGas ?? '0x3b9aca00',
-            maxPriorityFeePerGas: request.maxPriorityFeePerGas ?? '0x3b9aca00',
-            to: request.to ?? ZERO_ADDRESS,
-            value: request.value ?? '0x0',
-            input: request.data ?? '0x',
+            nonce: (request.nonce ?? '0x0') as JsonValue,
+            gas: (request.gas ?? '0x5208') as JsonValue,
+            maxFeePerGas: (request.maxFeePerGas ?? '0x3b9aca00') as JsonValue,
+            maxPriorityFeePerGas: (request.maxPriorityFeePerGas ??
+              '0x3b9aca00') as JsonValue,
+            to: (request.to ?? ZERO_ADDRESS) as JsonValue,
+            value: (request.value ?? '0x0') as JsonValue,
+            input: (request.data ?? '0x') as JsonValue,
           },
         }
       }

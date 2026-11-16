@@ -61,6 +61,10 @@ A fix says the check failed before the change: `Test: <path> (red before the fix
 that carries no test says why: `No test: copy change, no behaviour`. A commit with neither
 reads as unverified, and a reviewer treats it that way.
 
+CI runs `node scripts/check-commit-message.mjs` over the pull request commits. It requires
+the footer on `feat`, `fix` and `perf`; the `(red before the fix)` parenthetical stays a
+review judgement.
+
 ### Breaking Changes
 
 For intentional breaking changes, use the `!` marker and explain the impact in the commit body.

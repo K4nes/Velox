@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/check-local-tools.mjs && tsc -b && vite build",
+    "typecheck": "node scripts/check-local-tools.mjs && tsc -b",
+    "typecheck:test": "node scripts/check-local-tools.mjs && tsc -p tsconfig.test.json",
     "build:desktop": "tauri build",
     "lint": "oxlint",
     "preview": "vite preview",
@@ -16,7 +18,7 @@
     "release:desktop": "node scripts/release-desktop.mjs",
     "release:verify": "node scripts/release-desktop.mjs --verify-only",
     "test:release": "node --test scripts/",
-    "verify": "node scripts/check-upstream-drift.mjs && node scripts/check-collection-label.mjs && npm run build && npm run lint && npm run test:release && npm run test:e2e"
+    "verify": "node scripts/check-upstream-drift.mjs && node scripts/check-collection-label.mjs && npm run build && npm run typecheck:test && npm run lint && npm run test:release && npm run test:e2e"
   },
   "dependencies": {
     "@animate-ui/react": "^2.0.0",
