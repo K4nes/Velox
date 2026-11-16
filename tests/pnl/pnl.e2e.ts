@@ -3,6 +3,7 @@ import { expect } from 'e2e'
 import { coinmarketcapConnection } from '../support/data'
 import { pnlRecordFixture } from '../support/fixtures/pnl'
 import { mockPrice } from '../support/price'
+import { READ_COLLECTION_LABEL } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 declare global {
@@ -250,7 +251,7 @@ test('the monthly filters survive a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await browser.locator('a[href="/pnl/monthly"]').first().click()
   await expect(browser).toHaveURL('/pnl/monthly')
@@ -293,7 +294,7 @@ test('the lifetime filters survive a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await browser.locator('a[href="/pnl/lifetime"]').first().click()
   await expect(browser).toHaveURL('/pnl/lifetime')
