@@ -466,11 +466,21 @@ export function summaryBox(browser: Browser) {
   return browser.locator(`xpath=${SUMMARY_BOX}`)
 }
 
-/** The value span that follows a summary row's label span. */
-export function summaryValue(browser: Browser, label: string) {
-  return browser.locator(
-    `xpath=${SUMMARY_BOX}//span[normalize-space()=${JSON.stringify(label)}]/following-sibling::span[1]`
-  )
+/** The summary rows as `label: value`, in render order. */
+export async function summaryLines(browser: Browser): Promise<string[]> {
+  const rows = browser.locator(`xpath=${SUMMARY_BOX}/div`)
+  const count = await rows.count()
+  const lines: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    const label = await browser
+      .locator(`xpath=${SUMMARY_BOX}/div[${index + 1}]/span[1]`)
+      .textContent()
+    const value = await browser
+      .locator(`xpath=${SUMMARY_BOX}/div[${index + 1}]/span[2]`)
+      .textContent()
+    lines.push(`${label ?? ''}: ${value ?? ''}`)
+  }
+  return lines
 }
 
 /**

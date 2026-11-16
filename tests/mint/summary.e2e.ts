@@ -10,6 +10,7 @@ import {
   oneWallet,
   seedMintPage,
   summaryBox,
+  summaryLines,
   waitForEligible,
 } from '../support/mint'
 import type { ScatterList } from '../support/mint'
@@ -35,24 +36,14 @@ async function expectSummary(
   totalNfts: string,
   estimatedCost: string,
 ): Promise<void> {
-  const escape = (value: string) =>
-    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  await expect(summaryBox(browser)).toContainText(
-    new RegExp(
-      [
-        'Quantity per Wallet',
-        '1',
-        'Unit Price',
-        unitPrice,
-        totalLabel,
-        totalNfts,
-        'Estimated Cost',
-        estimatedCost,
-      ]
-        .map(escape)
-        .join('\\s*')
-    )
-  )
+  await expect
+    .poll(() => summaryLines(browser))
+    .toEqual([
+      'Quantity per Wallet: 1',
+      `Unit Price: ${unitPrice}`,
+      `${totalLabel}: ${totalNfts}`,
+      `Estimated Cost: ${estimatedCost}`,
+    ])
 }
 
 test('the OpenSea summary names every scope and closes at 20', async ({
