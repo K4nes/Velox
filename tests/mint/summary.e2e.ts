@@ -10,7 +10,6 @@ import {
   oneWallet,
   seedMintPage,
   summaryBox,
-  summaryValue,
   waitForEligible,
 } from '../support/mint'
 import type { ScatterList } from '../support/mint'
@@ -154,5 +153,7 @@ test('a failed re-check clears the NFT total instead of pricing the old rows', a
   )
   await screen.getByRole('button', { name: 'Check' }).click()
 
-  await expect(summaryValue(browser, 'Total NFTs (1 Wallet)')).toHaveText('—')
+  await expect(summaryBox(browser)).toContainText(
+    /Total NFTs \(1 Wallet\)\s*—\s*Estimated Cost\s*—/
+  )
 })

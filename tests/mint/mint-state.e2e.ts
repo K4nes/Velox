@@ -3,7 +3,12 @@ import { expect } from 'e2e'
 import { mintWallets, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsSpread } from '../support/fixtures/holdings'
-import { mockMintNetwork, pinMintGas, seedMintPage } from '../support/mint'
+import {
+  checkCollection,
+  mockMintNetwork,
+  pinMintGas,
+  seedMintPage,
+} from '../support/mint'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
 
@@ -52,13 +57,12 @@ test('the mint task survives a round trip while the check is running', async ({
 
   await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
   await expect(screen.getByRole('button', { name: /Check/ })).toBeDisabled()
 
   await browser.locator('a[href="/settings"]').first().click()
@@ -113,13 +117,12 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
   })
   await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -149,13 +152,12 @@ test('a mint run blocks another batch flow and keeps reporting across pages', as
   })
   await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
