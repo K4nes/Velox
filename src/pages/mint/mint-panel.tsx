@@ -98,7 +98,6 @@ export function MintPanel({
     mintQuantity,
     quantityReady,
     mintWalletCount,
-    startRefusal,
     canStartMint,
     stagePriceWei,
     totalWei,
@@ -343,22 +342,13 @@ export function MintPanel({
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            <Button
-              className="h-10 w-full"
-              onClick={() => (isLiveStage ? onStart() : onArm())}
-              disabled={!canStartMint}
-            >
-              {isMinting ? 'Minting…' : 'Start Mint'}
-            </Button>
-            {/* The fix belongs beside the disabled action, not in a tooltip and not
-                only in the run table. */}
-            {startRefusal ? (
-              <p role="alert" className="text-warning text-center text-xs">
-                {startRefusal}
-              </p>
-            ) : null}
-          </div>
+          <Button
+            className="h-10 w-full"
+            onClick={() => (isLiveStage ? onStart() : onArm())}
+            disabled={!canStartMint}
+          >
+            {isMinting ? 'Minting…' : 'Start Mint'}
+          </Button>
         )}
       </div>
     </Card>

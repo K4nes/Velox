@@ -11,7 +11,11 @@ import {
   acceptsTokenId,
   resolveCollectionSource,
 } from '@/lib/collection-source'
-import { checkScatterLists } from '@/lib/scatter/eligibility'
+import {
+  checkScatterLists,
+  uniqueByAddress,
+} from '@/lib/scatter/eligibility'
+import { probeScatterMint } from '@/lib/scatter/probe'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
 import {
@@ -37,6 +41,9 @@ import {
 import type { PreparedMint } from '@/lib/mint/run-mint'
 import { chainTime, waitForReceipt } from '@/lib/chain/tx'
 import {
+  applyProbeVerdicts,
+  blockTimeAt,
+  clearProbeVerdicts,
   createTask,
   gweiToWei,
   initialQuantity,
@@ -48,6 +55,7 @@ import {
   reachedChain,
   rowsFromCheck,
   startRefusalFor,
+  stageLiveAt,
   stageStatusFor,
   taskView,
 } from '@/lib/mint/mint-task'
@@ -60,7 +68,7 @@ import type {
   WalletRun,
 } from '@/lib/mint/mint-task'
 import { fetchMintDrop } from '@/lib/mint/mint-provider'
-import type { DropInfo } from '@/lib/opensea/index'
+import type { DropInfo, DropStage } from '@/lib/opensea/index'
 import { listWallets } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 import { createMintTasksState } from '@/pages/mint/state'
@@ -73,6 +81,7 @@ const READINESS_FALLBACK_ATTEMPTS = 4
 const CLEARED_CHECK = {
   status: 'idle',
   checked: false,
+  probing: false,
   drop: null,
   arm: null,
 } satisfies TaskPatch
@@ -90,6 +99,17 @@ const preparingRef = new Set<string>()
 const prepareTaskRef = new Map<string, Promise<void>>()
 const readinessFailuresRef = new Map<string, number>()
 const openCheckRef = new Map<string, { key: string; check: CheckResult }>()
+const probeEpochRef = new Map<string, number>()
+
+type ProbeRowsInput = {
+  id: string
+  drop: DropInfo
+  stageUuid: string
+  baseRows: WalletRun[]
+  wallets: StoredWallet[]
+  epoch?: number
+  isCurrent?: () => boolean
+}
 
 export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   const scoped = usePageStoreScope(store, createMintTasksState(createTask()))
@@ -168,6 +188,159 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     updateTask(realActive.id, patch)
   }
 
+  function bumpProbeEpoch(id: string): number {
+    const epoch = (probeEpochRef.get(id) ?? 0) + 1
+    probeEpochRef.set(id, epoch)
+    return epoch
+  }
+
+  // The same key can live in two folders, and one address must not appear as two
+  // rows or spend the probe pace twice.
+  async function selectedWallets(walletIds: string[]): Promise<StoredWallet[]> {
+    const stored = await listWallets()
+    return uniqueByAddress(
+      stored.filter((wallet) => walletIds.includes(wallet.id))
+    )
+  }
+
+  // The probe reads the same clock as the countdown: the arm's sample when there is
+  // one, otherwise the chain. A failed read falls back to local time. Check does not
+  // write the countdown's sample.
+  async function stageNowMs(chain: string): Promise<number> {
+    if (blockSample) {
+      return blockTimeAt(blockSample, Date.now())
+    }
+    try {
+      return await chainTime(chain)
+    } catch {
+      return Date.now()
+    }
+  }
+
+  // The drop's active list needs no clock read: the fetch that produced it already
+  // decided it is open. A list the provider did not mark active is probed only when
+  // the chain clock says its own window is open.
+  async function stageProbeable(
+    drop: DropInfo,
+    stage: DropStage | null
+  ): Promise<boolean> {
+    if (!stage) return false
+    if (drop.activeStage?.uuid === stage.uuid) return true
+    return stageLiveAt(stage, await stageNowMs(drop.chain))
+  }
+
+  async function probeRows(
+    input: ProbeRowsInput
+  ): Promise<WalletRun[] | null> {
+    const {
+      id,
+      drop,
+      stageUuid,
+      baseRows,
+      wallets,
+      epoch: providedEpoch,
+      isCurrent,
+    } = input
+    if (wallets.length === 0) return null
+
+    const epoch = providedEpoch ?? bumpProbeEpoch(id)
+    const verdicts = await probeScatterMint({
+      drop,
+      listId: stageUuid,
+      wallets,
+      isCurrent: () =>
+        probeEpochRef.get(id) === epoch && (isCurrent?.() ?? true),
+    })
+    if (probeEpochRef.get(id) !== epoch) return null
+    if (isCurrent && !isCurrent()) return null
+    return applyProbeVerdicts(baseRows, stageUuid, verdicts)
+  }
+
+  async function probeIfLive(
+    input: Omit<ProbeRowsInput, 'stageUuid'> & { stage: DropStage | null }
+  ): Promise<WalletRun[] | null> {
+    if (!input.stage) return null
+    if (!(await stageProbeable(input.drop, input.stage))) return null
+    return probeRows({ ...input, stageUuid: input.stage.uuid })
+  }
+
+  async function probeStage(
+    id: string,
+    stageUuid: string,
+    epoch: number
+  ): Promise<void> {
+    const task = scoped.get().tasks.find((entry) => entry.id === id)
+    const drop = task?.drop
+    try {
+      if (
+        !task ||
+        !task.checked ||
+        task.stageUuid !== stageUuid ||
+        !drop ||
+        drop.source !== 'scatter' ||
+        stageUuid === ''
+      ) {
+        return
+      }
+      const stage = drop.stages.find((entry) => entry.uuid === stageUuid) ?? null
+      const baseRows = scoped.get().runs[id] ?? []
+      const wallets = await selectedWallets(task.wallets)
+      const probed = await probeIfLive({
+        id,
+        drop,
+        stage,
+        baseRows,
+        wallets,
+        epoch,
+      })
+      if (probed === null) return
+      // A run owns the row once it starts. Its build is the authority from then on.
+      if (mintingRef.has(id) || scoped.get().runningIds.includes(id)) return
+
+      const current = scoped.get().tasks.find((entry) => entry.id === id)
+      if (!current || current.stageUuid !== stageUuid || !current.checked) return
+
+      updateRuns((runs) => ({ ...runs, [id]: probed }))
+      updateTask(id, {
+        quantityMax: quantityMaxFor(probed, current.wallets, stageUuid),
+      })
+
+      // A probe that lands after the operator armed must not leave a blocked task
+      // counting down.
+      const refusal = startRefusalFor(current, probed)
+      if (refusal !== null && current.arm?.stageUuid === stageUuid) {
+        updateTask(id, { arm: null })
+        toast.error(refusal)
+      }
+    } catch (error) {
+      if (probeEpochRef.get(id) !== epoch) return
+      const current = scoped.get().tasks.find((entry) => entry.id === id)
+      if (!current || current.stageUuid !== stageUuid) return
+      const rows = scoped.get().runs[id] ?? []
+      const verdicts = new Map(
+        rows
+          .filter((row) => current.wallets.includes(row.walletId))
+          .map((row) => [
+            row.walletId,
+            { status: 'failed' as const, error: toMessage(error) },
+          ])
+      )
+      const probed = applyProbeVerdicts(rows, stageUuid, verdicts)
+      updateRuns((runs) => ({ ...runs, [id]: probed }))
+      updateTask(id, {
+        quantityMax: quantityMaxFor(probed, current.wallets, stageUuid),
+      })
+    } finally {
+      const current = scoped.get().tasks.find((entry) => entry.id === id)
+      if (
+        current?.stageUuid === stageUuid &&
+        probeEpochRef.get(id) === epoch
+      ) {
+        updateTask(id, { probing: false })
+      }
+    }
+  }
+
   function cancelRun(id: string) {
     runsRef.set(id, (runsRef.get(id) ?? 0) + 1)
   }
@@ -210,12 +383,14 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     const index = tasks.findIndex((task) => task.id === id)
     if (index === -1) return
 
+    bumpProbeEpoch(id)
     cancelRun(id)
     cancelMint(id)
     finishMint(id)
     clearArmState(id)
     runsRef.delete(id)
     mintRunRef.delete(id)
+    probeEpochRef.delete(id)
     updateRuns((current) => {
       const next = { ...current }
       delete next[id]
@@ -234,6 +409,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   // A verdict names the token or the wallets it was read for, so it cannot survive a
   // reset. A landed row is a chain fact: keep its hash and the stages it retired.
   function resetCheck(id: string, patch: TaskPatch) {
+    bumpProbeEpoch(id)
     cancelRun(id)
     clearArmState(id)
     updateRuns((current) => ({
@@ -275,6 +451,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     if (!realActive) return
     resetCheck(realActive.id, {
       wallets: ids,
+
       stageUuid: '',
       quantityMax: 0,
       quantity: '1',
@@ -283,20 +460,29 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
   function selectStage(uuid: string) {
     if (!realActive) return
-    clearArmState(realActive.id)
-    const max = quantityMaxFor(runs[realActive.id] ?? [], realActive.wallets, uuid)
+    const liveTask = scoped.get().tasks.find((entry) => entry.id === realActive.id)
+    if (!liveTask || liveTask.stageUuid === uuid) return
+    const id = realActive.id
+    clearArmState(id)
+    const epoch = bumpProbeEpoch(id)
+    const cleared = clearProbeVerdicts(scoped.get().runs[id] ?? [])
+    updateRuns((current) => ({ ...current, [id]: cleared }))
+    const max = quantityMaxFor(cleared, realActive.wallets, uuid)
     const stage = realActive.drop?.stages.find((entry) => entry.uuid === uuid) ?? null
-    updateTask(realActive.id, {
+    updateTask(id, {
       stageUuid: uuid,
       quantityMax: max,
       arm: null,
+      probing: true,
       quantity: initialQuantity(max, stage),
     })
+    void probeStage(id, uuid, epoch)
   }
 
   async function check(
     target?: Task,
-    dropOverride?: DropInfo
+    dropOverride?: DropInfo,
+    options: { probe?: boolean } = {}
   ): Promise<CheckResult | null> {
     const task = target ?? realActive
     if (!task || task.status === 'running' || task.url.trim().length === 0) {
@@ -307,11 +493,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     const id = task.id
     const url = task.url
     const walletIds = [...task.wallets]
+    bumpProbeEpoch(id)
     const run = (runsRef.get(id) ?? 0) + 1
     runsRef.set(id, run)
-    updateTask(id, { status: 'running', checked: false })
+    updateTask(id, { status: 'running', checked: false, probing: false })
 
     const stale = () => runsRef.get(id) !== run
+    const isCurrent = () => !stale()
     const collection = resolveCollectionSource(url)
 
     if (!collection) {
@@ -319,6 +507,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         name: 'Task',
         status: 'failed',
         checked: false,
+        probing: false,
         drop: null,
       })
       toast.error('Check failed — collection URL not recognised')
@@ -348,6 +537,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         updateTask(id, {
           status: 'failed',
           checked: false,
+          probing: false,
           drop: null,
         })
         toast.error('Only SeaDrop ERC-721 drops are supported')
@@ -355,23 +545,14 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       }
 
       step = 'eligibility'
-      // The same key can live in two folders, and one address must not appear
-      // as two rows in a batch.
-      const byAddress = new Map<string, StoredWallet>()
-      for (const wallet of await listWallets()) {
-        if (!walletIds.includes(wallet.id)) continue
-        const key = wallet.address.toLowerCase()
-        if (!byAddress.has(key)) {
-          byAddress.set(key, wallet)
-        }
-      }
-      const selected = [...byAddress.values()]
+      const selected = await selectedWallets(walletIds)
       if (stale()) return null
 
       if (selected.length === 0) {
         updateTask(id, {
           status: 'failed',
           checked: false,
+          probing: false,
           drop: null,
         })
         toast.error('Select at least one wallet')
@@ -391,26 +572,111 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       const stageUuid = keptStage ? live.stageUuid : (drop.activeStage?.uuid ?? '')
       const stage = drop.stages.find((entry) => entry.uuid === stageUuid) ?? null
       const checkedRows = rowsFromCheck(rows, stageUuid)
-      const mergedRows = mergeCheckedRows(checkedRows, scoped.get().runs[id] ?? [])
-      const quantityMax = quantityMaxFor(mergedRows, live.wallets, stageUuid)
+      const baseRows = mergeCheckedRows(checkedRows, scoped.get().runs[id] ?? [])
+      let probedStage: string | null = null
+      let probedRows = baseRows
+      const shouldProbe = options.probe !== false && drop.source === 'scatter'
+      const probeList = async (target: DropStage | null) => {
+        const rows = await probeIfLive({
+          id,
+          drop,
+          stage: target,
+          baseRows,
+          wallets: selected,
+          isCurrent,
+        })
+        return stale()
+          ? ({ stale: true } as const)
+          : ({ stale: false, rows } as const)
+      }
 
-      updateRuns((current) => ({ ...current, [id]: mergedRows }))
+      // The build is free and returns unsigned calldata, so the check can learn
+      // whether every wallet would really mint before the operator arms or starts.
+      if (shouldProbe) {
+        const probe = await probeList(stage)
+        if (probe.stale) return null
+        if (probe.rows !== null) {
+          probedStage = stageUuid
+          probedRows = probe.rows
+        }
+      }
+
+      // A stage change while the probe ran owns the task. Keep the operator's pick
+      // rather than applying a verdict taken against the list they left.
+      const current =
+        scoped.get().tasks.find((entry) => entry.id === id) ?? live
+      const finalStageUuid = drop.stages.some(
+        (entry) => entry.uuid === current.stageUuid
+      )
+        ? current.stageUuid
+        : (drop.activeStage?.uuid ?? '')
+      const finalStage =
+        drop.stages.find((entry) => entry.uuid === finalStageUuid) ?? null
+      let finalRows = probedStage === finalStageUuid ? probedRows : baseRows
+      // A stage change during the build leaves the first probe without a verdict
+      // for the list the operator now has. Probe the final list before publishing
+      // rows, so Check never shows an unprobed row as ready.
+      if (shouldProbe && finalStageUuid !== probedStage) {
+        const retry = await probeList(finalStage)
+        if (retry.stale) return null
+        if (retry.rows !== null) finalRows = retry.rows
+      }
+      const quantityMax = quantityMaxFor(
+        finalRows,
+        current.wallets,
+        finalStageUuid
+      )
+      // A stage change after the check's last read owns the pick. Publish the task
+      // without the stale rows, then probe the list the operator actually selected.
+      const latest =
+        scoped.get().tasks.find((entry) => entry.id === id) ?? current
+      const latestStageUuid = drop.stages.some(
+        (entry) => entry.uuid === latest.stageUuid
+      )
+        ? latest.stageUuid
+        : finalStageUuid
+      if (latestStageUuid !== finalStageUuid) {
+        updateTask(id, {
+          name: drop.name || collection.slug,
+          status: 'idle',
+          checked: true,
+          drop,
+          stageUuid: latestStageUuid,
+          probing: shouldProbe,
+        })
+        if (shouldProbe) {
+          const latestEpoch = bumpProbeEpoch(id)
+          await probeStage(id, latestStageUuid, latestEpoch)
+        }
+        checked = true
+        return {
+          drop,
+          rows: scoped.get().runs[id] ?? finalRows,
+          quantityMax:
+            scoped.get().tasks.find((entry) => entry.id === id)?.quantityMax ??
+            quantityMax,
+        }
+      }
+
+      updateRuns((currentRuns) => ({ ...currentRuns, [id]: finalRows }))
       updateTask(id, {
         name: drop.name || collection.slug,
         status: 'idle',
         checked: true,
         drop,
-        stageUuid,
+        stageUuid: finalStageUuid,
         quantityMax,
-        quantity: initialQuantity(quantityMax, stage),
+        probing: false,
+        quantity: initialQuantity(quantityMax, finalStage),
       })
       checked = true
-      return { drop, rows: mergedRows, quantityMax }
+      return { drop, rows: finalRows, quantityMax }
     } catch (error) {
       if (stale()) return null
       updateTask(id, {
         status: 'failed',
         checked: false,
+        probing: false,
         drop: null,
       })
       toast.error(mintFailureMessage(error, step))
@@ -435,9 +701,12 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   ) {
     const prepared = options.prepared
     const task = target ?? realActive
-    if (!task || !task.drop || mintingRef.has(task.id)) return
+    if (!task || !task.drop || task.probing || mintingRef.has(task.id)) return
 
     const id = task.id
+    // A run owns the rows from its first line. A probe already in flight must not
+    // land afterwards and restore its pre-run snapshot.
+    bumpProbeEpoch(id)
     // The re-checked drop wins: an armed fire re-reads the drop, so the older copy must
     // not be what the run mints against. The token is the task's, whatever copy the
     // caller passed, and only a provider that mints editions may carry it.
@@ -445,8 +714,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     const drop = stampTaskToken(sourceDrop, task)
     const refusal = startRefusalFor(
       task,
-      prepared?.rows ?? scoped.get().runs[id] ?? [],
-      drop
+      prepared?.rows ?? scoped.get().runs[id] ?? []
     )
     // A blocked task builds nothing: the fix is in the task, and a run would only
     // spend gas discovering the same refusal wallet by wallet.
@@ -526,6 +794,12 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         toast.error('The live stage changed. Check the collection again.')
         return
       }
+      const atStage = <T extends Partial<WalletRun>>(
+        patch: T
+      ): T & { statusStage: string } => ({
+        ...patch,
+        statusStage: liveStageUuid,
+      })
 
       // Resetting a deselected row would erase the landing that keeps its wallet
       // retired on this stage.
@@ -563,13 +837,14 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         ...current,
         [id]: (current[id] ?? []).map((row) =>
           mintable.has(row.walletId)
-            ? {
+            ? atStage({
                 ...row,
                 status: 'minting' as const,
+                checkFailed: false,
                 txHash: undefined,
                 chain: undefined,
                 error: undefined,
-              }
+              })
             : row
         ),
       }))
@@ -590,7 +865,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           ...current,
           [id]: (current[id] ?? []).map((row) =>
             mintable.has(row.walletId)
-              ? { ...row, status: 'blocked' as const, error: refusal }
+              ? atStage({ ...row, status: 'blocked' as const, error: refusal })
               : row
           ),
         }))
@@ -607,7 +882,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         updateRuns((current) => ({
           ...current,
           [id]: (current[id] ?? []).map((entry) =>
-            entry.walletId === walletId ? { ...entry, ...patch(entry) } : entry
+            entry.walletId === walletId
+              ? { ...entry, ...atStage(patch(entry)) }
+              : entry
           ),
         }))
       }
@@ -687,7 +964,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   }
 
   function armStage() {
-    if (!realActive || !active.drop) return
+    if (!realActive || !active.drop || realActive.probing) return
     const refusal = startRefusalFor(
       realActive,
       scoped.get().runs[realActive.id] ?? []
@@ -845,7 +1122,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       // across readiness retries instead of re-running eligibility every tick.
       let checked = openCheckRef.get(taskId)
       if (checked?.key !== armKey) {
-        const result = await check(latest, drop)
+        // The probe is a pre-run courtesy. At the open it would only delay the fire,
+        // so the batch build inside the run is the guard that matters here.
+        const result = await check(latest, drop, { probe: false })
         if (!result) {
           updateTask(taskId, { arm: null })
           clearArmState(taskId)
