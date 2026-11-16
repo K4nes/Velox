@@ -16,6 +16,12 @@ come from the Conventional Commit history (`COMMIT.md`).
   cannot sign for is refused by name. Start Mint on a Scatter task names the missing step
   instead of building a transaction ([#121]).
 
+### Changed
+
+- The Mint summary names the scope of every row: quantity per wallet, unit price, total
+  NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
+  ([#124]).
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
@@ -216,3 +222,4 @@ consolidated into a single entry.
 [#113]: https://github.com/K4nes/Velox/pull/113
 [#115]: https://github.com/K4nes/Velox/issues/115
 [#117]: https://github.com/K4nes/Velox/pull/117
+[#124]: https://github.com/K4nes/Velox/issues/124

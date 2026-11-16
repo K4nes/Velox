@@ -390,6 +390,7 @@ export type TaskView = {
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
+  totalNfts: number | null
   totalWei: bigint | null
 }
 
@@ -434,17 +435,25 @@ export function taskView(input: {
     return run ? !run.checkFailed : false
   }).length
 
+  const mintStage =
+    selectedStage ?? task.drop?.activeStage ?? task.drop?.nextStage ?? null
   const quantityLimit = selectedStage
     ? quantityCeiling(task.quantityMax, selectedStage)
     : 0
-  const quantityHint =
+  const capFact =
     selectedStage === null
       ? null
       : task.drop?.source === 'scatter' && selectedStage.maxPerWallet === ''
         ? 'No stated cap'
         : quantityLimit > 0
-          ? `Max ${quantityLimit} per wallet`
+          ? `Up to ${quantityLimit} per wallet`
           : null
+  const unitSize = mintStage?.unitSize ?? 1
+  const unitFact = unitSize > 1 ? `${unitSize} NFTs per unit` : null
+  const quantityHint =
+    [capFact, unitFact].filter((fact): fact is string => fact !== null).join(
+      ', '
+    ) || null
   const mintQuantity = Number.parseInt(task.quantity, 10)
   const quantityReady = Number.isInteger(mintQuantity) && mintQuantity >= 1
   const isMintingThisTask = input.runningIds.includes(task.id)
@@ -464,11 +473,14 @@ export function taskView(input: {
     (isLiveStage ? mintWalletCount > 0 : readyWalletCount > 0) &&
     !isMintingThisTask
 
-  const mintStage =
-    selectedStage ?? task.drop?.activeStage ?? task.drop?.nextStage ?? null
   const stagePriceWei = mintStage ? weiFromDecimal(mintStage.priceWei) : null
+  const totalsApply = quantityReady && mintWalletCount > 0
+  const totalNfts =
+    mintStage !== null && totalsApply
+      ? mintQuantity * unitSize * mintWalletCount
+      : null
   const totalWei =
-    stagePriceWei !== null && quantityReady && mintWalletCount > 0
+    stagePriceWei !== null && totalsApply
       ? stagePriceWei * BigInt(mintQuantity) * BigInt(mintWalletCount)
       : null
 
@@ -492,6 +504,7 @@ export function taskView(input: {
     canStartMint,
     mintStage,
     stagePriceWei,
+    totalNfts,
     totalWei,
   }
 }

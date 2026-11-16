@@ -64,11 +64,13 @@ export function MintPanel({
     quantityHint,
     mintQuantity,
     quantityReady,
+    mintWalletCount,
     startRefusal,
     canStartMint,
     stagePriceWei,
     totalWei,
     mintStage,
+    totalNfts,
   } = view
 
   return (
@@ -240,21 +242,27 @@ export function MintPanel({
       <div className="flex shrink-0 flex-col gap-3 border-t p-4">
         <div className="bg-muted rounded-lg border px-3 py-2 text-sm">
           <div className="flex items-center justify-between py-1">
-            <span>Quantity</span>
+            <span>Quantity per Wallet</span>
             <span className="text-muted-foreground tabular-nums">
               {quantityReady ? mintQuantity : '—'}
             </span>
           </div>
           <div className="flex items-center justify-between py-1">
-            <span>NFT Price</span>
+            <span>Unit Price</span>
             <span className="text-muted-foreground tabular-nums">
               {stagePriceWei !== null
                 ? amountLabel(stagePriceWei, mintStage)
                 : '—'}
             </span>
           </div>
+          <div className="flex items-center justify-between py-1">
+            <span>{`Total NFTs (${mintWalletCount} ${mintWalletCount === 1 ? 'Wallet' : 'Wallets'})`}</span>
+            <span className="text-muted-foreground tabular-nums">
+              {totalNfts !== null ? totalNfts : '—'}
+            </span>
+          </div>
           <div className="mt-1 flex items-center justify-between border-t pt-2 font-semibold">
-            <span>Cost</span>
+            <span>Estimated Cost</span>
             <span className="text-success tabular-nums">
               {totalWei !== null
                 ? amountLabel(totalWei, mintStage)

@@ -1,14 +1,11 @@
 import { test } from '@e2e-dev/web'
-import type { Browser, WebApp } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { mintWallets, openseaConnection, robinhoodRpc, walletFolder } from '../support/data'
+import { mintWallets, walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsSpread } from '../support/fixtures/holdings'
-import { MINT_TEST_RPC_URL, mockMintNetwork, pinMintGas } from '../support/mint'
+import { mockMintNetwork, pinMintGas, seedMintPage } from '../support/mint'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
-import { seedVelox } from '../support/seed'
-import type { FolderRow, WalletRow } from '../support/seed'
 
 const SLUG = 'state-drop'
 const STAGE_UUID = 'parallel-stage'
@@ -17,29 +14,6 @@ const BULK_SLUG = 'state-bulk-sell'
 const BULK_CONTRACT = '0x00000000000000000000000000000000000000bb'
 const CHAIN = 'robinhood'
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
-
-async function seedMintPage(
-  app: WebApp,
-  browser: Browser,
-  folder: FolderRow,
-  wallet: WalletRow,
-): Promise<void> {
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {}
-  })
-  await app.open('/mint/tasks')
-  await seedVelox(browser, {
-    folders: [folder],
-    wallets: [wallet],
-    connections: [
-      robinhoodRpc(MINT_TEST_RPC_URL),
-      openseaConnection('deterministic-key'),
-    ],
-  })
-  await app.open('/mint/tasks')
-}
 
 test('the mint task survives a round trip while the check is running', async ({
   app,
@@ -76,7 +50,7 @@ test('the mint task survives a round trip while the check is running', async ({
     })
   })
 
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
   await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
   await screen.getByRole('button', { name: /Select wallets/ }).click()
@@ -137,7 +111,7 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
     wallets: [{ address: wallet.address }],
     maxPerWallet: '1001',
   })
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
   await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
   await screen.getByRole('button', { name: /Select wallets/ }).click()
@@ -156,7 +130,7 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
   // the prefill starts there.
   await expect(screen.getByLabel('Quantity')).toHaveAttribute('max', '1001')
   await expect(screen.getByLabel('Quantity')).toHaveValue('1001')
-  await expect(screen.getByText('Max 1001 per wallet')).toBeVisible()
+  await expect(screen.getByText('Up to 1001 per wallet')).toBeVisible()
 })
 
 test('a mint run blocks another batch flow and keeps reporting across pages', async ({
@@ -173,7 +147,7 @@ test('a mint run blocks another batch flow and keeps reporting across pages', as
     slug: SLUG,
     wallets: [{ address: wallet.address }],
   })
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
   await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
   await screen.getByRole('button', { name: /Select wallets/ }).click()

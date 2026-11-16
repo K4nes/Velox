@@ -3,6 +3,7 @@ import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
 import {
+  mintWallets,
   pinWalletChain,
   openseaConnection,
   robinhoodRpc,
@@ -292,6 +293,8 @@ export async function mockMintNetwork(options: {
   receiptDelayMs?: number
   /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
   maxPerWallet?: string
+  /** The stage's price in base units. OpenSea carries its price as wei. */
+  priceWei?: string
 }): Promise<{ events: MintEvent[] }> {
   // The chain is the same for every provider, so the RPC mock is shared.
   const rpc = await mockMintRpc({
@@ -304,6 +307,7 @@ export async function mockMintNetwork(options: {
   })
   const { browser, slug } = options
   const maxPerWallet = options.maxPerWallet ?? '1'
+  const priceWei = options.priceWei ?? '0'
   const delayByAddress = new Map(
     options.wallets.map((wallet) => [
       wallet.address.toLowerCase(),
@@ -315,7 +319,7 @@ export async function mockMintNetwork(options: {
     uuid: 'parallel-stage',
     stage_type: 'public',
     label: 'Public',
-    price: '0',
+    price: priceWei,
     max_per_wallet: maxPerWallet,
     start_time: new Date(now - 60_000).toISOString(),
     end_time: new Date(now + 3_600_000).toISOString(),
@@ -354,7 +358,7 @@ export async function mockMintNetwork(options: {
             stage_uuid: stage.uuid,
             is_eligible: true,
             max_total_mintable_by_wallet: maxPerWallet,
-            price: '0',
+            price: priceWei,
           },
         ],
       },
@@ -397,6 +401,58 @@ export async function mockMintNetwork(options: {
     })
   })
   return rpc
+}
+
+export async function seedMintPage(
+  app: WebApp,
+  browser: Browser,
+  folder: FolderRow,
+  wallets: WalletRow[],
+): Promise<void> {
+  await pinWalletChain(browser)
+  await app.open('/mint/tasks')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets,
+    connections: [
+      robinhoodRpc(MINT_TEST_RPC_URL),
+      openseaConnection('deterministic-key'),
+    ],
+  })
+  await app.open('/mint/tasks')
+}
+
+export async function selectFolder(
+  browser: Browser,
+  screen: Screen,
+  folder: FolderRow,
+): Promise<void> {
+  await screen.getByRole('button', { name: /Select wallets/ }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
+  await browser.keyboard.press('Escape')
+}
+
+export function oneWallet(folder: FolderRow): WalletRow {
+  const wallet = mintWallets(1, folder.id)[0]
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  return wallet
+}
+
+const SUMMARY_BOX =
+  "//span[normalize-space()='Quantity per Wallet']/parent::div/parent::div"
+
+/** The four-row summary block, anchored on its first label. */
+export function summaryBox(browser: Browser) {
+  return browser.locator(`xpath=${SUMMARY_BOX}`)
+}
+
+/** The value span that follows a summary row's label span. */
+export function summaryValue(browser: Browser, label: string) {
+  return browser.locator(
+    `xpath=${SUMMARY_BOX}//span[normalize-space()=${JSON.stringify(label)}]/following-sibling::span[1]`
+  )
 }
 
 /**

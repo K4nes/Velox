@@ -1,67 +1,24 @@
 import { test } from '@e2e-dev/web'
-import type { Browser, WebApp } from '@e2e-dev/web'
+import type { Browser } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import type { Screen } from 'e2e'
+import { mintWallets, walletFolder } from '../support/data'
 import {
-  mintWallets,
-  pinWalletChain,
-  openseaConnection,
-  robinhoodRpc,
-  walletFolder,
-} from '../support/data'
-import {
-  MINT_TEST_RPC_URL,
   SCATTER_CONTRACT,
   SCATTER_NO_LIMIT,
   SCATTER_OPEN_END,
   mockMintNetwork,
   mockMintRpc,
   mockScatterNetwork,
+  oneWallet,
   pinMintGas,
+  seedMintPage,
+  selectFolder,
+  summaryValue,
 } from '../support/mint'
-import { seedVelox } from '../support/seed'
-import type { FolderRow, WalletRow } from '../support/seed'
 
 const SLUG = 'scatter-drop'
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
 const TOKEN_ADDRESS = '0x1111111111111111111111111111111111111111'
-
-async function seedMintPage(
-  app: WebApp,
-  browser: Browser,
-  folder: FolderRow,
-  wallets: WalletRow[],
-): Promise<void> {
-  await pinWalletChain(browser)
-  await app.open('/mint/tasks')
-  await seedVelox(browser, {
-    folders: [folder],
-    wallets,
-    connections: [
-      robinhoodRpc(MINT_TEST_RPC_URL),
-      openseaConnection('deterministic-key'),
-    ],
-  })
-  await app.open('/mint/tasks')
-}
-
-async function selectFolder(
-  browser: Browser,
-  screen: Screen,
-  folder: FolderRow,
-): Promise<void> {
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-}
-
-function oneWallet(folder: FolderRow): WalletRow {
-  const wallet = mintWallets(1, folder.id)[0]
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
-  return wallet
-}
 
 // Every Scatter collection in this suite is on Velox's Robinhood Chain, because the
 // chain the drop carries is the one the mint request must state.
@@ -155,7 +112,10 @@ test('a Scatter collection fills the picker and prices each list in its own curr
   // 0.01 per unit × 5 units over one wallet.
   await expect(screen.getByText('0.0500 ETH')).toBeVisible()
   await expect(screen.getByLabel('Quantity')).toHaveValue('5')
-  await expect(screen.getByText('Max 5 per wallet')).toBeVisible()
+  await expect(
+    screen.getByText('Up to 5 per wallet, 5 NFTs per unit')
+  ).toBeVisible()
+  await expect(summaryValue(browser, 'Total NFTs (1 Wallet)')).toHaveText('25')
 
   expect(calls.collections).toEqual([SLUG])
   // One read lists the collection's stages; the other is the wallet's eligibility.
