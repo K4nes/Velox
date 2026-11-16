@@ -30,6 +30,8 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm install` | Install dependencies. |
 | `npm run dev` | Dev server; the only mode with hot reload and the full app. |
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
+| `npm run typecheck` | `tsc -b` behind the local-toolchain guard. Refuses an empty `node_modules` instead of falling back to a global `tsc`. |
+| `npm run typecheck:test` | Type-checks `tests/` and the e2e configs with `tsconfig.test.json`. |
 | `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
 | `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
 | `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
@@ -39,7 +41,7 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
 | `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Loads `.env.e2e.local` and fails before the browser when a required value is missing, so a skipped lane cannot read as green. |
 | `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file. The two minting cases run only with `E2E_ALLOW_MINT=1`, because they spend gas; `scatter.e2e.ts` reads and needs no value. |
-| `npm run verify` | `build`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
+| `npm run verify` | The check scripts, `build`, `typecheck:test`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
 Three test runners exist: the `e2e` package drives a headless browser, `cargo test` drives
@@ -50,12 +52,14 @@ claim a suite ran unless you ran it.
 
 Cheapest check that settles the change, in order:
 
-0. `npm run verify` — `build`, `lint`, `test:release` and `test:e2e` in one command, about
-   four minutes. This is the default, and its tail is what a pull request body quotes. Drop
+0. `npm run verify` — the check scripts, `build`, `typecheck:test`, `lint`, `test:release` and
+   `test:e2e` in one command, about five minutes. This is the default, and its tail is what a pull request body quotes. Drop
    to the rungs below only when one gate is already known red, or the change is not reachable
    from the browser suite.
 1. Read the diff.
-2. `npx tsc -b --force`
+2. `npm run typecheck` and `npm run typecheck:test` — source types and browser-test types.
+   Both guard the local toolchain, so an empty `node_modules` fails here instead of
+   passing against a global `tsc`.
 3. `npm run build`
 4. `npm run test:release` — the release manifest, signature and lockfile logic, the page-state
    store and the pure formatters, in `scripts/`.
@@ -72,7 +76,7 @@ Cheapest check that settles the change, in order:
 CI runs the same ladder, plus `node scripts/check-command-table.mjs`,
 `node scripts/check-version-literal.mjs`, `node scripts/check-collection-label.mjs`,
 `node scripts/check-lockfile.mjs`, `node scripts/check-workflow-secrets.mjs`,
-`node scripts/check-workflow-width.mjs` and the PR
+`node scripts/check-workflow-width.mjs`, `node scripts/check-commit-message.mjs` and the PR
 title check, and gates `cargo fmt --check` and `cargo clippy -D warnings` for the crate, which
 settle style rather than behaviour.
 
@@ -103,6 +107,10 @@ CI holds no `E2E_*` secrets, so that lane cannot run there and the evidence ride
 pull request. The mocked lane cannot stand in for it: it answers whatever path the client
 was written against, so a wrong upstream path stays green in both.
 
+A change to `prepareMintRun` in `tests/support/mint.ts` runs `npm run test:e2e:mint`.
+The mocked `mint-parallel` suite covers its explicit-options branch; the env-seeded branch
+is live-only.
+
 ## Layout
 
 | Path | Holds |
@@ -119,6 +127,12 @@ was written against, so a wrong upstream path stays green in both.
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
 | `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, `capabilities/default.json` (what the window may call), and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
+
+## Tests
+
+Before writing or changing a browser test, read `RULES.md` § E2E assertions. One test
+asserts one thing. Put a precondition wait in a helper such as `waitForEligible`, then
+assert the subject once. Shared mint setup lives in `tests/support/mint.ts`.
 
 ## Rules that break things if ignored
 

@@ -1,67 +1,24 @@
 import { test } from '@e2e-dev/web'
-import type { Browser, WebApp } from '@e2e-dev/web'
+import type { Browser } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import type { Screen } from 'e2e'
+import { mintWallets, walletFolder } from '../support/data'
 import {
-  mintWallets,
-  pinWalletChain,
-  openseaConnection,
-  robinhoodRpc,
-  walletFolder,
-} from '../support/data'
-import {
-  MINT_TEST_RPC_URL,
   SCATTER_CONTRACT,
   SCATTER_NO_LIMIT,
   SCATTER_OPEN_END,
+  checkCollection,
   mockMintNetwork,
   mockMintRpc,
   mockScatterNetwork,
+  oneWallet,
   pinMintGas,
+  seedMintPage,
+  selectFolder,
 } from '../support/mint'
-import { seedVelox } from '../support/seed'
-import type { FolderRow, WalletRow } from '../support/seed'
 
 const SLUG = 'scatter-drop'
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
 const TOKEN_ADDRESS = '0x1111111111111111111111111111111111111111'
-
-async function seedMintPage(
-  app: WebApp,
-  browser: Browser,
-  folder: FolderRow,
-  wallets: WalletRow[],
-): Promise<void> {
-  await pinWalletChain(browser)
-  await app.open('/mint/tasks')
-  await seedVelox(browser, {
-    folders: [folder],
-    wallets,
-    connections: [
-      robinhoodRpc(MINT_TEST_RPC_URL),
-      openseaConnection('deterministic-key'),
-    ],
-  })
-  await app.open('/mint/tasks')
-}
-
-async function selectFolder(
-  browser: Browser,
-  screen: Screen,
-  folder: FolderRow,
-): Promise<void> {
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-}
-
-function oneWallet(folder: FolderRow): WalletRow {
-  const wallet = mintWallets(1, folder.id)[0]
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
-  return wallet
-}
 
 // Every Scatter collection in this suite is on Velox's Robinhood Chain, because the
 // chain the drop carries is the one the mint request must state.
@@ -121,9 +78,12 @@ test('a Scatter collection fills the picker and prices each list in its own curr
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -155,7 +115,9 @@ test('a Scatter collection fills the picker and prices each list in its own curr
   // 0.01 per unit × 5 units over one wallet.
   await expect(screen.getByText('0.0500 ETH')).toBeVisible()
   await expect(screen.getByLabel('Quantity')).toHaveValue('5')
-  await expect(screen.getByText('Max 5 per wallet')).toBeVisible()
+  await expect(
+    screen.getByText('Up to 5 per wallet, 5 NFTs per unit')
+  ).toBeVisible()
 
   expect(calls.collections).toEqual([SLUG])
   // One read lists the collection's stages; the other is the wallet's eligibility.
@@ -191,9 +153,12 @@ test('a price below the printed precision never reads as free', async ({
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -232,9 +197,12 @@ test('a Scatter price follows the next stage when none is selected', async ({
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Scheduled', { exact: true })).toBeVisible({
@@ -277,9 +245,12 @@ test('an unnamed Scatter token keeps its decimals instead of reading as ETH', as
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -321,9 +292,12 @@ test('the URL token reaches the mint request body', async ({
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}/12`
+  )
 
   await expect(screen.getByLabel('Mint Stage')).toHaveText('Public', {
     timeout: 60_000,
@@ -371,9 +345,12 @@ test('a collection on a chain Velox cannot sign for is refused by name before an
   })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   await expect(
     browser.locator('[data-sonner-toast]').filter({ hasText: 'Polygon' }),
@@ -401,9 +378,12 @@ test('an ERC-721 Scatter list mints across the selected wallets and every row re
   const auth = await countOpenSeaAuth(browser)
 
   await seedMintPage(app, browser, folder, wallets)
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const [first] = wallets
   if (first === undefined) throw new Error('mintWallets(2) returned no wallet')
@@ -669,9 +649,12 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -715,9 +698,12 @@ test('an allowance answer from one wallet stops the batch before any wallet sign
   const rpc = await mockMintRpc({ browser, wallets })
 
   await seedMintPage(app, browser, folder, wallets)
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: first.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -758,9 +744,7 @@ test('a bare slug and a contract address keep routing to OpenSea', async ({
   await seedMintPage(app, browser, folder, [wallet])
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
 
-  await screen.getByLabel(URL_LABEL).fill(SLUG)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(browser, screen, folder, SLUG)
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })

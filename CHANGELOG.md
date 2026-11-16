@@ -21,6 +21,12 @@ come from the Conventional Commit history (`COMMIT.md`).
   verdict and prepared calldata, an ERC-721 task sends no token, and an OpenSea task gains
   no field ([#123]).
 
+### Changed
+
+- The Mint summary names the scope of every row: quantity per wallet, unit price, total
+  NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
+  ([#124]).
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
@@ -220,5 +226,6 @@ consolidated into a single entry.
 [#107]: https://github.com/K4nes/Velox/pull/107
 [#113]: https://github.com/K4nes/Velox/pull/113
 [#115]: https://github.com/K4nes/Velox/issues/115
-[#117]: https://github.com/K4nes/Velox/pull/117
+[#120]: https://github.com/K4nes/Velox/pull/120
 [#123]: https://github.com/K4nes/Velox/issues/123
+[#124]: https://github.com/K4nes/Velox/issues/124

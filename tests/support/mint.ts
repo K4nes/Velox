@@ -2,7 +2,9 @@ import type { JsonValue, Screen } from 'e2e'
 import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
 import { keccak256, recoverTransactionAddress } from 'viem'
+import type { TransactionSerialized } from 'viem'
 import {
+  mintWallets,
   pinWalletChain,
   openseaConnection,
   robinhoodRpc,
@@ -78,7 +80,7 @@ export async function readDrop(slug: string): Promise<DropState> {
       (entry) => entry.start_time !== undefined && Date.parse(entry.start_time) > now,
     ) ?? null
 
-  return { active, future, live, now, stages }
+  return { stages, active, live, future, now }
 }
 
 /**
@@ -127,18 +129,12 @@ export async function prepareMintRun(options: {
   })
   await app.open('/mint/tasks')
 
-  await screen
-    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
-    .fill(`https://opensea.io/collection/${slug}`)
-
-  // The wallet row lives in a collapsed group, so the group checkbox is the
-  // way in; the picker closes on Escape.
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', 'Check').click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${slug}`
+  )
 
   for (const address of addresses) {
     const row = screen.getByRole('row').filter({ hasText: address })
@@ -224,7 +220,7 @@ export async function mockMintRpc(options: {
         await answer(route, '0x0')
         return
       case 'eth_sendRawTransaction': {
-        const serialized = params[0] as `0x${string}`
+        const serialized = params[0] as TransactionSerialized
         const address = (
           await recoverTransactionAddress({ serializedTransaction: serialized })
         ).toLowerCase()
@@ -294,6 +290,8 @@ export async function mockMintNetwork(options: {
   receiptDelayMs?: number
   /** The stage's stated per-wallet cap, on the drop and in the eligibility answer. */
   maxPerWallet?: string
+  /** The stage's price in base units. OpenSea carries its price as wei. */
+  priceWei?: string
 }): Promise<{ events: MintEvent[] }> {
   // The chain is the same for every provider, so the RPC mock is shared.
   const rpc = await mockMintRpc({
@@ -306,6 +304,7 @@ export async function mockMintNetwork(options: {
   })
   const { browser, slug } = options
   const maxPerWallet = options.maxPerWallet ?? '1'
+  const priceWei = options.priceWei ?? '0'
   const delayByAddress = new Map(
     options.wallets.map((wallet) => [
       wallet.address.toLowerCase(),
@@ -317,7 +316,7 @@ export async function mockMintNetwork(options: {
     uuid: 'parallel-stage',
     stage_type: 'public',
     label: 'Public',
-    price: '0',
+    price: priceWei,
     max_per_wallet: maxPerWallet,
     start_time: new Date(now - 60_000).toISOString(),
     end_time: new Date(now + 3_600_000).toISOString(),
@@ -356,7 +355,7 @@ export async function mockMintNetwork(options: {
             stage_uuid: stage.uuid,
             is_eligible: true,
             max_total_mintable_by_wallet: maxPerWallet,
-            price: '0',
+            price: priceWei,
           },
         ],
       },
@@ -399,6 +398,92 @@ export async function mockMintNetwork(options: {
     })
   })
   return rpc
+}
+
+export async function seedMintPage(
+  app: WebApp,
+  browser: Browser,
+  folder: FolderRow,
+  wallets: WalletRow[],
+): Promise<void> {
+  await pinWalletChain(browser)
+  await app.open('/mint/tasks')
+  await seedVelox(browser, {
+    folders: [folder],
+    wallets,
+    connections: [
+      robinhoodRpc(MINT_TEST_RPC_URL),
+      openseaConnection('deterministic-key'),
+    ],
+  })
+  await app.open('/mint/tasks')
+}
+
+export async function selectFolder(
+  browser: Browser,
+  screen: Screen,
+  folder: FolderRow,
+): Promise<void> {
+  // The wallet row lives in a collapsed group, so the group checkbox is the
+  // way in; the picker closes on Escape.
+  await screen.getByRole('button', { name: /Select wallets/ }).click()
+  await screen
+    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
+    .click()
+  await browser.keyboard.press('Escape')
+}
+
+export async function checkCollection(
+  browser: Browser,
+  screen: Screen,
+  folder: FolderRow,
+  url: string,
+): Promise<void> {
+  await screen
+    .getByLabel('Collection URL or slug (OpenSea / Scatter)')
+    .fill(url)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+}
+
+export async function waitForEligible(
+  screen: Screen,
+  count: number,
+): Promise<void> {
+  await expect(screen.getByText('Eligible', { exact: true })).toHaveCount(count, {
+    timeout: 60_000,
+  })
+}
+
+export function oneWallet(folder: FolderRow): WalletRow {
+  const wallet = mintWallets(1, folder.id)[0]
+  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  return wallet
+}
+
+const SUMMARY_BOX =
+  "//span[normalize-space()='Quantity per Wallet']/parent::div/parent::div"
+
+/** The four-row summary block, anchored on its first label. */
+export function summaryBox(browser: Browser) {
+  return browser.locator(`xpath=${SUMMARY_BOX}`)
+}
+
+/** The summary rows as `label: value`, in render order. */
+export async function summaryLines(browser: Browser): Promise<string[]> {
+  const rows = browser.locator(`xpath=${SUMMARY_BOX}/div`)
+  const count = await rows.count()
+  const lines: string[] = []
+  for (let index = 0; index < count; index += 1) {
+    const label = await browser
+      .locator(`xpath=${SUMMARY_BOX}/div[${index + 1}]/span[1]`)
+      .textContent()
+    const value = await browser
+      .locator(`xpath=${SUMMARY_BOX}/div[${index + 1}]/span[2]`)
+      .textContent()
+    lines.push(`${label ?? ''}: ${value ?? ''}`)
+  }
+  return lines
 }
 
 /**

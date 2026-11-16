@@ -50,6 +50,10 @@ Animate UI has no primitive for every component (`button`, `card`, `input`,
 Promote a colocated component to `components/` once a second page in the same domain
 uses it. `wallet-select.tsx` is already there — it is expected on many pages.
 
+`summary-row.tsx` is the shared hierarchy for a muted label and a medium value. A rail
+whose hierarchy differs, such as the Mint summary's muted values and bold total, keeps a
+local row component and does not force the shared component's styling.
+
 ### Imports in our own files
 
 Use named imports, not `React.*`:
@@ -323,6 +327,12 @@ drifting apart.
   the `test(` line, not the call site, and it drops the message on a locator assertion
   while keeping it on a scalar one. Two locator assertions in one test therefore fail
   identically, and reading which one broke costs a run per guess. Split them.
+- A precondition wait is setup. Put it in a helper such as `waitForEligible`, so the test
+  body itself asserts the subject once.
+- A block that shows several values of one object is one thing. Assert the rows as one
+  array, not one locator assertion per row. The failure message then names the row.
+- Do not chain `.locator()` on an e2e `Locator`. The runtime does not expose it even when
+  the type says it does. Build child locators from `browser.locator(...)`.
 
 ## E2E live data and mocks
 

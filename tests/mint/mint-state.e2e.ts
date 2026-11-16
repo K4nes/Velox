@@ -1,14 +1,17 @@
 import { test } from '@e2e-dev/web'
-import type { Browser, WebApp } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { mintWallets, openseaConnection, robinhoodRpc, walletFolder } from '../support/data'
+import { walletFolder } from '../support/data'
 import { collectionFixture } from '../support/fixtures/collection'
 import { holdingsSpread } from '../support/fixtures/holdings'
-import { MINT_TEST_RPC_URL, mockMintNetwork, pinMintGas } from '../support/mint'
+import {
+  checkCollection,
+  mockMintNetwork,
+  oneWallet,
+  pinMintGas,
+  seedMintPage,
+} from '../support/mint'
 import { mockCollection, mockHoldings } from '../support/opensea'
 import { scanCollection } from '../support/scan'
-import { seedVelox } from '../support/seed'
-import type { FolderRow, WalletRow } from '../support/seed'
 
 const SLUG = 'state-drop'
 const STAGE_UUID = 'parallel-stage'
@@ -18,37 +21,13 @@ const BULK_CONTRACT = '0x00000000000000000000000000000000000000bb'
 const CHAIN = 'robinhood'
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
 
-async function seedMintPage(
-  app: WebApp,
-  browser: Browser,
-  folder: FolderRow,
-  wallet: WalletRow,
-): Promise<void> {
-  await browser.addInitScript(() => {
-    try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
-    } catch {}
-  })
-  await app.open('/mint/tasks')
-  await seedVelox(browser, {
-    folders: [folder],
-    wallets: [wallet],
-    connections: [
-      robinhoodRpc(MINT_TEST_RPC_URL),
-      openseaConnection('deterministic-key'),
-    ],
-  })
-  await app.open('/mint/tasks')
-}
-
 test('the mint task survives a round trip while the check is running', async ({
   app,
   browser,
   screen,
 }) => {
   const folder = walletFolder('Mint State')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,
@@ -76,15 +55,14 @@ test('the mint task survives a round trip while the check is running', async ({
     })
   })
 
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
   await expect(screen.getByRole('button', { name: /Check/ })).toBeDisabled()
 
   await browser.locator('a[href="/settings"]').first().click()
@@ -128,8 +106,7 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
   screen,
 }) => {
   const folder = walletFolder('Mint Cap')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,
@@ -137,15 +114,14 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
     wallets: [{ address: wallet.address }],
     maxPerWallet: '1001',
   })
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
@@ -156,7 +132,7 @@ test('a stated OpenSea cap above 1000 stays a cap', async ({
   // the prefill starts there.
   await expect(screen.getByLabel('Quantity')).toHaveAttribute('max', '1001')
   await expect(screen.getByLabel('Quantity')).toHaveValue('1001')
-  await expect(screen.getByText('Max 1001 per wallet')).toBeVisible()
+  await expect(screen.getByText('Up to 1001 per wallet')).toBeVisible()
 })
 
 test('a mint run blocks another batch flow and keeps reporting across pages', async ({
@@ -165,23 +141,21 @@ test('a mint run blocks another batch flow and keeps reporting across pages', as
   screen,
 }) => {
   const folder = walletFolder('Mint Slot')
-  const [wallet] = mintWallets(1, folder.id)
-  if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
+  const wallet = oneWallet(folder)
 
   await mockMintNetwork({
     browser,
     slug: SLUG,
     wallets: [{ address: wallet.address }],
   })
-  await seedMintPage(app, browser, folder, wallet)
+  await seedMintPage(app, browser, folder, [wallet])
 
-  await screen.getByLabel(URL_LABEL).fill(`https://opensea.io/collection/${SLUG}`)
-  await screen.getByRole('button', { name: /Select wallets/ }).click()
-  await screen
-    .getByRole('checkbox', { name: `Select all in ${folder.name}` })
-    .click()
-  await browser.keyboard.press('Escape')
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://opensea.io/collection/${SLUG}`
+  )
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,

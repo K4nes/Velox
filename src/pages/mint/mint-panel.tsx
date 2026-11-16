@@ -42,6 +42,35 @@ type MintPanelProps = {
   onDisarm: () => void
 }
 
+function SummaryLine({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string
+  value: string | number
+  emphasis?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between',
+        emphasis ? 'mt-1 border-t pt-2 font-semibold' : 'py-1'
+      )}
+    >
+      <span>{label}</span>
+      <span
+        className={cn(
+          'tabular-nums',
+          emphasis ? 'text-success' : 'text-muted-foreground'
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  )
+}
+
 export function MintPanel({
   active,
   view,
@@ -68,11 +97,13 @@ export function MintPanel({
     quantityHint,
     mintQuantity,
     quantityReady,
+    mintWalletCount,
     startRefusal,
     canStartMint,
     stagePriceWei,
     totalWei,
     mintStage,
+    totalNfts,
   } = view
 
   return (
@@ -265,28 +296,33 @@ export function MintPanel({
 
       <div className="flex shrink-0 flex-col gap-3 border-t p-4">
         <div className="bg-muted rounded-lg border px-3 py-2 text-sm">
-          <div className="flex items-center justify-between py-1">
-            <span>Quantity</span>
-            <span className="text-muted-foreground tabular-nums">
-              {quantityReady ? mintQuantity : '—'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between py-1">
-            <span>NFT Price</span>
-            <span className="text-muted-foreground tabular-nums">
-              {stagePriceWei !== null
+          <SummaryLine
+            label="Quantity per Wallet"
+            value={quantityReady ? mintQuantity : '—'}
+          />
+          <SummaryLine
+            label="Unit Price"
+            value={
+              stagePriceWei !== null
                 ? amountLabel(stagePriceWei, mintStage)
-                : '—'}
-            </span>
-          </div>
-          <div className="mt-1 flex items-center justify-between border-t pt-2 font-semibold">
-            <span>Cost</span>
-            <span className="text-success tabular-nums">
-              {totalWei !== null
+                : '—'
+            }
+          />
+          <SummaryLine
+            label={`Total NFTs (${mintWalletCount} ${mintWalletCount === 1 ? 'Wallet' : 'Wallets'})`}
+            value={totalNfts !== null ? totalNfts : '—'}
+          />
+          <SummaryLine
+            label="Estimated Cost"
+            value={
+              totalWei !== null
                 ? amountLabel(totalWei, mintStage)
-                : `0 ${mintStage?.currency?.symbol ?? 'ETH'}`}
-            </span>
-          </div>
+                : stagePriceWei !== null
+                  ? `0 ${mintStage?.currency?.symbol ?? 'ETH'}`
+                  : '—'
+            }
+            emphasis
+          />
         </div>
 
         {active.arm ? (

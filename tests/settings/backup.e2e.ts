@@ -4,6 +4,7 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { generatePrivateKey } from 'viem/accounts'
 import { recoverTransactionAddress } from 'viem'
+import type { TransactionSerialized } from 'viem'
 import {
   mintWallets,
   openseaConnection,
@@ -332,7 +333,7 @@ test('a restored wallet signs a transfer', async ({ app, browser, screen }) => {
     (call) => call.method === 'eth_sendRawTransaction',
   )
   const sender = await recoverTransactionAddress({
-    serializedTransaction: String(broadcast[0]?.params[0]) as `0x${string}`,
+    serializedTransaction: String(broadcast[0]?.params[0]) as TransactionSerialized,
   })
   expect(sender.toLowerCase()).toBe(wallet.address.toLowerCase())
 })
