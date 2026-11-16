@@ -455,9 +455,11 @@ test('an allowance answer from one wallet stops the batch before any wallet sign
   screen,
 }) => {
   const folder = walletFolder('Scatter Batch Allowance')
-  const wallets = mintWallets(2, folder.id)
+  // Three wallets, because the run builds two at a time: the third is the one a refusal
+  // has to stop from being built at all, and a two-wallet run cannot show that.
+  const wallets = mintWallets(3, folder.id)
   const [first, second] = wallets
-  if (!first || !second) throw new Error('mintWallets(2) returned too few')
+  if (!first || !second) throw new Error('mintWallets(3) returned too few')
   // The list states the native currency, so only a build can tell that this mint is
   // priced in a token, and only the second wallet's build does.
   const calls = await mockScatterNetwork({
@@ -484,12 +486,13 @@ test('an allowance answer from one wallet stops the batch before any wallet sign
 
   await screen.getByRole('button', { name: 'Start Mint' }).click()
 
-  // The refusal belongs to the task, so both rows stop and neither wallet signs.
-  await expect(screen.getByText('Blocked', { exact: true })).toHaveCount(2, {
+  // The refusal belongs to the task, so every row stops and no wallet signs.
+  await expect(screen.getByText('Blocked', { exact: true })).toHaveCount(3, {
     timeout: 60_000,
   })
   await expect(row).toContainText('5000000 base units of 0x8335…2913')
   await expect(row).toContainText('Velox mints native-currency lists only')
+  // Two builds were read before the refusal landed, and the third was never built.
   expect(calls.mintBodies).toHaveLength(2)
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })

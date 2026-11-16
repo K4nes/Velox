@@ -9,7 +9,6 @@ import type {
 } from '@/lib/mint/mint-provider'
 import { callTransaction, estimateGasFor, sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
-import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { toMessage } from '@/lib/core/message'
 import { mintableRow, quantityCeiling } from '@/lib/mint/mint-task'
@@ -79,7 +78,7 @@ export function mintQuantityFor(
 export function prepareKeyFor(task: Task, quantity: number): string {
   return [
     task.stageUuid,
-    // The token a Scatter URL names, so two tokens on one list never trade calldata.
+    // The token a Scatter URL names, so prepared calldata never crosses tokens.
     task.drop?.tokenId ?? '',
     quantity,
     task.gasLimit,
@@ -108,24 +107,35 @@ export async function buildMintBatch(input: {
   const entries = new Map<string, PreparedMintEntry>(input.prepared)
   let refusal: string | null = null
 
-  await mapLimit(input.wallets, WALLET_CONCURRENCY, async (wallet) => {
-    if (refusal !== null || entries.has(wallet.id) || !input.isCurrent()) return
-    try {
-      const transaction = await buildMintTransactionFor({
-        drop: input.drop,
-        stageUuid: input.stageUuid,
-        minter: wallet.address,
-        quantity: input.quantity,
-      })
-      entries.set(wallet.id, {
-        walletId: wallet.id,
-        from: wallet.address as `0x${string}`,
-        transaction,
-      })
-    } catch (error) {
-      if (isErc20Refusal(error)) refusal = toMessage(error)
-    }
-  })
+  // Waves, not one shared cursor. A cursor hands the next wallet to whichever worker frees
+  // first, so that wallet is already building when a sibling's allowance answer lands, and
+  // the refusal stops nothing. A wave waits for its own answers before the next starts.
+  for (let index = 0; index < input.wallets.length; index += WALLET_CONCURRENCY) {
+    if (refusal !== null || !input.isCurrent()) break
+
+    await Promise.all(
+      input.wallets
+        .slice(index, index + WALLET_CONCURRENCY)
+        .map(async (wallet) => {
+          if (refusal !== null || entries.has(wallet.id)) return
+          try {
+            const transaction = await buildMintTransactionFor({
+              drop: input.drop,
+              stageUuid: input.stageUuid,
+              minter: wallet.address,
+              quantity: input.quantity,
+            })
+            entries.set(wallet.id, {
+              walletId: wallet.id,
+              from: wallet.address as `0x${string}`,
+              transaction,
+            })
+          } catch (error) {
+            if (isErc20Refusal(error)) refusal = toMessage(error)
+          }
+        })
+    )
+  }
 
   return { entries, refusal }
 }
