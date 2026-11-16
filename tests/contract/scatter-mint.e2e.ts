@@ -26,6 +26,31 @@ const recording: Recording = JSON.parse(
   readFileSync(join(import.meta.dirname, 'scatterMint.json'), 'utf8')
 )
 
+type Erc20Recording = {
+  recordedAt: string
+  url: string
+  request?: {
+    collectionAddress?: string
+    chainId?: number
+    minterAddress?: string
+    lists?: { id: string; quantity: number }[]
+  }
+  body: {
+    mintTransaction?: { to?: string; data?: string; value?: string }
+    erc20s?: { address: string; amount: string }[]
+    listPayments?: {
+      currencyAddress?: string
+      currencySymbol?: string
+      currencyDecimals?: number
+      unitPaymentValue?: string
+    }[]
+  }
+}
+
+const erc20Recording: Erc20Recording = JSON.parse(
+  readFileSync(join(import.meta.dirname, 'scatterMintErc20.json'), 'utf8')
+)
+
 const nativeBuild = {
   mintTransaction: {
     to: '0x2222222222222222222222222222222222222222',
@@ -84,4 +109,49 @@ test('the recorded build parses, and an allowance list it cannot read refuses', 
       erc20s: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }],
     })
   ).toMatch(/allowance for/)
+})
+
+test('the recorded ERC-20 build pins the collection as the allowance spender', () => {
+  const request = erc20Recording.request
+  const transaction = erc20Recording.body.mintTransaction
+  const allowance = erc20Recording.body.erc20s?.[0]
+
+  // The URL and request are the real ones, so the answer belongs to the list named here.
+  expect(erc20Recording.url).toBe('https://api.scatter.art/v1/mint')
+  expect(request?.collectionAddress).toMatch(/^0x[0-9a-fA-F]{40}$/)
+  expect(request?.chainId).toBeGreaterThanOrEqual(1)
+  expect(request?.lists).toHaveLength(1)
+  expect(request?.lists?.[0]?.quantity).toBe(1)
+
+  if (request?.collectionAddress === undefined || allowance === undefined) {
+    throw new Error('the recording has no collection address or no allowance')
+  }
+
+  // The provider states the token and its base-unit amount, and no spender.
+  expect(allowance.address).toMatch(/^0x[0-9a-fA-F]{40}$/)
+  expect(allowance.amount).toBe('20000000000000000000')
+  expect(/^\d+$/.test(allowance.amount)).toBe(true)
+  expect(BigInt(allowance.amount) > 0n).toBe(true)
+  expect(allowance.address.toLowerCase()).not.toBe(
+    request.collectionAddress.toLowerCase()
+  )
+
+  // The payment row repeats the allowance, which proves the amount is the token's base
+  // unit rather than a display price.
+  const payment = erc20Recording.body.listPayments?.[0]
+  expect(payment?.currencyAddress?.toLowerCase()).toBe(allowance.address.toLowerCase())
+  expect(payment?.currencyDecimals).toBe(18)
+  expect(payment?.unitPaymentValue).toBe(allowance.amount)
+
+  // The recorded build targets the collection itself. Scatter's approval example grants
+  // the allowance to the collection address, and a batch mint's target may differ, so the
+  // spender is resolved from the collection and never from `to`. If a later recording
+  // targets another contract, this assertion sends the decision back for review.
+  const spender = request.collectionAddress
+  expect(transaction?.to?.toLowerCase()).toBe(spender.toLowerCase())
+
+  // The committed parser consumes this real answer and refuses it before any signature.
+  expect(refusalFrom(erc20Recording.body)).toContain(
+    'ERC-20 allowance for 20000000000000000000 base units'
+  )
 })

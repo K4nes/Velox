@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { test } from '@e2e-dev/web'
 import type { Browser, WebApp } from '@e2e-dev/web'
 import { expect } from 'e2e'
@@ -87,8 +89,22 @@ async function openExecutionLog(screen: Screen, walletAddress: string) {
 // chain the drop carries is the one the mint request must state.
 const SCATTER_CHAIN_ID = 4663
 
-/** The ERC-20 both refusal tests name, so each can be checked against its address. */
-const USDC_ADDRESS = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
+type RecordedMintBuild = {
+  body: { erc20s?: { address: string; amount: string }[] }
+}
+
+// The allowance a real ERC-20 build answered with, shared by every refusal test.
+const recordedMintBuild: RecordedMintBuild = JSON.parse(
+  readFileSync(
+    join(import.meta.dirname, '..', 'contract', 'scatterMintErc20.json'),
+    'utf8'
+  )
+)
+
+const RECORDED_ALLOWANCE = recordedMintBuild.body.erc20s?.[0]
+if (RECORDED_ALLOWANCE === undefined) {
+  throw new Error('the recorded ERC-20 build has no allowance')
+}
 
 /** Counts the OpenSea sign-in requests a task makes; a Scatter task must make none. */
 async function countOpenSeaAuth(browser: Browser): Promise<{ calls: number }> {
@@ -455,16 +471,16 @@ test('an ERC-20 priced Scatter list blocks the row and names the token and amoun
     chainId: SCATTER_CHAIN_ID,
     lists: [
       {
-        id: 'usdc',
-        name: 'USDC List',
-        price: '0.5',
-        currencySymbol: 'USDC',
-        currencyAddress: USDC_ADDRESS,
-        decimals: 6,
+        id: 'basecat',
+        name: 'Basecat List',
+        price: '20',
+        currencySymbol: 'Basecat',
+        currencyAddress: RECORDED_ALLOWANCE.address,
+        decimals: 18,
         walletLimit: 1,
       },
     ],
-    mint: { erc20s: [{ address: USDC_ADDRESS, amount: '500000' }] },
+    mint: { erc20s: [RECORDED_ALLOWANCE] },
   })
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
@@ -479,7 +495,7 @@ test('an ERC-20 priced Scatter list blocks the row and names the token and amoun
   })
   const log = await openExecutionLog(screen, wallet.address)
   await expect(log).toContainText(
-    'This Scatter list needs an ERC-20 allowance for 0.5000 USDC (0x8335…2913). Velox mints native-currency lists only'
+    'This Scatter list needs an ERC-20 allowance for 20.0000 Basecat (0xB200…1D01). Velox mints native-currency lists only'
   )
   await browser.keyboard.press('Escape')
 
@@ -487,7 +503,7 @@ test('an ERC-20 priced Scatter list blocks the row and names the token and amoun
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
   // One free build per wallet at quantity 1, and no transaction.
   expect(calls.mintBodies).toHaveLength(1)
-  expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'usdc', quantity: 1 }])
+  expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'basecat', quantity: 1 }])
   expect(rpc.events).toHaveLength(0)
 })
 
@@ -509,7 +525,7 @@ test('a build allowance answer blocks that row and disables Start before any wal
     lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
     mint: (body) =>
       body.minterAddress?.toLowerCase() === second.address.toLowerCase()
-        ? { erc20s: [{ address: USDC_ADDRESS, amount: '5000000' }] }
+        ? { erc20s: [RECORDED_ALLOWANCE] }
         : {},
   })
   const rpc = await mockMintRpc({ browser, wallets })
@@ -526,7 +542,7 @@ test('a build allowance answer blocks that row and disables Start before any wal
   })
   await expect(blockedRow.getByText('Blocked', { exact: true })).toBeVisible()
   const refusalText =
-    'This Scatter list needs an ERC-20 allowance for 5000000 base units of 0x8335…2913. Velox mints native-currency lists only'
+    'This Scatter list needs an ERC-20 allowance for 20000000000000000000 base units of 0xB200…1D01. Velox mints native-currency lists only'
   const log = await openExecutionLog(screen, second.address)
   await expect(log).toContainText(refusalText)
   await browser.keyboard.press('Escape')
@@ -566,7 +582,7 @@ test('a run-time allowance block outranks the earlier eligible probe', async ({
       builds += 1
       return builds === 1
         ? {}
-        : { erc20s: [{ address: USDC_ADDRESS, amount: '1000000' }] }
+        : { erc20s: [RECORDED_ALLOWANCE] }
     },
   })
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
@@ -588,7 +604,7 @@ test('a run-time allowance block outranks the earlier eligible probe', async ({
     timeout: 60_000,
   })
   const refusal =
-    'This Scatter list needs an ERC-20 allowance for 1000000 base units of 0x8335…2913'
+    'This Scatter list needs an ERC-20 allowance for 20000000000000000000 base units of 0xB200…1D01'
   const log = await openExecutionLog(screen, wallet.address)
   await expect(log).toContainText(refusal)
   await browser.keyboard.press('Escape')
@@ -719,7 +735,7 @@ test('changing the Mint Stage clears the verdict and probes the new list', async
     mintDelayMs: 400,
     mint: (body) =>
       body.lists?.[0]?.id === 'second'
-        ? { erc20s: [{ address: USDC_ADDRESS, amount: '1000000' }] }
+        ? { erc20s: [RECORDED_ALLOWANCE] }
         : {},
   })
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
