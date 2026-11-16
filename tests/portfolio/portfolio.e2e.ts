@@ -16,7 +16,7 @@ import {
   mockRarityBatch,
 } from '../support/opensea'
 import { mockPrice } from '../support/price'
-import { COLLECTION_LABEL, scanCollection } from '../support/scan'
+import { READ_COLLECTION_LABEL, scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 const SLUG = 'mock-collection'
@@ -185,7 +185,7 @@ test('page state survives a round trip through another page', async ({
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
   await expect(screen.getByText('Scanning Mock Collection…')).toBeVisible()
@@ -200,12 +200,12 @@ test('page state survives a round trip through another page', async ({
 
   await browser.locator('a[href="/settings"]').first().click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await browser.locator('a[href="/portfolio"]').first().click()
 
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -244,7 +244,7 @@ test('page state survives a round trip through another page', async ({
   await screen.getByLabel(INVENTORY_FILTER_LABEL).fill('')
   await screen.getByRole('button', { name: /^All/ }).click()
   await screen
-    .getByLabel('Collection URL')
+    .getByLabel(READ_COLLECTION_LABEL, { exact: true })
     .fill(SECOND_SLUG)
   await screen.getByRole('button', { name: 'Scan portfolio' }).click()
   await expect(
@@ -300,7 +300,7 @@ test('a Scatter collection URL is refused without a provider request', async ({
   // field is filled again and the wallet step is left as it stands. The message
   // clearing on the edit is what makes the second refusal a new one.
   await screen
-    .getByLabel(COLLECTION_LABEL)
+    .getByLabel(READ_COLLECTION_LABEL, { exact: true })
     .fill(`https://scatter.art/c/${SCATTER_SLUG}/42`)
   await expect(screen.getByText(SCATTER_REFUSAL)).toHaveCount(0)
   await screen.getByRole('button', { name: 'Scan portfolio' }).click()

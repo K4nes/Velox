@@ -16,7 +16,7 @@ import {
 import { collectionFixture } from '../support/fixtures/collection'
 import { guardOpenSeaHost, mockCollection, mockHoldings } from '../support/opensea'
 import { mockRpc, word } from '../support/rpc'
-import { COLLECTION_LABEL, scanCollection } from '../support/scan'
+import { READ_COLLECTION_LABEL, scanCollection } from '../support/scan'
 import { seedVelox } from '../support/seed'
 
 const SLUG = 'mock-transfer'
@@ -153,7 +153,7 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Transfer' }).click()
   await expect(screen.getByText('Scanning collection…')).toBeVisible()
@@ -171,12 +171,12 @@ test('page state survives a round trip through another page', async ({
 
   await screen.getByRole('link', { name: 'Settings' }).click()
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveCount(0)
   await screen.getByRole('link', { name: 'Transfer' }).click()
 
   await expect(
-    screen.getByLabel('Collection URL'),
+    screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }),
   ).toHaveValue(SLUG)
   await expect(
     screen.getByRole('button', { name: /Select wallets/ }),
@@ -240,7 +240,7 @@ test('a Scatter collection URL is refused without a provider request', async ({
   // field is filled again and the wallet step is left as it stands. The message
   // clearing on the edit is what makes the second refusal a new one.
   await screen
-    .getByLabel(COLLECTION_LABEL)
+    .getByLabel(READ_COLLECTION_LABEL, { exact: true })
     .fill(`https://scatter.art/c/${SCATTER_SLUG}/42`)
   await expect(screen.getByText(SCATTER_REFUSAL)).toHaveCount(0)
   await screen.getByRole('button', { name: 'Rescan' }).click()

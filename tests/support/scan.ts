@@ -2,7 +2,7 @@ import type { Browser } from '@e2e-dev/web'
 import type { Screen } from 'e2e'
 
 /** The collection field on the pages that read an OpenSea collection only. */
-export const COLLECTION_LABEL = 'Collection URL'
+export const READ_COLLECTION_LABEL = 'Collection URL'
 
 /** The held-token pages that share the collection form. */
 export type ScanFeature =
@@ -35,7 +35,7 @@ export async function scanCollection(options: {
 }): Promise<void> {
   const { browser, screen, feature, collection, folder } = options
 
-  await screen.getByLabel(COLLECTION_LABEL).fill(collection)
+  await screen.getByLabel(READ_COLLECTION_LABEL, { exact: true }).fill(collection)
 
   await screen.getByRole('button', { name: /Select wallets/ }).click()
   await screen.getByRole('checkbox', { name: `Select all in ${folder}` }).click()
