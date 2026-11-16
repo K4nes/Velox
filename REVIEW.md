@@ -24,6 +24,14 @@ An upstream client counts as changed behaviour: a new or edited request path und
 `node scripts/contract-record.mjs`) or a live-lane case for that path. The mocked lane
 answers whatever path the client was written against, so a wrong one stays green in both.
 
+## Settled decisions
+
+A review round reads the branch's review notes or pull-request discussion for judgement
+calls already settled. A settled judgement call is not re-reported without new evidence.
+Record the finding, the disposition, and the reason wherever the branch already keeps
+review notes. A documented-standard violation still gets reported; settled judgement
+calls are the only thing this suppresses.
+
 ## Finding Requirements
 Every finding must:
 - Identify a specific defect, not merely a possible improvement.
