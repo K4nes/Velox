@@ -349,17 +349,15 @@ export function stageStatusFor(
   return verdict()
 }
 
-// A task that cannot start says why: a list Velox refuses to mint, or a wallet the
-// provider blocked, whose fix is in the task rather than in the wallet.
+// A task that cannot start says why: a stage whose price is stated in a token, or a wallet
+// the provider blocked, whose fix is in the task rather than in the wallet.
 export function startRefusalFor(task: Task, rows: WalletRun[]): string | null {
-  if (task.drop?.source === 'scatter') {
-    // The list states its own currency, so an ERC-20 price is refused before any
-    // wallet is built for.
-    const stage =
-      task.drop.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
-    const refusal = erc20RefusalForStage(stage)
-    if (refusal !== null) return refusal
-  }
+  // A stage states the currency its price is in, whatever the provider, so the refusal
+  // reads the stage and never the provider name. OpenSea stages carry no currency.
+  const stage =
+    task.drop?.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
+  const refusal = erc20RefusalForStage(stage)
+  if (refusal !== null) return refusal
 
   const blocked = rows.filter(
     (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'

@@ -2,6 +2,7 @@ import { SCATTER_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/htt
 import {
   ERC20_REFUSAL_CODE,
   erc20RefusalForAllowances,
+  unreadableAllowanceRefusal,
 } from '@/lib/scatter/erc20-refusal'
 import type { ScatterAllowance } from '@/lib/scatter/erc20-refusal'
 import { ScatterError } from '@/lib/scatter/error'
@@ -191,10 +192,21 @@ export type ScatterMintRequest = {
 }
 
 // The answer is parsed apart from the request, so a recorded upstream body can be run
-// through it without a network. The allowance list is refused here, before the caller
-// can see a transaction to sign.
+// through it without a network. The allowance list is read first and fails closed: an
+// answer that names an allowance, or one whose allowance shape cannot be read, refuses
+// before the caller sees a transaction to sign.
 export function toScatterMintBuild(body: unknown): ScatterMintBuild {
   const record = asRecord(body)
+
+  const allowances = toAllowances(record?.erc20s)
+  if (allowances.length > 0) {
+    throw new ScatterError(
+      422,
+      ERC20_REFUSAL_CODE,
+      erc20RefusalForAllowances(allowances)
+    )
+  }
+
   const transaction = asRecord(record?.mintTransaction)
   const to = transaction?.to
   const data = transaction?.data
@@ -208,15 +220,6 @@ export function toScatterMintBuild(body: unknown): ScatterMintBuild {
     value === null
   ) {
     throw unexpected('/mint')
-  }
-
-  const allowances = toAllowances(record?.erc20s)
-  if (allowances.length > 0) {
-    throw new ScatterError(
-      422,
-      ERC20_REFUSAL_CODE,
-      erc20RefusalForAllowances(allowances)
-    )
   }
 
   return { to, data, value: String(value) }
@@ -240,13 +243,27 @@ export async function buildScatterMintTransaction(
   return toScatterMintBuild(body)
 }
 
+// An absent allowance list is a native-currency mint. Anything else this cannot read is an
+// allowance rather than an absence: the refusal exists to stop that mint, and guessing
+// wrong signs one.
 function toAllowances(value: unknown): ScatterAllowance[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((entry) => {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw unreadableAllowances()
+
+  return value.map((entry) => {
     const record = asRecord(entry)
     const address = record?.address
-    return typeof address === 'string' && address !== ''
-      ? [{ address, amount: String(record?.amount ?? '') }]
-      : []
+    if (typeof address !== 'string' || address === '') {
+      throw unreadableAllowances()
+    }
+    return { address, amount: String(record?.amount ?? '') }
   })
+}
+
+function unreadableAllowances(): ScatterError {
+  return new ScatterError(
+    422,
+    ERC20_REFUSAL_CODE,
+    unreadableAllowanceRefusal()
+  )
 }

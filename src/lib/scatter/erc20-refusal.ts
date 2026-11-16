@@ -15,7 +15,7 @@ export const ERC20_REFUSAL_CODE = 'erc20-list'
 
 export type ScatterAllowance = { address: string; amount: string }
 
-function short(address: string): string {
+function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
@@ -31,7 +31,7 @@ export function erc20RefusalForStage(stage: DropStage | null): string | null {
   if (!stage || !currency || !isErc20Priced(currency.address)) return null
 
   const price = amountLabel(BigInt(stage.priceWei), stage)
-  return `Scatter list "${stage.label || stage.uuid}" is priced in ${price} (${short(currency.address)}). ${NATIVE_ONLY}`
+  return `Scatter list "${stage.label || stage.uuid}" is priced in ${price} (${shortAddress(currency.address)}). ${NATIVE_ONLY}`
 }
 
 // The refusal a build reaches from the allowances it answered with, before any
@@ -40,9 +40,15 @@ export function erc20RefusalForAllowances(
   allowances: readonly ScatterAllowance[]
 ): string {
   const named = allowances
-    .map((entry) => `${entry.amount} base units of ${short(entry.address)}`)
+    .map((entry) => `${entry.amount} base units of ${shortAddress(entry.address)}`)
     .join(', ')
   return `This Scatter list needs an ERC-20 allowance for ${named}. ${NATIVE_ONLY}`
+}
+
+// The refusal exists to stop a token-priced mint, so an allowance list whose shape cannot
+// be read must refuse as well. Reading it as empty would let the mint through.
+export function unreadableAllowanceRefusal(): string {
+  return `Scatter answered with an allowance list Velox cannot read, so nothing was signed. ${NATIVE_ONLY}`
 }
 
 export function isErc20Refusal(error: unknown): boolean {
