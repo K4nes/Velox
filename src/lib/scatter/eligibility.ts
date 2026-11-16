@@ -3,7 +3,11 @@ import type { ChainEntry } from '@/config/chains'
 import { sleep } from '@/lib/core/async'
 import { WALLET_READ_SPACING_MS } from '@/lib/core/concurrency'
 import { toMessage } from '@/lib/core/message'
-import type { EligibilityResult, EligibilityRow } from '@/lib/opensea/eligibility'
+import {
+  stageLabel,
+  type EligibilityResult,
+  type EligibilityRow,
+} from '@/lib/opensea/eligibility'
 import { byStageStart } from '@/lib/opensea/index'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
 import { getScatterDrop, stageFromScatterList } from '@/lib/scatter/drop'
@@ -111,7 +115,7 @@ function projectRows(
         const grant = granted.get(stage.uuid)
         return {
           stageUuid: stage.uuid,
-          label: stage.label || '—',
+          label: stageLabel(stage.label),
           eligible: grant !== undefined,
           maxMintable: grant === undefined ? '0' : grant.maxPerWallet,
           priceWei: grant?.priceWei ?? stage.priceWei,

@@ -17,6 +17,12 @@ import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type StageColumn = { uuid: string; label: string }
 
+// The provider can leave a stage unnamed. One placeholder policy serves the
+// row labels and the table header so an empty name never leaks through.
+export function stageLabel(label: string): string {
+  return label || '—'
+}
+
 export type EligibilityRow = {
   walletId: string
   label: string
@@ -136,7 +142,7 @@ export async function checkWalletEligibility(
               )
               return {
                 stageUuid: dropStage.uuid,
-                label: dropStage.label || '—',
+                label: stageLabel(dropStage.label),
                 eligible: match?.eligible ?? false,
                 maxMintable: match?.maxMintable ?? '0',
                 priceWei: match?.priceWei ?? dropStage.priceWei,
@@ -188,22 +194,25 @@ export async function checkEligibility(
   }
 }
 
-// A drop can report no stages while its eligibility response still names some,
-// so the columns are the union of both, ordered by the drop first.
+// A drop can report no stages while its eligibility response still names some.
+// Rows carry the provider's order: OpenSea's start-sorted drop schedule when it
+// has one; otherwise the eligibility answer, which carries no schedule. Scatter's
+// wallet union is sorted by start. Start from the rows so both keep that order,
+// then add any scheduled stage no row carried.
 export function buildStageColumns(result: EligibilityResult): StageColumn[] {
-  const columns: StageColumn[] = result.drop.stages.map((stage) => ({
-    uuid: stage.uuid,
-    label: stage.label || '—',
-  }))
-  const seen = new Set(columns.map((column) => column.uuid))
+  const columns: StageColumn[] = []
+  const seen = new Set<string>()
+
+  function addColumn(uuid: string, label: string) {
+    if (seen.has(uuid)) return
+    seen.add(uuid)
+    columns.push({ uuid, label: stageLabel(label) })
+  }
 
   for (const row of result.rows) {
-    for (const stage of row.stages) {
-      if (seen.has(stage.stageUuid)) continue
-      seen.add(stage.stageUuid)
-      columns.push({ uuid: stage.stageUuid, label: stage.label || '—' })
-    }
+    for (const stage of row.stages) addColumn(stage.stageUuid, stage.label)
   }
+  for (const stage of result.drop.stages) addColumn(stage.uuid, stage.label)
 
   return columns
 }

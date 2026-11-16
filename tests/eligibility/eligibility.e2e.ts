@@ -413,7 +413,11 @@ test('a private list one wallet can enter becomes a column every row answers', a
     browser,
     slug: 'scatter-union',
     lists: [
-      { id: 'public', name: 'Public' },
+      {
+        id: 'public',
+        name: 'Public',
+        startTime: new Date(now).toISOString(),
+      },
       {
         id: 'friends',
         name: 'Friends Discount',
@@ -452,11 +456,16 @@ test('a private list one wallet can enter becomes a column every row answers', a
   // One header plus one row per unique address, not per record.
   await expect(screen.getByRole('row')).toHaveCount(4)
 
-  for (const header of ['Public', 'Friends Discount', 'VIP']) {
-    await expect(
-      screen.getByRole('columnheader', { name: header }),
-    ).toBeVisible()
-  }
+  // The public stage starts after both private lists, so it sits at the far
+  // right. OpenSea and Scatter share that start-time order.
+  const stageHeaders = ['Friends Discount', 'VIP', 'Public']
+  const expectedHeaders = ['#', 'Wallet Profile', 'Address', ...stageHeaders]
+  const headers = await Promise.all(
+    (await screen.getByRole('columnheader').all()).map((header) =>
+      header.textContent(),
+    ),
+  )
+  expect(headers).toEqual(expectedHeaders)
 
   const ledger = [
     { wallet: first, eligible: 2, missing: 1 },
