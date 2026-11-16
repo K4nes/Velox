@@ -1,6 +1,5 @@
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
-import { erc20RefusalForStage } from '@/lib/scatter/erc20-refusal'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
 
@@ -32,6 +31,16 @@ export type RunStatus =
   // priced in an ERC-20. Distinct from `failed`, which is a request that errored.
   | 'blocked'
 
+// A build the check asked the provider for before the run. The verdict belongs to one
+// list, so a stage change cannot reuse it.
+export type ProbeStatus = 'eligible' | 'blocked' | 'failed'
+
+export type MintProbe = {
+  stageUuid: string
+  status: ProbeStatus
+  error?: string
+}
+
 export type WalletRun = {
   walletId: string
   label: string
@@ -49,6 +58,11 @@ export type WalletRun = {
   // Every stage this wallet broadcast on, oldest first. One landing slot cannot
   // say "already minted A" once the wallet is tried on B.
   mintedStages: string[]
+  // The stage the current status and error were taken against. A run status on one
+  // list must not speak for another.
+  statusStage: string
+  // The pre-run build verdict for the list it was taken against.
+  probe: MintProbe | null
 }
 
 // What a check produces. An armed run mints straight from this instead of the
@@ -101,6 +115,8 @@ export type Task = {
   priorityFee: string
   status: TaskStatus
   checked: boolean
+  // A stage-change probe is in flight; Start and arming wait for its verdict.
+  probing?: boolean
   // A stage that has not opened yet is armed, not minted: the countdown runs on
   // block time and fires the check plus the mint at zero.
   arm: { stageUuid: string; startMs: number } | null
@@ -257,6 +273,8 @@ export function rowsFromCheck(rows: EligibilityRow[], stageUuid: string): Wallet
       error: row.error,
       checkFailed: Boolean(row.error),
       mintedStages: [],
+      statusStage: stageUuid,
+      probe: null,
     }
   })
 }
@@ -286,6 +304,9 @@ export function mergeCheckedRows(
                 status: previous.status,
                 txHash: previous.txHash,
                 chain: previous.chain,
+                statusStage: previous.statusStage,
+                checkFailed: false,
+                error: previous.error,
               }
             : {}),
         }
@@ -317,15 +338,154 @@ export function quantityMaxFor(
   return numbers.length > 0 ? Math.min(...numbers) : 0
 }
 
+type StageWindow = {
+  open: boolean
+  notOpen: boolean
+  closed: boolean
+  startMs: number
+  endMs: number
+}
+
+function stageWindow(stage: DropStage | null, nowMs: number): StageWindow {
+  if (!stage) {
+    return { open: false, notOpen: false, closed: false, startMs: NaN, endMs: NaN }
+  }
+  const startMs = stage.startTime ? Date.parse(stage.startTime) : NaN
+  const endMs = stage.endTime ? Date.parse(stage.endTime) : NaN
+  const notOpen = Number.isFinite(startMs) && startMs > nowMs
+  const closed = Number.isFinite(endMs) && endMs <= nowMs
+  return { open: !notOpen && !closed, notOpen, closed, startMs, endMs }
+}
+
+export function stageLiveAt(stage: DropStage | null, nowMs: number): boolean {
+  return stageWindow(stage, nowMs).open
+}
+
+// The countdown and the stage probe must age one block sample the same way.
+export function blockTimeAt(
+  sample: { ms: number; at: number } | null,
+  nowMs: number
+): number {
+  return sample ? sample.ms + (nowMs - sample.at) : nowMs
+}
+
+export function probeFor(row: WalletRun, stageUuid: string): MintProbe | null {
+  return row.probe?.stageUuid === stageUuid ? row.probe : null
+}
+
+// The reason a provider block carries when its own wording is absent.
+const BLOCKED_DEFAULT =
+  'The provider blocked this wallet on the selected list.'
+
+// The reason the row's visible status carries. A run or probe on another list does
+// not speak for this one.
+export function reasonFor(row: WalletRun, stageUuid: string): string | null {
+  const probe = probeFor(row, stageUuid)
+  const checkFailedRow = row.checkFailed && row.statusStage === stageUuid
+  if (runOnStage(row, stageUuid) && !checkFailedRow) {
+    return row.error ?? (row.status === 'blocked' ? BLOCKED_DEFAULT : null)
+  }
+  if (probe?.status === 'blocked' || probe?.status === 'failed') {
+    return probe.error ?? (probe.status === 'blocked' ? BLOCKED_DEFAULT : null)
+  }
+  if (checkFailedRow) {
+    return probe?.status === 'eligible' ? null : (row.error ?? null)
+  }
+  return null
+}
+
+// The fix a blocked row carries, or null when the row is not blocked on this list.
+// A probe verdict belongs to its own stage, so an old list's block cannot leak.
+export function blockedReason(row: WalletRun, stageUuid: string): string | null {
+  const reason = reasonFor(row, stageUuid)
+  if (reason === null) return null
+  const checkFailedRow = row.checkFailed && row.statusStage === stageUuid
+  if (runOnStage(row, stageUuid) && !checkFailedRow) {
+    return row.status === 'blocked' ? reason : null
+  }
+  const probe = probeFor(row, stageUuid)
+  return probe?.status === 'blocked' ? reason : null
+}
+
+export function applyProbeVerdicts(
+  rows: WalletRun[],
+  stageUuid: string,
+  verdicts: ReadonlyMap<string, { status: ProbeStatus; error?: string }>
+): WalletRun[] {
+  return rows.map((row) => {
+    const verdict = verdicts.get(row.walletId)
+    const top = row.caps[stageUuid]
+    const caps =
+      verdict?.status === 'eligible' && (top === undefined || top === 0)
+        ? { ...row.caps, [stageUuid]: null }
+        : row.caps
+    return {
+      ...row,
+      caps,
+      probe: verdict ? { stageUuid, ...verdict } : null,
+    }
+  })
+}
+
+// A verdict belongs to the list it was taken against. Changing the stage drops it and
+// leaves any block a run already reached untouched.
+export function clearProbeVerdicts(rows: WalletRun[]): WalletRun[] {
+  return rows.map((row) => (row.probe === null ? row : { ...row, probe: null }))
+}
+
+function checkedStatusFor(row: WalletRun, stageUuid: string): RunStatus {
+  if (row.checkFailed && row.statusStage === stageUuid) return 'failed'
+  if (stageUuid === '') return 'scheduled'
+  return capEligible(row.caps[stageUuid]) ? 'eligible' : 'ineligible'
+}
+
 export function mintableRow(row: WalletRun, stageUuid: string): boolean {
-  if (row.checkFailed) return false
-  // A blocked row's fix is in the task, not in the wallet. It must never reach a
-  // batch, and a stale rows map must not leak one in.
-  if (row.status === 'blocked') return false
+  const probe = probeFor(row, stageUuid)
+  const checkFailedRow = row.checkFailed && row.statusStage === stageUuid
+  if (checkFailedRow && probe?.status !== 'eligible') return false
+
+  // A block a run already reached is newer than the probe and must keep the row
+  // out of the next batch. A block on another list does not.
+  if (row.status === 'blocked' && runOnStage(row, stageUuid)) return false
+  // A block's fix is in the task, not in the wallet. It must never reach a batch,
+  // and a stale rows map must not leak one in. A failed probe may be transient, so
+  // the run's own build is allowed to answer it again.
+  if (probe?.status === 'blocked') return false
+  // A successful build is the strongest answer: a failed list read or a stale cap
+  // cannot hide it. A landing on this exact stage still retires the wallet.
+  if (probe?.status === 'eligible') {
+    return !row.mintedStages.includes(stageUuid)
+  }
   // A mint on another stage says nothing about this one: each stage carries its
   // own cap, so only a landing on this exact stage retires the wallet.
   if (row.mintedStages.includes(stageUuid)) return false
   return capEligible(row.caps[stageUuid])
+}
+
+// Which run statuses describe what a wallet already did, rather than what a check
+// predicted. The switch is exhaustive so a new status cannot fall through silently.
+function runOwnsRow(status: RunStatus): boolean {
+  switch (status) {
+    case 'queued':
+    case 'minting':
+    case 'broadcast':
+    case 'confirmed':
+    case 'failed':
+    case 'blocked':
+      return true
+    case 'eligible':
+    case 'ineligible':
+    case 'scheduled':
+      return false
+    default: {
+      const exhaustive: never = status
+      return exhaustive
+    }
+  }
+}
+
+function runOnStage(row: WalletRun, stageUuid: string): boolean {
+  return runOwnsRow(row.status) && row.statusStage === stageUuid
 }
 
 // A row's check status follows the selected stage; a mint status only speaks for
@@ -335,43 +495,43 @@ export function stageStatusFor(
   stageUuid: string,
   stageNotOpen: boolean
 ): RunStatus {
+  const probe = probeFor(run, stageUuid)
+  const checkFailedRow = run.checkFailed && run.statusStage === stageUuid
   const verdict = (): RunStatus =>
     run.mintedStages.includes(stageUuid)
       ? 'failed'
-      : capEligible(run.caps[stageUuid])
-        ? 'eligible'
-        : stageNotOpen
-          ? 'scheduled'
-          : 'ineligible'
+      : stageNotOpen
+        ? 'scheduled'
+        : checkedStatusFor(run, stageUuid)
 
-  if (run.status !== 'eligible' && run.status !== 'ineligible') {
-    if (landed(run) && stageUuid !== '' && run.mintedStages.at(-1) !== stageUuid) {
-      return verdict()
-    }
-    return run.status
+  // A run status describes what this wallet already did on the stage, so it wins
+  // over the free build's earlier answer. A list read that failed is not a run.
+  if (runOnStage(run, stageUuid) && !checkFailedRow) return run.status
+
+  if (probe?.status === 'blocked' || probe?.status === 'failed') {
+    return probe.status
   }
+  if (probe?.status === 'eligible') {
+    return run.mintedStages.includes(stageUuid) ? 'failed' : 'eligible'
+  }
+  if (checkFailedRow) return 'failed'
+  if (run.status === 'scheduled') return 'scheduled'
   return verdict()
 }
 
-// A task that cannot start says why: a stage whose price is stated in a token, or a wallet
-// the provider blocked, whose fix is in the task rather than in the wallet. The drop is the
-// caller's, because an armed fire re-reads it and the task still holds the older one.
+// A task that cannot start says how many rows the provider blocked. The provider's
+// wording for a row is in the execution log.
 export function startRefusalFor(
   task: Task,
-  rows: WalletRun[],
-  drop: DropInfo | null = task.drop
+  rows: WalletRun[]
 ): string | null {
-  // A stage states the currency its price is in, whatever the provider, so the refusal
-  // reads the stage and never the provider name. OpenSea stages carry no currency.
-  const stage = drop?.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
-  const refusal = erc20RefusalForStage(stage)
-  if (refusal !== null) return refusal
-
   const blocked = rows.filter(
-    (row) => task.wallets.includes(row.walletId) && row.status === 'blocked'
+    (row) =>
+      task.wallets.includes(row.walletId) &&
+      blockedReason(row, task.stageUuid) !== null
   )
   if (blocked.length === 0) return null
-  return `${blocked.length} selected wallet${blocked.length === 1 ? ' is' : 's are'} blocked. Clear the block before starting.`
+  return `${blocked.length} selected wallet${blocked.length === 1 ? ' is' : 's are'} blocked. Open the row log for the reason.`
 }
 
 export type TaskView = {
@@ -390,7 +550,6 @@ export type TaskView = {
   quantityHint: string | null
   mintQuantity: number
   quantityReady: boolean
-  startRefusal: string | null
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
@@ -418,15 +577,14 @@ export function taskView(input: {
     task.drop?.stages.find((stage) => stage.uuid === task.stageUuid) ?? null
   const isLiveStage =
     selectedStage !== null && selectedStage.uuid === task.drop?.activeStage?.uuid
-  const stageStartMs = selectedStage?.startTime
-    ? Date.parse(selectedStage.startTime)
-    : NaN
-  const stageEndMs = selectedStage?.endTime ? Date.parse(selectedStage.endTime) : NaN
-  const blockNow = blockSample ? blockSample.ms + (nowMs - blockSample.at) : nowMs
+  const blockNow = blockTimeAt(blockSample, nowMs)
   // A stage that has not opened reports no cap, so a zero cap alone cannot tell
   // "not eligible" apart from "not open yet". The schedule can.
-  const stageNotOpen = Number.isFinite(stageStartMs) && stageStartMs > blockNow
-  const stageClosed = Number.isFinite(stageEndMs) && stageEndMs <= blockNow
+  const stageWindowValue = stageWindow(selectedStage, blockNow)
+  const stageStartMs = stageWindowValue.startMs
+  const stageEndMs = stageWindowValue.endMs
+  const stageNotOpen = stageWindowValue.notOpen
+  const stageClosed = stageWindowValue.closed
 
   const mintWalletCount = task.wallets.filter((walletId) => {
     if (!knownWalletIds.has(walletId)) return false
@@ -466,6 +624,7 @@ export function taskView(input: {
   const canStartMint =
     !locked &&
     task.checked &&
+    !task.probing &&
     task.drop !== null &&
     selectedStage !== null &&
     task.arm === null &&
@@ -504,7 +663,6 @@ export function taskView(input: {
     quantityHint,
     mintQuantity,
     quantityReady,
-    startRefusal,
     canStartMint,
     mintStage,
     stagePriceWei,

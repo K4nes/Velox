@@ -15,6 +15,11 @@ come from the Conventional Commit history (`COMMIT.md`).
   its list states, a list with no end or no cap reads as what it is, and a chain Velox
   cannot sign for is refused by name. Start Mint on a Scatter task names the missing step
   instead of building a transaction ([#121]).
+- Check on a Scatter task builds the mint for each selected wallet before anything is
+  signed: a token allowance or a missing token ID blocks the row and disables Start, and
+  any other refusal fails the row. The error detail opens from a `Logs` link in the status
+  cell, so the table keeps its four columns and the panel keeps no second copy. Changing
+  the Mint Stage clears the verdict and probes the new list ([#125]).
 - A Scatter task carries a Token ID. A `scatter.art/c/{slug}/{tokenId}` URL fills the
   field, a typed ID works without a token page, and the ID reaches the Scatter mint
   request so an ERC-1155 edition mints on its own. Changing the token clears the earlier
@@ -226,6 +231,8 @@ consolidated into a single entry.
 [#107]: https://github.com/K4nes/Velox/pull/107
 [#113]: https://github.com/K4nes/Velox/pull/113
 [#115]: https://github.com/K4nes/Velox/issues/115
+[#117]: https://github.com/K4nes/Velox/pull/117
+[#125]: https://github.com/K4nes/Velox/issues/125
 [#120]: https://github.com/K4nes/Velox/pull/120
 [#123]: https://github.com/K4nes/Velox/issues/123
 [#124]: https://github.com/K4nes/Velox/issues/124

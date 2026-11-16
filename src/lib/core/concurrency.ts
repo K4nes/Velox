@@ -13,6 +13,7 @@ export const FLOW_CONCURRENCY = 4
 // Public RPC balance reads, which tolerate more in flight than a signed flow.
 export const BALANCE_CONCURRENCY = 5
 
-// The gap between eligibility reads for two wallets. The providers publish no usable
-// limit, so this is a mitigation, not a contract; one value keeps both readers in step.
+// The gap between paced wallet reads. The providers publish no usable limit, so this
+// is a mitigation, not a contract; one value keeps the eligibility readers and the
+// mint probe in step.
 export const WALLET_READ_SPACING_MS = 250
