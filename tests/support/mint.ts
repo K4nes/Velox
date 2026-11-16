@@ -592,6 +592,8 @@ export async function mockScatterNetwork(options: {
   browser: Browser
   slug: string
   chainId?: number
+  // The collection every answer describes. A test that needs another address names it.
+  collectionAddress?: string
   lists: ScatterList[]
   eligible?: (minter: string | null) => string[]
   failMinters?: string[]
@@ -601,6 +603,7 @@ export async function mockScatterNetwork(options: {
   const calls: ScatterCalls = { collections: [], lists: [], mintBodies: [] }
   const { lists } = options
   const publicLists = lists.filter((list) => list.private !== true)
+  const collectionAddress = options.collectionAddress ?? SCATTER_CONTRACT
   const now = Date.now()
 
   function visibleLists(minter: string | null): ScatterList[] {
@@ -621,7 +624,7 @@ export async function mockScatterNetwork(options: {
     return {
       id: list.id,
       root: `0x${'00'.repeat(32)}`,
-      address: SCATTER_CONTRACT,
+      address: collectionAddress,
       name: list.name,
       currency_address:
         list.currencyAddress ?? '0x0000000000000000000000000000000000000000',
@@ -670,7 +673,7 @@ export async function mockScatterNetwork(options: {
           id: slug,
           name: 'Scatter Drop',
           symbol: 'SD',
-          address: SCATTER_CONTRACT,
+          address: collectionAddress,
           chain_id: options.chainId ?? 4663,
           avatar_uri: '',
           banner_uri: '',
@@ -694,7 +697,7 @@ export async function mockScatterNetwork(options: {
       status: 200,
       json: {
         mintTransaction: {
-          to: answer?.to ?? SCATTER_CONTRACT,
+          to: answer?.to ?? collectionAddress,
           data: answer?.data ?? '0x4a21a2df',
           value: answer?.value ?? '0',
         },
