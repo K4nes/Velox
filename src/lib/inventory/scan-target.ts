@@ -53,17 +53,14 @@ export async function resolveScanTarget(
 
 // The entry point the read-only pages call. The refusal is decided before the
 // wallet read, so a collection this page cannot serve answers the same way
-// whatever is selected. Mint Eligibility keeps calling the preamble above.
+// whatever is selected. Everything else, including an input that names no
+// collection, is the preamble's to answer. Mint Eligibility keeps calling it.
 export async function resolveReadTarget(
   url: string,
   selectedIds: readonly string[]
 ): Promise<ScanTarget> {
   const collection = resolveCollectionSource(url)
-  if (collection === null) {
-    return { status: 'failed', message: COLLECTION_NOT_RECOGNISED }
-  }
-
-  const refusal = readRefusalFor(collection)
+  const refusal = collection === null ? null : readRefusalFor(collection)
   if (refusal !== null) {
     return { status: 'failed', message: refusal }
   }
