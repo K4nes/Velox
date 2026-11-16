@@ -159,8 +159,10 @@ export async function mockMintRpc(options: {
   browser: Browser
   wallets: { address: string; sendDelayMs?: number }[]
   receiptDelayMs?: number
+  nowMs?: number
 }): Promise<{ events: MintEvent[] }> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
+  const nowMs = options.nowMs ?? Date.now()
   const events: MintEvent[] = []
   const sendDelayByAddress = new Map(
     options.wallets.map((wallet) => [
@@ -207,7 +209,7 @@ export async function mockMintRpc(options: {
           size: '0x0',
           gasLimit: '0x1c9c380',
           gasUsed: '0x0',
-          timestamp: '0x1',
+          timestamp: `0x${Math.floor(nowMs / 1000).toString(16)}`,
           transactions: [],
           uncles: [],
           baseFeePerGas: '0x1',
@@ -567,6 +569,9 @@ export type ScatterMintBody = {
   lists?: { id: string; quantity: number }[]
 }
 
+/** A refusal the mocked mint route answers instead of a build. */
+export type ScatterMintRefusal = { status: number; body: JsonValue }
+
 /** What the mocked Scatter API saw, in arrival order. */
 export type ScatterCalls = {
   collections: string[]
@@ -593,6 +598,10 @@ export async function mockScatterNetwork(options: {
   failMinters?: string[]
   // A wallet's own answer can differ: the allowance a build asks for is stated per build.
   mint?: ScatterMintAnswer | ((body: ScatterMintBody) => ScatterMintAnswer)
+  // A refusal the build answers instead of calldata, such as a missing token ID.
+  refuseMint?: (body: ScatterMintBody) => ScatterMintRefusal | null
+  // Holds every build response open, so the stage probe's pending state is observable.
+  mintDelayMs?: number
 }): Promise<ScatterCalls> {
   const calls: ScatterCalls = { collections: [], lists: [], mintBodies: [] }
   const { lists } = options
@@ -685,6 +694,16 @@ export async function mockScatterNetwork(options: {
   await options.browser.route(/api\.scatter\.art\/v1\/mint$/, async (route) => {
     const body = JSON.parse(route.request.postData ?? '{}') as ScatterMintBody
     calls.mintBodies.push(body)
+    if (options.mintDelayMs) {
+      const delayed = Promise.withResolvers<void>()
+      setTimeout(delayed.resolve, options.mintDelayMs)
+      await delayed.promise
+    }
+    const refusal = options.refuseMint?.(body)
+    if (refusal) {
+      await route.fulfill({ status: refusal.status, json: refusal.body })
+      return
+    }
     const answer =
       typeof options.mint === 'function' ? options.mint(body) : options.mint
     await route.fulfill({

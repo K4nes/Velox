@@ -21,13 +21,17 @@ export async function buildScatterMint(input: {
     )
   }
 
-  const transaction = await buildScatterMintTransaction({
-    collectionAddress: input.drop.contractAddress,
-    chainId: chain.chainId,
-    minterAddress: input.minter,
-    listId: input.listId,
-    quantity: input.quantity,
-  })
+  const stage = input.drop.stages.find((entry) => entry.uuid === input.listId) ?? null
+  const transaction = await buildScatterMintTransaction(
+    {
+      collectionAddress: input.drop.contractAddress,
+      chainId: chain.chainId,
+      minterAddress: input.minter,
+      listId: input.listId,
+      quantity: input.quantity,
+    },
+    stage
+  )
 
   return {
     chain: input.drop.chain,

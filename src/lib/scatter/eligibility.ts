@@ -39,7 +39,7 @@ export async function checkScatterLists(
   return projectRows(reads, columns)
 }
 
-function uniqueByAddress(wallets: StoredWallet[]): StoredWallet[] {
+export function uniqueByAddress(wallets: StoredWallet[]): StoredWallet[] {
   // One address can be stored in two folders, and the address is the identity the API
   // sees. The dedup keeps one wallet from spending the pace twice.
   return [

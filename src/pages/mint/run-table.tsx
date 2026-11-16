@@ -8,9 +8,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { MINT_COLUMNS, RUN_LABEL, RUN_TONE } from '@/lib/mint/mint-task'
+import {
+  MINT_COLUMNS,
+  RUN_LABEL,
+  RUN_TONE,
+  reasonFor,
+} from '@/lib/mint/mint-task'
 import type { RunStatus, WalletRun } from '@/lib/mint/mint-task'
 import { cn } from '@/lib/utils'
+import { ExecutionLogPopover } from './run-log'
 
 type RunTableProps = {
   runs: WalletRun[]
@@ -48,6 +54,7 @@ export function RunTable({ runs, stageUuid, statusOf }: RunTableProps) {
             ) : (
               runs.map((run) => {
                 const rowStatus = statusOf(run)
+                const error = reasonFor(run, stageUuid) ?? undefined
                 return (
                   <TableRow key={run.walletId} className="hover:bg-transparent">
                     <TableCell className="px-3 text-[13px] font-medium">
@@ -70,8 +77,12 @@ export function RunTable({ runs, stageUuid, statusOf }: RunTableProps) {
                           <TxHashLink chain={run.chain} txHash={run.txHash} />
                         </span>
                       ) : null}
-                      {run.error ? (
-                        <span className="text-destructive ml-2">{run.error}</span>
+                      {error ? (
+                        <ExecutionLogPopover
+                          label={run.label}
+                          address={run.address}
+                          error={error}
+                        />
                       ) : null}
                     </TableCell>
                   </TableRow>

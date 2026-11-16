@@ -21,6 +21,16 @@ import {
 } from '../support/mint'
 import { seedVelox } from '../support/seed'
 import type { FolderRow, WalletRow } from '../support/seed'
+import {
+  applyProbeVerdicts,
+  blockedReason,
+  mintableRow,
+  reasonFor,
+  stageStatusFor,
+} from '@/lib/mint/mint-task'
+import type { WalletRun } from '@/lib/mint/mint-task'
+import { ScatterError } from '@/lib/scatter/error'
+import { isMissingTokenIdRefusal } from '@/lib/scatter/probe'
 
 const SLUG = 'scatter-drop'
 const URL_LABEL = 'Collection URL or slug (OpenSea / Scatter)'
@@ -55,12 +65,22 @@ async function selectFolder(
     .getByRole('checkbox', { name: `Select all in ${folder.name}` })
     .click()
   await browser.keyboard.press('Escape')
+  await expect(screen.getByRole('dialog')).toHaveCount(0)
 }
 
 function oneWallet(folder: FolderRow): WalletRow {
   const wallet = mintWallets(1, folder.id)[0]
   if (wallet === undefined) throw new Error('mintWallets(1) returned no wallet')
   return wallet
+}
+
+async function openExecutionLog(screen: Screen, walletAddress: string) {
+  await screen
+    .getByRole('button', { name: `Show execution log for ${walletAddress}` })
+    .click()
+  const log = screen.getByRole('dialog')
+  await expect(log.getByText('Execution log')).toBeVisible()
+  return log
 }
 
 // Every Scatter collection in this suite is on Velox's Robinhood Chain, because the
@@ -119,6 +139,8 @@ test('a Scatter collection fills the picker and prices each list in its own curr
       },
     ],
   })
+  // Selecting the second live list reads the chain clock before probing it.
+  await mockMintRpc({ browser, wallets: [wallet], nowMs: now })
 
   await seedMintPage(app, browser, folder, [wallet])
   await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
@@ -205,7 +227,7 @@ test('a price below the printed precision never reads as free', async ({
   await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
 })
 
-test('a Scatter price follows the next stage when none is selected', async ({
+test('a Scatter price follows the next stage, and a future list is not probed', async ({
   app,
   browser,
   screen,
@@ -214,7 +236,7 @@ test('a Scatter price follows the next stage when none is selected', async ({
   const wallet = oneWallet(folder)
   const now = Date.now()
 
-  await mockScatterNetwork({
+  const calls = await mockScatterNetwork({
     browser,
     slug: SLUG,
     lists: [
@@ -240,6 +262,8 @@ test('a Scatter price follows the next stage when none is selected', async ({
   await expect(row.getByText('Scheduled', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  // There is no live list, so Check issues no build at all.
+  expect(calls.mintBodies).toHaveLength(0)
 
   // No stage is selected, so the picker shows its placeholder and the price comes
   // from the next stage. It must still use that stage's currency and decimals.
@@ -247,6 +271,12 @@ test('a Scatter price follows the next stage when none is selected', async ({
   await expect(screen.getByText('0.5000 USDC').first()).toBeVisible()
   await expect(screen.getByText('0 USDC')).toBeVisible()
   await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
+
+  // Selecting the future list still issues no build, and the row stays Scheduled.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Future' }).click()
+  await expect(row.getByText('Scheduled', { exact: true })).toBeVisible()
+  expect(calls.mintBodies).toHaveLength(0)
 })
 
 test('an unnamed Scatter token keeps its decimals instead of reading as ETH', async ({
@@ -372,6 +402,17 @@ test('a native Scatter list mints across the selected wallets and every row reac
     timeout: 60_000,
   })
 
+  // Check already asked for one free build per wallet, at quantity 1 and against the
+  // selected list, before Start was pressed.
+  expect(calls.mintBodies).toHaveLength(2)
+  expect(
+    calls.mintBodies.map((body) => body.minterAddress?.toLowerCase()).sort(),
+  ).toEqual(wallets.map((wallet) => wallet.address.toLowerCase()).sort())
+  for (const body of calls.mintBodies) {
+    expect(body.lists).toEqual([{ id: 'public', quantity: 1 }])
+  }
+  const probed = calls.mintBodies.length
+
   await pinMintGas(screen)
   await screen.getByRole('button', { name: 'Start Mint' }).click()
 
@@ -379,11 +420,15 @@ test('a native Scatter list mints across the selected wallets and every row reac
     timeout: 60_000,
   })
 
-  // One build per wallet, each naming the collection, the chain, the minter, the list
-  // and the quantity. Scatter reads quantity inside the list entry, not on top.
-  expect(calls.mintBodies).toHaveLength(2)
+  // The run builds one more per wallet, each naming the collection, the chain, the
+  // minter, the list and the quantity. Scatter reads quantity inside the list entry,
+  // not on top.
+  expect(calls.mintBodies).toHaveLength(probed + 2)
   expect(
-    calls.mintBodies.map((body) => body.minterAddress?.toLowerCase()).sort(),
+    calls.mintBodies
+      .slice(probed)
+      .map((body) => body.minterAddress?.toLowerCase())
+      .sort(),
   ).toEqual(wallets.map((wallet) => wallet.address.toLowerCase()).sort())
   for (const body of calls.mintBodies) {
     expect(body.collectionAddress).toBe(SCATTER_CONTRACT)
@@ -397,7 +442,7 @@ test('a native Scatter list mints across the selected wallets and every row reac
   expect(auth.calls).toBe(0)
 })
 
-test('an ERC-20 priced Scatter list refuses with the token and amount named', async ({
+test('an ERC-20 priced Scatter list blocks the row and names the token and amount', async ({
   app,
   browser,
   screen,
@@ -419,6 +464,7 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
         walletLimit: 1,
       },
     ],
+    mint: { erc20s: [{ address: USDC_ADDRESS, amount: '500000' }] },
   })
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
@@ -428,29 +474,29 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
   await screen.getByRole('button', { name: 'Check' }).click()
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
-  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(
+    'This Scatter list needs an ERC-20 allowance for 0.5000 USDC (0x8335…2913). Velox mints native-currency lists only'
+  )
+  await browser.keyboard.press('Escape')
 
-  // The list states its currency, so the refusal arrives before any wallet is built
-  // for: the panel names the token and its price, and Start stays refused.
-  const refusal = screen.getByRole('alert')
-  await expect(refusal).toContainText('0.5000 USDC')
-  await expect(refusal).toContainText('0x8335…2913')
-  await expect(refusal).toContainText('Velox mints native-currency lists only')
+  // The row carries the reason and Start stays refused. The panel keeps no second copy.
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
-  expect(calls.mintBodies).toHaveLength(0)
+  // One free build per wallet at quantity 1, and no transaction.
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'usdc', quantity: 1 }])
   expect(rpc.events).toHaveLength(0)
 })
 
-test('an allowance answer from one wallet stops the batch before any wallet signs', async ({
+test('a build allowance answer blocks that row and disables Start before any wallet signs', async ({
   app,
   browser,
   screen,
 }) => {
   const folder = walletFolder('Scatter Batch Allowance')
-  // Three wallets, because the run builds two at a time: the third is the one a refusal
-  // has to stop from being built at all, and a two-wallet run cannot show that.
   const wallets = mintWallets(3, folder.id)
   const [first, second] = wallets
   if (!first || !second) throw new Error('mintWallets(3) returned too few')
@@ -473,22 +519,340 @@ test('an allowance answer from one wallet stops the batch before any wallet sign
   await selectFolder(browser, screen, folder)
   await screen.getByRole('button', { name: 'Check' }).click()
 
-  const row = screen.getByRole('row').filter({ hasText: first.address })
+  const firstRow = screen.getByRole('row').filter({ hasText: first.address })
+  const blockedRow = screen.getByRole('row').filter({ hasText: second.address })
+  await expect(firstRow.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(blockedRow.getByText('Blocked', { exact: true })).toBeVisible()
+  const refusalText =
+    'This Scatter list needs an ERC-20 allowance for 5000000 base units of 0x8335…2913. Velox mints native-currency lists only'
+  const log = await openExecutionLog(screen, second.address)
+  await expect(log).toContainText(refusalText)
+  await browser.keyboard.press('Escape')
+
+  // One build per wallet was read, so the refusal stays on the row that caused it.
+  expect(calls.mintBodies).toHaveLength(3)
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
+
+test('a run-time allowance block outranks the earlier eligible probe', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Run Allowance')
+  const wallet = oneWallet(folder)
+  let builds = 0
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      { id: 'public', name: 'Public', walletLimit: 1 },
+      {
+        id: 'other',
+        name: 'Other',
+        walletLimit: 1,
+        startTime: new Date(Date.now() - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+    ],
+    // The free probe passes; the run's own build is where the allowance appears.
+    // The second list is native, so its own probe clears the old block.
+    mint: (body) => {
+      if (body.lists?.[0]?.id === 'other') return {}
+      builds += 1
+      return builds === 1
+        ? {}
+        : { erc20s: [{ address: USDC_ADDRESS, amount: '1000000' }] }
+    },
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  expect(calls.mintBodies).toHaveLength(1)
 
   await screen.getByRole('button', { name: 'Start Mint' }).click()
 
-  // The refusal belongs to the task, so every row stops and no wallet signs.
-  await expect(screen.getByText('Blocked', { exact: true })).toHaveCount(3, {
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
-  await expect(row).toContainText('5000000 base units of 0x8335…2913')
-  await expect(row).toContainText('Velox mints native-currency lists only')
-  // Two builds were read before the refusal landed, and the third was never built.
-  expect(calls.mintBodies).toHaveLength(2)
+  const refusal =
+    'This Scatter list needs an ERC-20 allowance for 1000000 base units of 0x8335…2913'
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(refusal)
+  await browser.keyboard.press('Escape')
+  // The run's block disables Start even though the earlier probe said eligible.
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+
+  // A stage change clears both verdicts, and the new list gets its own probe.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Other' }).click()
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible()
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  await expect(
+    screen.getByRole('button', {
+      name: `Show execution log for ${wallet.address}`,
+    })
+  ).toHaveCount(0)
+
+  expect(calls.mintBodies).toHaveLength(3)
+  expect(calls.mintBodies[2]?.lists).toEqual([{ id: 'other', quantity: 1 }])
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
+
+test('a missing token ID refusal blocks the row with the provider wording', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Token ID')
+  const wallet = oneWallet(folder)
+  const callMessage = 'Token ID is required for this collection'
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    refuseMint: () => ({
+      status: 422,
+      body: { error: callMessage },
+    }),
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  // The log carries the provider's own wording, not a rewrite.
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(callMessage)
+  await browser.keyboard.press('Escape')
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'public', quantity: 1 }])
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('any other build refusal marks the row failed with its message', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Build Failure')
+  const wallet = oneWallet(folder)
+  const message = 'Scatter build failed'
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    refuseMint: () => ({ status: 500, body: { error: message } }),
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(message)
+  await browser.keyboard.press('Escape')
+  // A failed probe may be transient. The run's own build retries it, so Start stays
+  // offered; only a blocked probe refuses the start.
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('changing the Mint Stage clears the verdict and probes the new list', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Stage Probe')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'first',
+        name: 'First',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 120_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+      {
+        id: 'second',
+        name: 'Second',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+    ],
+    mintDelayMs: 400,
+    mint: (body) =>
+      body.lists?.[0]?.id === 'second'
+        ? { erc20s: [{ address: USDC_ADDRESS, amount: '1000000' }] }
+        : {},
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'first', quantity: 1 }])
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+
+  // A new list clears the old verdict and gets its own probe. Start waits for the
+  // verdict instead of re-opening on the stale rows.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Second' }).click()
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  expect(calls.mintBodies).toHaveLength(2)
+  expect(calls.mintBodies[1]?.lists).toEqual([{ id: 'second', quantity: 1 }])
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+
+  // Back to the first list: the second list's verdict must not stick.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'First' }).click()
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  expect(calls.mintBodies).toHaveLength(3)
+  expect(calls.mintBodies[2]?.lists).toEqual([{ id: 'first', quantity: 1 }])
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('a successful build lifts a failed list read', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Recovered Read')
+  const wallet = oneWallet(folder)
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    failMinters: [wallet.address],
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(row.getByRole('cell').nth(2)).toHaveText('No cap')
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  await expect(
+    screen.getByRole('button', {
+      name: `Show execution log for ${wallet.address}`,
+    })
+  ).toHaveCount(0)
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('a stage change during Check wins and releases the probe hold', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter During Check')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'first',
+        name: 'First',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 120_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+      {
+        id: 'second',
+        name: 'Second',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+    ],
+    mintDelayMs: 400,
+  })
+  await mockMintRpc({ browser, wallets: [wallet], nowMs: now })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(screen.getByLabel('Mint Stage')).toHaveText('First')
+
+  // Re-check, then move the picker before the second probe settles.
+  await screen.getByRole('button', { name: 'Check' }).click()
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Second' }).click()
+
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(screen.getByLabel('Mint Stage')).toHaveText('Second')
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  expect(calls.mintBodies.at(-1)?.lists).toEqual([{ id: 'second', quantity: 1 }])
 })
 
 test('a bare slug and a contract address keep routing to OpenSea', async ({
@@ -527,4 +891,93 @@ test('a bare slug and a contract address keep routing to OpenSea', async ({
   })
 
   expect(scatter.collections).toHaveLength(0)
+})
+
+test('a run block belongs to the list it was taken against', () => {
+  const row: WalletRun = {
+    walletId: 'wallet-1',
+    label: 'Wallet 1',
+    address: '0x0000000000000000000000000000000000000001',
+    caps: { public: 1, other: 1 },
+    status: 'blocked',
+    statusStage: 'public',
+    error: 'This Scatter list needs an ERC-20 allowance',
+    mintedStages: [],
+    probe: null,
+  }
+
+  // The batch never takes the blocked row on the list that blocked it.
+  expect(mintableRow(row, 'public')).toBe(false)
+  expect(blockedReason(row, 'public')).toBe(row.error)
+
+  // The same row is free to mint on another list, and the old reason does not leak.
+  expect(mintableRow(row, 'other')).toBe(true)
+  expect(blockedReason(row, 'other')).toBeNull()
+
+  // A failed probe may be transient, so it stays in the batch for the run to retry.
+  const failed: WalletRun = {
+    ...row,
+    status: 'eligible',
+    statusStage: 'public',
+    probe: {
+      stageUuid: 'public',
+      status: 'failed',
+      error: 'The build timed out',
+    },
+  }
+  expect(mintableRow(failed, 'public')).toBe(true)
+  expect(blockedReason(failed, 'public')).toBeNull()
+
+  // A successful build outranks a failed list read: the row becomes eligible and
+  // the old read error leaves the log.
+  const recovered: WalletRun = {
+    ...row,
+    status: 'failed',
+    statusStage: 'public',
+    checkFailed: true,
+    error: 'The list read failed',
+    caps: {},
+    probe: { stageUuid: 'public', status: 'eligible' },
+  }
+  expect(stageStatusFor(recovered, 'public', false)).toBe('eligible')
+  expect(mintableRow(recovered, 'public')).toBe(true)
+  expect(reasonFor(recovered, 'public')).toBeNull()
+  expect(blockedReason(recovered, 'public')).toBeNull()
+
+  // A build that succeeds outranks a list that reported no remaining allowance.
+  const capped: WalletRun = { ...recovered, checkFailed: false, caps: { public: 0 } }
+  const applied = applyProbeVerdicts(
+    [capped],
+    'public',
+    new Map([[capped.walletId, { status: 'eligible' as const }]])
+  )[0]
+  expect(applied?.caps.public).toBeNull()
+  expect(mintableRow(applied as WalletRun, 'public')).toBe(true)
+})
+
+test('only a missing token ID refusal is a task block', () => {
+  const refusal = (message: string, code = '422') =>
+    new ScatterError(422, code, message)
+
+  // A missing ID is the operator's fix. The provider's own wording is what the row
+  // carries, so the classifier reads both the message and the code.
+  expect(isMissingTokenIdRefusal(refusal('Token ID is required'))).toBe(true)
+  expect(isMissingTokenIdRefusal(refusal('Missing token ID'))).toBe(true)
+  expect(isMissingTokenIdRefusal(refusal('tokenId must be provided'))).toBe(true)
+  expect(isMissingTokenIdRefusal(refusal('This list requires a token ID'))).toBe(
+    true
+  )
+  expect(isMissingTokenIdRefusal(refusal('tokenId absent'))).toBe(true)
+  expect(isMissingTokenIdRefusal(refusal('Token ID not found'))).toBe(true)
+  expect(
+    isMissingTokenIdRefusal(new ScatterError(422, 'MISSING_TOKEN_ID', 'refused'))
+  ).toBe(true)
+
+  // A token the wallet does not hold, or any other refusal, is not a task fix.
+  expect(
+    isMissingTokenIdRefusal(
+      refusal('Token ID 42 is not held by this wallet')
+    )
+  ).toBe(false)
+  expect(isMissingTokenIdRefusal(refusal('Scatter build failed'))).toBe(false)
 })

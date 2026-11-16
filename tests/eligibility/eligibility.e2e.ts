@@ -389,6 +389,9 @@ test('a Scatter URL produces Scatter rows instead of an OpenSea read', async ({
   // One bare read builds the public columns; the second read asks what this wallet
   // can enter, which is the only answer eligibility can come from.
   expect(calls.lists.map((call) => call.minter)).toEqual([null, wallet.address])
+  // The eligibility tab has no selected list and no token ID field, so it must not
+  // ask for a mint build.
+  expect(calls.mintBodies).toHaveLength(0)
 })
 
 test('a private list one wallet can enter becomes a column every row answers', async ({

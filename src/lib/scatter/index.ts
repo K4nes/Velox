@@ -5,6 +5,7 @@ import {
   unreadableAllowanceRefusal,
 } from '@/lib/scatter/erc20-refusal'
 import type { ScatterAllowance } from '@/lib/scatter/erc20-refusal'
+import type { DropStage } from '@/lib/opensea/index'
 import { ScatterError } from '@/lib/scatter/error'
 
 const SCATTER_BASE_URL = 'https://api.scatter.art/v1'
@@ -181,8 +182,6 @@ export function toMintList(value: unknown): ScatterMintList {
 
 export type ScatterMintBuild = { to: string; data: string; value: string }
 
-// One list entry per build: the id is the list the operator picked, and the quantity
-// lives inside the entry rather than at the top level.
 export type ScatterMintRequest = {
   collectionAddress: string
   chainId: number
@@ -195,7 +194,10 @@ export type ScatterMintRequest = {
 // through it without a network. The allowance list is read first and fails closed: an
 // answer that names an allowance, or one whose allowance shape cannot be read, refuses
 // before the caller sees a transaction to sign.
-export function toScatterMintBuild(body: unknown): ScatterMintBuild {
+export function toScatterMintBuild(
+  body: unknown,
+  stage: DropStage | null = null
+): ScatterMintBuild {
   const record = asRecord(body)
 
   const allowances = toAllowances(record?.erc20s)
@@ -203,7 +205,7 @@ export function toScatterMintBuild(body: unknown): ScatterMintBuild {
     throw new ScatterError(
       422,
       ERC20_REFUSAL_CODE,
-      erc20RefusalForAllowances(allowances)
+      erc20RefusalForAllowances(allowances, stage)
     )
   }
 
@@ -228,7 +230,8 @@ export function toScatterMintBuild(body: unknown): ScatterMintBuild {
 // Sends one build for one list and hands the answer to the parser above, which refuses an
 // allowance list before any caller sees a transaction to sign.
 export async function buildScatterMintTransaction(
-  input: ScatterMintRequest
+  input: ScatterMintRequest,
+  stage: DropStage | null = null
 ): Promise<ScatterMintBuild> {
   const body = await request('/mint', {
     method: 'POST',
@@ -240,7 +243,7 @@ export async function buildScatterMintTransaction(
     }),
   })
 
-  return toScatterMintBuild(body)
+  return toScatterMintBuild(body, stage)
 }
 
 // An absent allowance list is a native-currency mint. Anything else this cannot read is an
