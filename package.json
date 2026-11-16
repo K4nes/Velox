@@ -18,7 +18,7 @@
     "release:desktop": "node scripts/release-desktop.mjs",
     "release:verify": "node scripts/release-desktop.mjs --verify-only",
     "test:release": "node --test scripts/",
-    "verify": "node scripts/check-upstream-drift.mjs && node scripts/check-collection-label.mjs && npm run build && npm run typecheck:test && npm run lint && npm run test:release && npm run test:e2e"
+    "verify": "node scripts/check-upstream-drift.mjs && node scripts/check-command-table.mjs && node scripts/check-version-literal.mjs && node scripts/check-collection-label.mjs && node scripts/check-lockfile.mjs && node scripts/check-workflow-secrets.mjs && node scripts/check-workflow-width.mjs && npm run build && npm run typecheck:test && npm run lint && npm run test:release && npm run test:e2e"
   },
   "dependencies": {
     "@animate-ui/react": "^2.0.0",

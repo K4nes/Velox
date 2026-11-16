@@ -32,7 +32,9 @@ type MintPanelProps = {
   canPickWallets: boolean
   locked: boolean
   isMinting: boolean
+  showTokenId: boolean
   onWallets: (ids: string[]) => void
+  onTokenId: (tokenId: string) => void
   onStage: (uuid: string) => void
   onPatch: (patch: TaskPatch) => void
   onStart: () => void
@@ -77,7 +79,9 @@ export function MintPanel({
   canPickWallets,
   locked,
   isMinting,
+  showTokenId,
   onWallets,
+  onTokenId,
   onStage,
   onPatch,
   onStart,
@@ -152,6 +156,28 @@ export function MintPanel({
             </SelectContent>
           </Select>
         </div>
+
+        {showTokenId ? (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="token-id" className="text-xs font-medium">
+              Token ID
+            </label>
+            <Input
+              id="token-id"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="ERC-1155 edition"
+              disabled={locked || isMinting}
+              value={active.tokenId}
+              onChange={(event) =>
+                onTokenId(event.target.value.replace(/\D/g, ''))
+              }
+            />
+            <p className="text-muted-foreground text-[11px]">
+              Leave empty for an ERC-721 collection.
+            </p>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <label htmlFor="quantity" className="text-xs font-medium">

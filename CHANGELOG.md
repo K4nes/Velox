@@ -15,6 +15,11 @@ come from the Conventional Commit history (`COMMIT.md`).
   its list states, a list with no end or no cap reads as what it is, and a chain Velox
   cannot sign for is refused by name. Start Mint on a Scatter task names the missing step
   instead of building a transaction ([#121]).
+- A Scatter task carries a Token ID. A `scatter.art/c/{slug}/{tokenId}` URL fills the
+  field, a typed ID works without a token page, and the ID reaches the Scatter mint
+  request so an ERC-1155 edition mints on its own. Changing the token clears the earlier
+  verdict and prepared calldata, an ERC-721 task sends no token, and an OpenSea task gains
+  no field ([#123]).
 
 ### Changed
 
@@ -221,5 +226,6 @@ consolidated into a single entry.
 [#107]: https://github.com/K4nes/Velox/pull/107
 [#113]: https://github.com/K4nes/Velox/pull/113
 [#115]: https://github.com/K4nes/Velox/issues/115
-[#117]: https://github.com/K4nes/Velox/pull/117
+[#120]: https://github.com/K4nes/Velox/pull/120
+[#123]: https://github.com/K4nes/Velox/issues/123
 [#124]: https://github.com/K4nes/Velox/issues/124

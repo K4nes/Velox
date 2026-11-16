@@ -27,6 +27,7 @@ export async function buildScatterMint(input: {
     minterAddress: input.minter,
     listId: input.listId,
     quantity: input.quantity,
+    tokenId: input.drop.tokenId,
   })
 
   return {

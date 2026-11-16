@@ -3,6 +3,10 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useMintTasks } from '@/hooks/run/use-mint-tasks'
+import {
+  acceptsTokenId,
+  resolveCollectionSource,
+} from '@/lib/collection-source'
 import { mintTasksStore } from '@/pages/mint/store'
 import { MintPanel } from './mint-panel'
 import { RunTable } from './run-table'
@@ -12,6 +16,10 @@ export function MintTasksPage() {
   const mint = useMintTasks(mintTasksStore)
   const { active, view } = mint
   const isMintingThisTask = mint.runningIds.includes(active.id)
+  // The field belongs to the provider, so it appears from the URL alone, before a
+  // check: a typed token must be enterable without a token page.
+  const collection = resolveCollectionSource(active.url)
+  const showTokenId = collection !== null && acceptsTokenId(collection.source)
 
   return (
     <div className="flex min-h-[calc(100svh-3rem)] flex-col p-6 lg:h-[calc(100svh-3rem)] lg:min-h-0 lg:overflow-hidden">
@@ -75,7 +83,9 @@ export function MintTasksPage() {
           canPickWallets={mint.canPickWallets}
           locked={mint.locked}
           isMinting={isMintingThisTask}
+          showTokenId={showTokenId}
           onWallets={mint.setWallets}
+          onTokenId={mint.changeTokenId}
           onStage={mint.selectStage}
           onPatch={mint.updateActive}
           onStart={() => void mint.startMint()}

@@ -148,13 +148,15 @@ export async function prepareMintRun(options: {
 /**
  * Answers the chain's JSON-RPC in memory, so a mint broadcasts and settles without a
  * node. `sendDelayMs` holds that wallet's broadcast open and `receiptDelayMs` the
- * receipt, which makes one overlap assertion observable. The events keep each
+ * receipt, which makes one overlap assertion observable. `revert` answers a failed
+ * receipt, so a test can prove a reverted send is not a landing. The events keep each
  * request's arrival time.
  */
 export async function mockMintRpc(options: {
   browser: Browser
   wallets: { address: string; sendDelayMs?: number }[]
   receiptDelayMs?: number
+  revert?: boolean
 }): Promise<{ events: MintEvent[] }> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
   const events: MintEvent[] = []
@@ -248,7 +250,7 @@ export async function mockMintRpc(options: {
           contractAddress: null,
           logs: [],
           logsBloom: `0x${'00'.repeat(256)}`,
-          status: '0x1',
+          status: options.revert ? '0x0' : '0x1',
           type: '0x2',
           effectiveGasPrice: '0x1',
         })
@@ -649,7 +651,7 @@ export type ScatterMintBody = {
   collectionAddress?: string
   chainId?: number
   minterAddress?: string
-  lists?: { id: string; quantity: number }[]
+  lists?: { id: string; quantity: number; tokenId?: number }[]
 }
 
 /** What the mocked Scatter API saw, in arrival order. */

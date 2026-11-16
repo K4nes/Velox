@@ -189,6 +189,8 @@ export type ScatterMintRequest = {
   minterAddress: string
   listId: string
   quantity: number
+  // The ERC-1155 edition. Empty for an ERC-721, and the list entry omits it then.
+  tokenId: string
 }
 
 // The answer is parsed apart from the request, so a recorded upstream body can be run
@@ -230,17 +232,46 @@ export function toScatterMintBuild(body: unknown): ScatterMintBuild {
 export async function buildScatterMintTransaction(
   input: ScatterMintRequest
 ): Promise<ScatterMintBuild> {
+  const tokenId = scatterListTokenId(input.tokenId)
   const body = await request('/mint', {
     method: 'POST',
     body: JSON.stringify({
       collectionAddress: input.collectionAddress,
       chainId: input.chainId,
       minterAddress: input.minterAddress,
-      lists: [{ id: input.listId, quantity: input.quantity }],
+      lists: [
+        {
+          id: input.listId,
+          quantity: input.quantity,
+          ...(tokenId !== undefined ? { tokenId } : {}),
+        },
+      ],
     }),
   })
 
   return toScatterMintBuild(body)
+}
+
+// Scatter states the token inside the list entry, not at the top level. An empty ID
+// is an ERC-721 build, and the key must be absent then, not zero.
+function scatterListTokenId(tokenId: string): number | undefined {
+  if (tokenId === '') return undefined
+  if (!/^\d+$/.test(tokenId)) {
+    throw new ScatterError(
+      422,
+      'invalid-token-id',
+      `Scatter token ID "${tokenId}" is not a number.`
+    )
+  }
+  const value = Number(tokenId)
+  if (!Number.isSafeInteger(value)) {
+    throw new ScatterError(
+      422,
+      'invalid-token-id',
+      `Scatter token ID "${tokenId}" is outside the range Velox can send.`
+    )
+  }
+  return value
 }
 
 // An absent allowance list is a native-currency mint. Anything else this cannot read is an

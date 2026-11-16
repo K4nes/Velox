@@ -13,6 +13,7 @@ import {
   oneWallet,
   pinMintGas,
   seedMintPage,
+  selectFolder,
 } from '../support/mint'
 
 const SLUG = 'scatter-drop'
@@ -262,18 +263,33 @@ test('an unnamed Scatter token keeps its decimals instead of reading as ETH', as
   await expect(screen.getByText('0.0000 ETH')).toHaveCount(0)
 })
 
-test('a Scatter token URL resolves the collection rather than the token', async ({
+test('a Scatter token URL fills the Token ID field', async ({
   app,
   browser,
   screen,
 }) => {
-  const folder = walletFolder('Scatter Token')
+  const folder = walletFolder('Scatter Token Fill')
+  const wallet = oneWallet(folder)
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+
+  await expect(screen.getByLabel('Token ID')).toHaveValue('12')
+})
+
+test('the URL token reaches the mint request body', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Token Body')
   const wallet = oneWallet(folder)
   const calls = await mockScatterNetwork({
     browser,
     slug: SLUG,
     lists: [{ id: 'public', name: 'Public' }],
   })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
   await seedMintPage(app, browser, folder, [wallet])
   await checkCollection(
@@ -286,7 +302,32 @@ test('a Scatter token URL resolves the collection rather than the token', async 
   await expect(screen.getByLabel('Mint Stage')).toHaveText('Public', {
     timeout: 60_000,
   })
-  expect(calls.collections).toEqual([SLUG])
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(screen.getByText('Confirmed', { exact: true })).toHaveCount(1, {
+    timeout: 60_000,
+  })
+
+  // The token the URL filled is the token the request names.
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies[0]?.lists).toEqual([
+    { id: 'public', quantity: 1, tokenId: 12 },
+  ])
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(1)
+})
+
+test('a token page token does not follow the task to another collection', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Retarget')
+  const wallet = oneWallet(folder)
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+  await screen.getByLabel(URL_LABEL).fill('https://scatter.art/c/other-collection')
+  await expect(screen.getByLabel('Token ID')).toHaveValue('')
 })
 
 test('a collection on a chain Velox cannot sign for is refused by name before any list read', async ({
@@ -320,7 +361,7 @@ test('a collection on a chain Velox cannot sign for is refused by name before an
   )
 })
 
-test('a native Scatter list mints across the selected wallets and every row reaches Confirmed', async ({
+test('an ERC-721 Scatter list mints across the selected wallets and every row reaches Confirmed', async ({
   app,
   browser,
   screen,
@@ -350,6 +391,8 @@ test('a native Scatter list mints across the selected wallets and every row reac
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  // An ERC-721 task holds no token, and the field states that rather than guessing one.
+  await expect(screen.getByLabel('Token ID')).toHaveValue('')
 
   await pinMintGas(screen)
   await screen.getByRole('button', { name: 'Start Mint' }).click()
@@ -359,7 +402,8 @@ test('a native Scatter list mints across the selected wallets and every row reac
   })
 
   // One build per wallet, each naming the collection, the chain, the minter, the list
-  // and the quantity. Scatter reads quantity inside the list entry, not on top.
+  // and the quantity. Scatter reads quantity inside the list entry, not on top. No
+  // entry carries a token ID the task was never given.
   expect(calls.mintBodies).toHaveLength(2)
   expect(
     calls.mintBodies.map((body) => body.minterAddress?.toLowerCase()).sort(),
@@ -374,6 +418,209 @@ test('a native Scatter list mints across the selected wallets and every row reac
   // asked for on the way.
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(2)
   expect(auth.calls).toBe(0)
+})
+
+test('a typed token survives a collection URL edit', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter URL Keep')
+  const wallet = oneWallet(folder)
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await screen.getByLabel('Token ID').fill('12')
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/`)
+
+  await expect(screen.getByLabel('Token ID')).toHaveValue('12')
+})
+
+test('a typed Scatter token ID mints the edition named in the request body', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Edition')
+  const wallet = oneWallet(folder)
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'edition', name: 'Edition', price: '0.01', walletLimit: 1 }],
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  // The collection URL states no token, so the typed field is the only source.
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
+  await screen.getByLabel('Token ID').fill('12')
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+
+  await expect(screen.getByText('Confirmed', { exact: true })).toHaveCount(1, {
+    timeout: 60_000,
+  })
+
+  // The typed ID reaches the list entry Scatter mints from, and the mint lands.
+  expect(calls.mintBodies).toHaveLength(1)
+  expect(calls.mintBodies[0]?.lists).toEqual([
+    { id: 'edition', quantity: 1, tokenId: 12 },
+  ])
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(1)
+})
+
+test('changing the Token ID clears the previous verdict', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Retoken')
+  const wallet = oneWallet(folder)
+  const calls = await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await screen.getByLabel('Token ID').fill('13')
+
+  // The verdict named token 12, so it cannot survive the change; the task asks for a
+  // fresh check instead of carrying that row to token 13.
+  await expect(screen.getByText('Eligible', { exact: true })).toHaveCount(0)
+  expect(calls.mintBodies).toHaveLength(0)
+})
+
+test('a token change keeps the stage the operator picked', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Stage Pick')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    lists: [
+      { id: 'alpha', name: 'Alpha' },
+      { id: 'beta', name: 'Beta' },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // Alpha is the live default; the operator picks the other list.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Beta' }).click()
+  await screen.getByLabel('Token ID').fill('13')
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  await expect(screen.getByLabel('Mint Stage')).toHaveText('Beta', {
+    timeout: 60_000,
+  })
+})
+
+test('a confirmed landing keeps its hash after a token change', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Landing')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', price: '0.01', walletLimit: 1 }],
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row).toContainText('Eligible')
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(screen.getByText('Confirmed', { exact: true })).toHaveCount(1, {
+    timeout: 60_000,
+  })
+
+  await screen.getByLabel('Token ID').fill('13')
+
+  // The transaction is a chain fact: changing the edition keeps its hash and the
+  // stage it retired instead of hiding the landing.
+  await expect(row.getByRole('link', { name: /Tx Hash/ })).toBeVisible()
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(1)
+})
+
+test('a reverted send does not retire the wallet for the new token', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Revert')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', price: '0.01', walletLimit: 1 }],
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    revert: true,
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}/12`)
+  await selectFolder(browser, screen, folder)
+  await screen.getByRole('button', { name: 'Check' }).click()
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row).toContainText('Eligible')
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await screen.getByLabel('Token ID').fill('13')
+
+  // A reverted send is not a landing, so it must not follow the task to token 13.
+  await expect(screen.getByText('Failed', { exact: true })).toHaveCount(0)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(1)
 })
 
 test('an ERC-20 priced Scatter list refuses with the token and amount named', async ({
@@ -501,6 +748,8 @@ test('a bare slug and a contract address keep routing to OpenSea', async ({
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
+  // The field belongs to Scatter only, so the OpenSea card gains no control.
+  await expect(screen.getByLabel('Token ID')).toHaveCount(0)
 
   // A 40-hex address is a collection identifier, not a Scatter slug.
   await screen.getByLabel(URL_LABEL).fill(TOKEN_ADDRESS)
