@@ -21,6 +21,16 @@ export function marketplaceFor(source: CollectionSource): Marketplace {
   return collectionSources[source].marketplace
 }
 
+export function isCollectionSource(value: unknown): value is CollectionSource {
+  return typeof value === 'string' && Object.hasOwn(collectionSources, value)
+}
+
+// A stored drop can predate the source field. OpenSea was the only reader then, so an
+// absent or unknown value routes there; the old marketplace label is not evidence.
+export function storedDropSource(stored: { source?: unknown }): CollectionSource {
+  return isCollectionSource(stored.source) ? stored.source : 'opensea'
+}
+
 // The one detector every caller routes and labels a collection with. The host decides
 // the source, so a bare slug and a 40-hex address keep the meaning they had before
 // Scatter existed.

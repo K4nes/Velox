@@ -1,5 +1,6 @@
 import { chainBySlug } from '@/config/chains'
 import { getAll, put, remove } from '@/lib/db/db'
+import { marketplaceFor } from '@/lib/collection-source'
 import type { Marketplace } from '@/lib/collection-source'
 import { buildStageColumns } from '@/lib/opensea/eligibility'
 import type { EligibilityResult, EligibilityRow, StageColumn } from '@/lib/opensea/eligibility'
@@ -27,12 +28,11 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 
 export function buildSnapshotPayload(
   result: EligibilityResult,
-  slug: string,
-  marketplace: Marketplace
+  slug: string
 ): EligibilitySnapshotPayload {
   return {
     slug,
-    marketplace,
+    marketplace: marketplaceFor(result.drop.source),
     chainName: chainBySlug(result.drop.chain)?.name ?? result.drop.chain,
     drop: result.drop,
     imageUrl: result.imageUrl,

@@ -3,14 +3,20 @@ import { SCATTER_MINT_REFUSAL } from '@/lib/mint/mint-task'
 import { buildMintTransaction, getDrop } from '@/lib/opensea/index'
 import type { DropInfo, MintTransaction } from '@/lib/opensea/index'
 import { cachedEligibilityToken } from '@/lib/opensea/eligibility-token-cache'
-import { getEligibilityToken } from '@/lib/opensea/eligibility'
+import { checkEligibility, getEligibilityToken } from '@/lib/opensea/eligibility'
+import type { EligibilityResult } from '@/lib/opensea/eligibility'
 import { getScatterDrop } from '@/lib/scatter/drop'
+import { checkScatterEligibility } from '@/lib/scatter/eligibility'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type { DropInfo, DropStage, MintTransaction } from '@/lib/opensea/index'
 
 type MintProvider = {
   fetchDrop: (slug: string) => Promise<DropInfo>
+  readEligibility: (
+    slug: string,
+    wallets: StoredWallet[]
+  ) => Promise<EligibilityResult>
   buildTransaction?: (
     slug: string,
     minter: string,
@@ -26,6 +32,7 @@ type MintProvider = {
 const providers: Record<CollectionSource, MintProvider> = {
   opensea: {
     fetchDrop: getDrop,
+    readEligibility: checkEligibility,
     buildTransaction: buildMintTransaction,
     warmAuth: async (wallet) => {
       await cachedEligibilityToken(wallet.address, () =>
@@ -37,6 +44,7 @@ const providers: Record<CollectionSource, MintProvider> = {
   // provider deliberately has no buildTransaction and no credential.
   scatter: {
     fetchDrop: getScatterDrop,
+    readEligibility: checkScatterEligibility,
   },
 }
 
@@ -45,6 +53,14 @@ export function fetchMintDrop(
   slug: string
 ): Promise<DropInfo> {
   return providers[source].fetchDrop(slug)
+}
+
+export function readEligibility(
+  source: CollectionSource,
+  slug: string,
+  wallets: StoredWallet[]
+): Promise<EligibilityResult> {
+  return providers[source].readEligibility(slug, wallets)
 }
 
 export async function warmMintAuth(
