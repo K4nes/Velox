@@ -14,7 +14,7 @@ type Recording = {
     collectionAddress?: string
     chainId?: number
     minterAddress?: string
-    lists?: { id: string; quantity: number }[]
+    lists?: { id: string; quantity: number; tokenId?: number }[]
   }
   body: {
     mintTransaction?: unknown

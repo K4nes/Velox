@@ -19,10 +19,22 @@ Identify actionable defects introduced by the current changeset.
 6. Performance issues with a concrete impact
 7. Missing or inadequate tests for changed behavior
 
+Feature and page behavior is proven by the E2E suite. Do not report a missing unit test
+for a path the E2E suite covers. `npm run test:release` and `cargo test` cover release
+tooling and the Tauri commands; they are infrastructure gates, not feature tests.
+
 An upstream client counts as changed behaviour: a new or edited request path under
 `src/lib/<provider>/` ships a recorded response in `tests/contract/` (written by
 `node scripts/contract-record.mjs`) or a live-lane case for that path. The mocked lane
 answers whatever path the client was written against, so a wrong one stays green in both.
+
+## Settled decisions
+
+A review round reads the branch's review notes or pull-request discussion for judgement
+calls already settled. A settled judgement call is not re-reported without new evidence.
+Record the finding, the disposition, and the reason wherever the branch already keeps
+review notes. A documented-standard violation still gets reported; settled judgement
+calls are the only thing this suppresses.
 
 ## Finding Requirements
 Every finding must:

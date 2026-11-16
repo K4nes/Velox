@@ -87,8 +87,8 @@ export type DropInfo = {
   name: string
   chain: string
   contractAddress: string
-  // The token a collection URL names, empty for an ERC-721 collection. The URL is
-  // the only place that states it, so the check fills it in.
+  // The Scatter edition this drop mints. The check stamps the task's token onto the
+  // provider's answer, so a token page URL and a typed ID reach the same place.
   tokenId: string
   // The source that produced this drop, so a run can reach its provider without
   // reading the task.

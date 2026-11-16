@@ -8,10 +8,15 @@ export const COLLECTION_NOT_RECOGNISED = 'Collection URL not recognised'
 // The provider axis is a registry, not a two-member union. A third source adds one
 // entry here and one entry in each module that maps over `CollectionSource`; no
 // caller signature changes and no caller has to learn its name. `readRefusal` is
-// what a holdings reader says instead of asking the provider.
+// what a holdings reader says instead of asking the provider, and `acceptsTokenId`
+// says whether a mint task carries an edition.
 const collectionSources = {
-  opensea: { marketplace: 'OpenSea', readRefusal: null },
-  scatter: { marketplace: 'Scatter', readRefusal: SCATTER_READ_REFUSAL },
+  opensea: { marketplace: 'OpenSea', readRefusal: null, acceptsTokenId: false },
+  scatter: {
+    marketplace: 'Scatter',
+    readRefusal: SCATTER_READ_REFUSAL,
+    acceptsTokenId: true,
+  },
 } as const
 
 export type CollectionSource = keyof typeof collectionSources
@@ -27,6 +32,10 @@ export type ResolvedCollection = {
 
 export function marketplaceFor(source: CollectionSource): Marketplace {
   return collectionSources[source].marketplace
+}
+
+export function acceptsTokenId(source: CollectionSource): boolean {
+  return collectionSources[source].acceptsTokenId
 }
 
 export function isCollectionSource(value: unknown): value is CollectionSource {

@@ -9,6 +9,7 @@ import type {
 } from '@/lib/mint/mint-provider'
 import { callTransaction, estimateGasFor, sendTransaction } from '@/lib/chain/tx'
 import type { TxGas } from '@/lib/chain/tx'
+import { acceptsTokenId } from '@/lib/collection-source'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { toMessage } from '@/lib/core/message'
 import { mintableRow, quantityCeiling } from '@/lib/mint/mint-task'
@@ -62,6 +63,15 @@ export function mintQuantityFor(
   const requested = Number.parseInt(task.quantity, 10)
   const quantity = ceiling > 0 ? Math.min(requested, ceiling) : requested
   return Number.isFinite(quantity) && quantity >= 1 ? quantity : null
+}
+
+// The provider states no token, so the task's field is stamped onto the drop. A
+// provider that mints no editions never carries one.
+export function stampTaskToken(drop: DropInfo, task: Task): DropInfo {
+  return {
+    ...drop,
+    tokenId: acceptsTokenId(drop.source) ? task.tokenId : '',
+  }
 }
 
 // Everything that must match for prepared calldata to still describe this fire. A stage,

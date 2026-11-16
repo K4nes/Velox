@@ -86,7 +86,7 @@ function dropFromScatter(
     name: collection.name,
     chain: chain.slug,
     contractAddress: collection.address,
-    // The API states no token ID; a collection URL that names one fills it in.
+    // The API states no token ID; the check stamps the task's field onto it.
     tokenId: '',
     source: 'scatter',
     dropType: SCATTER_DROP_TYPE,
