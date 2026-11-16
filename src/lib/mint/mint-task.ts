@@ -87,6 +87,8 @@ export type Task = {
   id: string
   name: string
   url: string
+  // The Scatter edition this task mints. Empty for an ERC-721 and for OpenSea.
+  tokenId: string
   wallets: string[]
   drop: DropInfo | null
   quantity: string
@@ -153,6 +155,7 @@ export const placeholderTask: Task = {
   id: PLACEHOLDER_ID,
   name: 'Task',
   url: '',
+  tokenId: '',
   wallets: [],
   drop: null,
   quantity: '1',
@@ -207,6 +210,7 @@ export function createTask(): Task {
     id: uid(),
     name: 'Task',
     url: '',
+    tokenId: '',
     wallets: [],
     drop: null,
     quantity: '1',

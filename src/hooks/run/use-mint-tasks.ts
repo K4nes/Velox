@@ -7,7 +7,10 @@ import { mapLimit } from '@/lib/core/async'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
 import { RpcConfigError } from '@/lib/chain/connections'
 import { checkWalletEligibility } from '@/lib/opensea/eligibility'
-import { resolveCollectionSource } from '@/lib/collection-source'
+import {
+  acceptsTokenId,
+  resolveCollectionSource,
+} from '@/lib/collection-source'
 import { checkScatterLists } from '@/lib/scatter/eligibility'
 import { toMessage } from '@/lib/core/message'
 import type { PageStore } from '@/lib/core/page-store'
@@ -28,6 +31,7 @@ import {
   pinnedGasLimitOf,
   prepareKeyFor,
   prepareMintEntries,
+  stampTaskToken,
   stageConfirmed,
 } from '@/lib/mint/run-mint'
 import type { PreparedMint } from '@/lib/mint/run-mint'
@@ -63,6 +67,15 @@ import { createMintTasksState } from '@/pages/mint/state'
 import type { MintTasksState } from '@/pages/mint/state'
 
 const READINESS_FALLBACK_ATTEMPTS = 4
+
+// A task whose check no longer holds. The stage pick and its quantity stay, because
+// a re-check recomputes the cap and prefill instead of moving the picker.
+const CLEARED_CHECK = {
+  status: 'idle',
+  checked: false,
+  drop: null,
+  arm: null,
+} satisfies TaskPatch
 
 // The page unmounts while a check or a mint can still be running, so the epochs
 // and in-flight markers outlive it here at module scope. A remount reads the same
@@ -218,42 +231,53 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     }
   }
 
-  function changeUrl(url: string) {
-    if (!realActive || mintingRef.has(realActive.id)) return
-    cancelRun(realActive.id)
-    clearArmState(realActive.id)
-    updateRuns((current) => ({
-      ...current,
-      [realActive.id]: (current[realActive.id] ?? []).filter(landed),
-    }))
-    updateTask(realActive.id, {
-      name: 'Task',
-      url,
-      status: 'idle',
-      checked: false,
-      drop: null,
-      arm: null,
-    })
-  }
-
-  function setWallets(ids: string[]) {
-    if (!realActive) return
-    const id = realActive.id
+  // A verdict names the token or the wallets it was read for, so it cannot survive a
+  // reset. A landed row is a chain fact: keep its hash and the stages it retired.
+  function resetCheck(id: string, patch: TaskPatch) {
     cancelRun(id)
     clearArmState(id)
     updateRuns((current) => ({
       ...current,
-      [id]: (current[id] ?? []).filter(reachedChain),
+      [id]: (current[id] ?? []).filter(landed),
     }))
-    updateTask(id, {
+    updateTask(id, { ...patch, ...CLEARED_CHECK })
+  }
+
+  function changeUrl(url: string) {
+    if (!realActive || mintingRef.has(realActive.id)) return
+    // A token page states the token, so it wins. A collection URL states none, so
+    // it keeps a typed token only while the collection stays the same. Any other
+    // URL, or another collection, leaves the task with no token.
+    const collection = resolveCollectionSource(url)
+    const previous = resolveCollectionSource(realActive.url)
+    const fromUrl = collection?.tokenId ?? ''
+    const sameCollection =
+      collection !== null &&
+      previous !== null &&
+      collection.source === previous.source &&
+      collection.slug === previous.slug
+    const tokenId =
+      fromUrl !== ''
+        ? fromUrl
+        : collection !== null && acceptsTokenId(collection.source) && sameCollection
+          ? realActive.tokenId
+          : ''
+    resetCheck(realActive.id, { name: 'Task', url, tokenId })
+  }
+
+  function changeTokenId(tokenId: string) {
+    if (!realActive || mintingRef.has(realActive.id)) return
+    if (realActive.tokenId === tokenId) return
+    resetCheck(realActive.id, { tokenId })
+  }
+
+  function setWallets(ids: string[]) {
+    if (!realActive) return
+    resetCheck(realActive.id, {
       wallets: ids,
-      status: 'idle',
-      checked: false,
-      drop: null,
       stageUuid: '',
       quantityMax: 0,
       quantity: '1',
-      arm: null,
     })
   }
 
@@ -314,9 +338,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         drop = await fetchMintDrop(collection.source, collection.slug)
         if (stale()) return null
       }
-      // The collection URL is the only place a token ID is stated, so the drop carries
-      // what the operator typed rather than what the provider answered.
-      drop = { ...drop, tokenId: collection.tokenId }
+      // The provider states no token ID. The task's field carries the token a URL
+      // filled or the operator typed, and an OpenSea task never holds one.
+      drop = stampTaskToken(drop, task)
 
       // The SeaDrop restriction describes the OpenSea route. Scatter mints any
       // contract type through one endpoint, so the guard must not apply to it.
@@ -414,9 +438,11 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     if (!task || !task.drop || mintingRef.has(task.id)) return
 
     const id = task.id
-    // The re-checked drop wins: an armed fire re-reads the drop and re-applies the token
-    // from the URL, so the older copy must not be what the run mints against.
-    const drop = prepared?.drop ?? options.drop ?? task.drop
+    // The re-checked drop wins: an armed fire re-reads the drop, so the older copy must
+    // not be what the run mints against. The token is the task's, whatever copy the
+    // caller passed, and only a provider that mints editions may carry it.
+    const sourceDrop = prepared?.drop ?? options.drop ?? task.drop
+    const drop = stampTaskToken(sourceDrop, task)
     const refusal = startRefusalFor(
       task,
       prepared?.rows ?? scoped.get().runs[id] ?? [],
@@ -1101,6 +1127,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     addTask,
     closeTask,
     changeUrl,
+    changeTokenId,
     setWallets,
     selectStage,
     check,
