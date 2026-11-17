@@ -40,6 +40,7 @@ import {
 } from '@/lib/mint/run-mint'
 import type { PreparedMint } from '@/lib/mint/run-mint'
 import { chainTime, waitForReceipt } from '@/lib/chain/tx'
+import { runApprovals } from '@/lib/mint/approve'
 import {
   applyProbeVerdicts,
   blockTimeAt,
@@ -858,6 +859,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
                 txHash: undefined,
                 chain: undefined,
                 error: undefined,
+                log: undefined,
               })
             : row
         ),
@@ -903,6 +905,20 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         }))
       }
 
+      // A stop arrives exactly when the last transaction is in flight, so the record of
+      // what already reached the chain must outlive the guard the progress updates use.
+      const writeRun = (walletId: string, patch: Partial<WalletRun>) => {
+        updateRuns((current) => ({
+          ...current,
+          [id]: (current[id] ?? []).map((entry) =>
+            entry.walletId === walletId ? { ...entry, ...atStage(patch) } : entry
+          ),
+        }))
+      }
+
+      const appendLine = (log: string | undefined, line: string) =>
+        log === undefined || log === '' ? line : `${log}\n${line}`
+
       const broadcast: { walletId: string; chain: string; txHash: string }[] = []
 
       // Two wallets at a time, handed out in wallet-list order so wallet 0 is
@@ -922,7 +938,59 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           }))
           return
         }
+        let approvalLog = ''
         try {
+          // A token-priced list is granted here, inside the wallet's own turn, so the
+          // approval and the mint that spends it stay ordered. A native list pays no
+          // read and sends nothing.
+          const approval = await runApprovals({
+            wallet,
+            chainSlug: preparedEntry.transaction.chain,
+            allowances: preparedEntry.transaction.allowances,
+            gas: {
+              maxFeePerGas: gas.maxFeePerGas,
+              maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
+            },
+            shouldAbort: stopped,
+            onApproving: () =>
+              updateRun(wallet.id, (row) => ({
+                status: 'approving',
+                txHash: undefined,
+                chain: undefined,
+                error: undefined,
+                log: row.log,
+              })),
+          })
+          approvalLog = approval.log.join('\n')
+
+          if (approval.kind === 'failed') {
+            const stage =
+              approval.stage === 'balance' ? 'Balance check' : 'Approval'
+            updateRun(wallet.id, () => ({
+              status: 'failed',
+              error: approval.error,
+              log: appendLine(
+                approvalLog,
+                `${stage} failed: ${approval.error}`
+              ),
+            }))
+            return
+          }
+          if (approval.kind === 'aborted' || stopped()) {
+            if (approvalLog !== '') {
+              writeRun(wallet.id, {
+                status: 'failed',
+                error:
+                  'The run stopped after the approval; the mint was not sent.',
+                log: appendLine(
+                  approvalLog,
+                  'Mint not sent: the run stopped after the approval.'
+                ),
+              })
+            }
+            return
+          }
+
           const result = await mintForWallet({
             wallet,
             gas: preparedEntry.gasLimit
@@ -937,6 +1005,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
             txHash: result.txHash,
             chain: result.chain,
             mintedStages: [...row.mintedStages, liveStageUuid],
+            log: appendLine(approvalLog, `Mint ${result.txHash}.`),
           }))
           broadcast.push({
             walletId: wallet.id,
@@ -948,6 +1017,10 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           updateRun(wallet.id, () => ({
             status: 'failed',
             error: toMessage(error),
+            log: appendLine(
+              approvalLog,
+              `Mint failed: ${toMessage(error)}`
+            ),
           }))
         }
       })
@@ -957,14 +1030,22 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         if (stopped()) return
         try {
           const status = await waitForReceipt(entry.chain, entry.txHash)
-          updateRun(entry.walletId, () =>
+          updateRun(entry.walletId, (row) =>
             status === 'success'
               ? { status: 'confirmed' }
-              : { status: 'failed', error: 'Transaction reverted' }
+              : {
+                  status: 'failed',
+                  error: 'Transaction reverted',
+                  log: appendLine(
+                    row.log,
+                    'Mint failed: the transaction reverted.'
+                  ),
+                }
           )
         } catch (error) {
-          updateRun(entry.walletId, () => ({
+          updateRun(entry.walletId, (row) => ({
             error: toMessage(error),
+            log: appendLine(row.log, `Mint failed: ${toMessage(error)}`),
           }))
         }
       })
@@ -1001,6 +1082,11 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     if (!realActive) return
     clearArmState(realActive.id)
     updateTask(realActive.id, { arm: null })
+  }
+
+  function stopMint() {
+    if (!realActive) return
+    cancelMint(realActive.id)
   }
 
   async function prepareArmed(
@@ -1425,6 +1511,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     selectStage,
     check,
     startMint,
+    stopMint,
     armStage,
     disarmStage,
   }
