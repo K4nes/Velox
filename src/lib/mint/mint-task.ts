@@ -1,4 +1,5 @@
 import type { EligibilityRow } from '@/lib/opensea/eligibility'
+import type { MintAllowance } from '@/lib/mint/allowance'
 import type { DropInfo, DropStage } from '@/lib/opensea/index'
 
 export const MINT_COLUMNS = ['Wallet Profile', 'Address', 'Quantity', 'Execution Status']
@@ -27,18 +28,28 @@ export type RunStatus =
   | 'broadcast'
   | 'confirmed'
   | 'failed'
-  // The provider refused something the operator must fix in the task, such as a list
-  // priced in an ERC-20. Distinct from `failed`, which is a request that errored.
+  // The provider refused something the operator must fix in the task, such as a missing
+  // token ID. Distinct from `failed`, which is a request that errored.
   | 'blocked'
+  // The wallet holds the token but has not granted the spender enough allowance. The
+  // fix is an approval, not a task change, so it is distinct from `blocked`.
+  | 'needs-approval'
 
 // A build the check asked the provider for before the run. The verdict belongs to one
 // list, so a stage change cannot reuse it.
-export type ProbeStatus = 'eligible' | 'blocked' | 'failed'
+export type ProbeStatus =
+  | 'eligible'
+  | 'needs-approval'
+  | 'blocked'
+  | 'failed'
 
 export type MintProbe = {
   stageUuid: string
   status: ProbeStatus
   error?: string
+  // The allowance the build named, so the Cost panel can price the task in the token
+  // rather than the stage's native currency.
+  allowances: MintAllowance[]
 }
 
 export type WalletRun = {
@@ -83,6 +94,7 @@ export const RUN_LABEL: Record<RunStatus, string> = {
   confirmed: 'Confirmed',
   failed: 'Failed',
   blocked: 'Blocked',
+  'needs-approval': 'Needs approval',
 }
 
 export const RUN_TONE: Record<RunStatus, string> = {
@@ -95,6 +107,7 @@ export const RUN_TONE: Record<RunStatus, string> = {
   confirmed: 'text-success',
   failed: 'text-destructive',
   blocked: 'text-warning',
+  'needs-approval': 'text-warning',
 }
 
 export type Task = {
@@ -385,7 +398,11 @@ export function reasonFor(row: WalletRun, stageUuid: string): string | null {
   if (runOnStage(row, stageUuid) && !checkFailedRow) {
     return row.error ?? (row.status === 'blocked' ? BLOCKED_DEFAULT : null)
   }
-  if (probe?.status === 'blocked' || probe?.status === 'failed') {
+  if (
+    probe?.status === 'needs-approval' ||
+    probe?.status === 'blocked' ||
+    probe?.status === 'failed'
+  ) {
     return probe.error ?? (probe.status === 'blocked' ? BLOCKED_DEFAULT : null)
   }
   if (checkFailedRow) {
@@ -410,7 +427,10 @@ export function blockedReason(row: WalletRun, stageUuid: string): string | null 
 export function applyProbeVerdicts(
   rows: WalletRun[],
   stageUuid: string,
-  verdicts: ReadonlyMap<string, { status: ProbeStatus; error?: string }>
+  verdicts: ReadonlyMap<
+    string,
+    { status: ProbeStatus; error?: string; allowances?: MintAllowance[] }
+  >
 ): WalletRun[] {
   return rows.map((row) => {
     const verdict = verdicts.get(row.walletId)
@@ -422,7 +442,9 @@ export function applyProbeVerdicts(
     return {
       ...row,
       caps,
-      probe: verdict ? { stageUuid, ...verdict } : null,
+      probe: verdict
+        ? { stageUuid, ...verdict, allowances: verdict.allowances ?? [] }
+        : null,
     }
   })
 }
@@ -450,7 +472,9 @@ export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   // A block's fix is in the task, not in the wallet. It must never reach a batch,
   // and a stale rows map must not leak one in. A failed probe may be transient, so
   // the run's own build is allowed to answer it again.
-  if (probe?.status === 'blocked') return false
+  if (probe?.status === 'blocked' || probe?.status === 'needs-approval') {
+    return false
+  }
   // A successful build is the strongest answer: a failed list read or a stale cap
   // cannot hide it. A landing on this exact stage still retires the wallet.
   if (probe?.status === 'eligible') {
@@ -476,6 +500,7 @@ function runOwnsRow(status: RunStatus): boolean {
     case 'eligible':
     case 'ineligible':
     case 'scheduled':
+    case 'needs-approval':
       return false
     default: {
       const exhaustive: never = status
@@ -508,7 +533,11 @@ export function stageStatusFor(
   // over the free build's earlier answer. A list read that failed is not a run.
   if (runOnStage(run, stageUuid) && !checkFailedRow) return run.status
 
-  if (probe?.status === 'blocked' || probe?.status === 'failed') {
+  if (
+    probe?.status === 'needs-approval' ||
+    probe?.status === 'blocked' ||
+    probe?.status === 'failed'
+  ) {
     return probe.status
   }
   if (probe?.status === 'eligible') {
@@ -519,19 +548,38 @@ export function stageStatusFor(
   return verdict()
 }
 
-// A task that cannot start says how many rows the provider blocked. The provider's
-// wording for a row is in the execution log.
+// A task that cannot start counts the selected rows whose verdict is a fix outside the
+// batch: a provider block, or an allowance the wallet has not granted. The reason for
+// one row is in its execution log.
 export function startRefusalFor(
   task: Task,
   rows: WalletRun[]
 ): string | null {
-  const blocked = rows.filter(
-    (row) =>
-      task.wallets.includes(row.walletId) &&
-      blockedReason(row, task.stageUuid) !== null
-  )
-  if (blocked.length === 0) return null
-  return `${blocked.length} selected wallet${blocked.length === 1 ? ' is' : 's are'} blocked. Open the row log for the reason.`
+  const statuses = rows
+    .filter((row) => task.wallets.includes(row.walletId))
+    .map((row) => stageStatusFor(row, task.stageUuid, false))
+  const blocked = statuses.filter((status) => status === 'blocked').length
+  const needsApproval = statuses.filter(
+    (status) => status === 'needs-approval'
+  ).length
+  if (blocked === 0 && needsApproval === 0) return null
+
+  const parts: string[] = []
+  if (blocked > 0) {
+    parts.push(
+      `${blocked} selected wallet${blocked === 1 ? ' is' : 's are'} blocked`
+    )
+  }
+  if (needsApproval > 0) {
+    parts.push(
+      `${needsApproval} selected wallet${needsApproval === 1 ? ' needs' : 's need'} approval`
+    )
+  }
+  const hint =
+    needsApproval > 0
+      ? 'Open the row log for the token and amount.'
+      : 'Open the row log for the reason.'
+  return `${parts.join('; ')}. ${hint}`
 }
 
 export type TaskView = {
@@ -553,6 +601,10 @@ export type TaskView = {
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
+  // The token the selected list charges, taken from the first selected row's build.
+  // Null for a native mint, which keeps the stage's own price display.
+  allowanceUnit: MintAllowance | null
+  allowanceTotal: bigint | null
   totalNfts: number | null
   totalWei: bigint | null
 }
@@ -638,6 +690,21 @@ export function taskView(input: {
 
   const stagePriceWei = mintStage ? weiFromDecimal(mintStage.priceWei) : null
   const totalsApply = quantityReady && mintWalletCount > 0
+
+  let allowanceUnit: MintAllowance | null = null
+  for (const walletId of task.wallets) {
+    const row = activeRuns.find((entry) => entry.walletId === walletId)
+    const unit = row ? probeFor(row, task.stageUuid)?.allowances[0] : undefined
+    if (unit !== undefined) {
+      allowanceUnit = unit
+      break
+    }
+  }
+  const allowanceTotal =
+    allowanceUnit !== null && totalsApply
+      ? allowanceUnit.amount * BigInt(mintQuantity) * BigInt(mintWalletCount)
+      : null
+
   const totalNfts =
     mintStage !== null && totalsApply
       ? mintQuantity * unitSize * mintWalletCount
@@ -666,6 +733,8 @@ export function taskView(input: {
     canStartMint,
     mintStage,
     stagePriceWei,
+    allowanceUnit,
+    allowanceTotal,
     totalNfts,
     totalWei,
   }

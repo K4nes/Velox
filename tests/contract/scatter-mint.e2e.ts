@@ -60,9 +60,9 @@ const nativeBuild = {
   erc20s: [],
 }
 
-// The refusal exists to stop a token-priced mint, so an allowance list whose shape cannot
-// be read must refuse. Reading it as "no allowance" is the one failure that lets the mint
-// through, so the message is captured rather than the throw simply asserted.
+// The refusal exists to stop a token-priced mint whose requirement cannot be resolved.
+// Reading it as "no allowance" is the one failure that lets the mint through, so the
+// message is captured rather than the throw simply asserted.
 function refusalFrom(body: unknown): string {
   try {
     toScatterMintBuild(body)
@@ -96,19 +96,32 @@ test('the recorded build parses, and an allowance list it cannot read refuses', 
   // Each unknown shape refuses, and a native answer above proves it fails for the shape
   // alone rather than because the parser rejects everything.
   expect(refusalFrom(nativeBuild)).toBe('')
-  expect(refusalFrom({ ...nativeBuild, erc20s: {} })).toMatch(/cannot read/)
-  expect(refusalFrom({ ...nativeBuild, erc20s: 'none' })).toMatch(/cannot read/)
+  expect(refusalFrom({ ...nativeBuild, erc20s: {} })).toMatch(/cannot resolve/)
+  expect(refusalFrom({ ...nativeBuild, erc20s: 'none' })).toMatch(/cannot resolve/)
   // An entry with no address is the same unknown, not an absence.
   expect(refusalFrom({ ...nativeBuild, erc20s: [{ amount: '1' }] })).toMatch(
-    /cannot read/
+    /cannot resolve/
   )
-  // An address with an unreadable amount still names the token, so it refuses as itself.
+  // An address with an unreadable amount cannot be resolved to a base-unit value.
   expect(
     refusalFrom({
       ...nativeBuild,
       erc20s: [{ address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' }],
     })
-  ).toMatch(/allowance for/)
+  ).toMatch(/cannot resolve/)
+  // A shape that parses still needs a collection to be the spender; without one the
+  // allowance target is unresolved and the build refuses before any signature.
+  expect(
+    refusalFrom({
+      ...nativeBuild,
+      erc20s: [
+        {
+          address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+          amount: '1',
+        },
+      ],
+    })
+  ).toMatch(/spender Velox cannot resolve/)
 })
 
 test('the recorded ERC-20 build pins the collection as the allowance spender', () => {
@@ -150,8 +163,22 @@ test('the recorded ERC-20 build pins the collection as the allowance spender', (
   const spender = request.collectionAddress
   expect(transaction?.to?.toLowerCase()).toBe(spender.toLowerCase())
 
-  // The committed parser consumes this real answer and refuses it before any signature.
-  expect(refusalFrom(erc20Recording.body)).toContain(
-    'ERC-20 allowance for 20000000000000000000 base units'
+  // The committed parser consumes this real answer: the token amount, the collection
+  // spender and the display metadata all resolve, and nothing is signed by a parse.
+  const build = toScatterMintBuild(erc20Recording.body, {
+    collectionAddress: request.collectionAddress,
+  })
+  expect(build.allowances).toHaveLength(1)
+  const parsed = build.allowances[0]
+  expect(parsed?.token.toLowerCase()).toBe(allowance.address.toLowerCase())
+  expect(parsed?.amount).toBe(20n * 10n ** 18n)
+  expect(parsed?.symbol).toBe('Basecat')
+  expect(parsed?.decimals).toBe(18)
+  // The pinned decision: the recorded target equals the collection, so the spender is
+  // both the collection address and the transaction target here. A later recording that
+  // targets another contract must keep resolving the spender from the collection.
+  expect(parsed?.spender.toLowerCase()).toBe(spender.toLowerCase())
+  expect(parsed?.spender.toLowerCase()).toBe(
+    transaction?.to?.toLowerCase() ?? ''
   )
 })

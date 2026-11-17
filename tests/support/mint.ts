@@ -145,12 +145,17 @@ export async function prepareMintRun(options: {
   }
 }
 
+/** One `eth_call` the mocked chain saw. `selector` proves which read was made. */
+export type MintCall = { to: string; selector: string }
+
 /**
  * Answers the chain's JSON-RPC in memory, so a mint broadcasts and settles without a
  * node. `sendDelayMs` holds that wallet's broadcast open and `receiptDelayMs` the
  * receipt, which makes one overlap assertion observable. `revert` answers a failed
  * receipt, so a test can prove a reverted send is not a landing. The events keep each
- * request's arrival time.
+ * request's arrival time, and `calls` records each `eth_call` by target and selector so
+ * a native test can prove no allowance read happened. Token balances and allowances are
+ * answered from the base-unit values a test states; an unmatched call reads zero.
  */
 export async function mockMintRpc(options: {
   browser: Browser
@@ -158,10 +163,25 @@ export async function mockMintRpc(options: {
   receiptDelayMs?: number
   nowMs?: number
   revert?: boolean
-}): Promise<{ events: MintEvent[] }> {
+  tokenBalances?: { token: string; owner: string; balance: string }[]
+  tokenAllowances?: { token: string; owner: string; spender: string; allowance: string }[]
+}): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
   const nowMs = options.nowMs ?? Date.now()
   const events: MintEvent[] = []
+  const calls: MintCall[] = []
+  const balanceByKey = new Map(
+    (options.tokenBalances ?? []).map((entry) => [
+      `${entry.token.toLowerCase()}:${entry.owner.toLowerCase()}`,
+      entry.balance,
+    ])
+  )
+  const allowanceByKey = new Map(
+    (options.tokenAllowances ?? []).map((entry) => [
+      `${entry.token.toLowerCase()}:${entry.owner.toLowerCase()}:${entry.spender.toLowerCase()}`,
+      entry.allowance,
+    ])
+  )
   const sendDelayByAddress = new Map(
     options.wallets.map((wallet) => [
       wallet.address.toLowerCase(),
@@ -258,6 +278,24 @@ export async function mockMintRpc(options: {
         })
         return
       }
+      case 'eth_call': {
+        const call = (params[0] ?? {}) as { to?: string; data?: string }
+        const to = (call.to ?? '').toLowerCase()
+        const data = call.data ?? ''
+        const selector = data.slice(0, 10)
+        calls.push({ to, selector })
+        let value = '0'
+        if (selector === '0x70a08231') {
+          const owner = `0x${data.slice(34, 74)}`.toLowerCase()
+          value = balanceByKey.get(`${to}:${owner}`) ?? '0'
+        } else if (selector === '0xdd62ed3e') {
+          const owner = `0x${data.slice(34, 74)}`.toLowerCase()
+          const spender = `0x${data.slice(98, 138)}`.toLowerCase()
+          value = allowanceByKey.get(`${to}:${owner}:${spender}`) ?? '0'
+        }
+        await answer(route, `0x${BigInt(value).toString(16).padStart(64, '0')}`)
+        return
+      }
       default:
         await route.fulfill({
           status: 200,
@@ -275,7 +313,7 @@ export async function mockMintRpc(options: {
 
   await options.browser.route(/rpc\.velox\.test/, handleRpc)
 
-  return { events }
+  return { events, calls }
 }
 
 /**
@@ -640,12 +678,19 @@ export type ScatterList = {
 }
 
 /** One mint build as the Scatter API states it: unsigned calldata plus every token
- * allowance the list wants. A native-currency list states none. */
+ * allowance the list wants. A native-currency list states none. `listPayments` names the
+ * token's symbol and decimals, which is the only display metadata a build carries. */
 export type ScatterMintAnswer = {
   to?: string
   data?: string
   value?: string
   erc20s?: { address: string; amount: string }[]
+  listPayments?: {
+    currencyAddress: string
+    currencySymbol: string
+    currencyDecimals: number
+    unitPaymentValue: string
+  }[]
 }
 
 /** A mint build the mocked Scatter API saw, parsed. */
@@ -802,6 +847,7 @@ export async function mockScatterNetwork(options: {
           value: answer?.value ?? '0',
         },
         erc20s: answer?.erc20s ?? [],
+        listPayments: answer?.listPayments ?? [],
       },
     })
   })

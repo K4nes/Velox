@@ -39,5 +39,6 @@ export async function buildScatterMint(input: {
     to: transaction.to,
     data: transaction.data,
     value: transaction.value,
+    allowances: transaction.allowances,
   }
 }

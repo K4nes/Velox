@@ -20,6 +20,12 @@ come from the Conventional Commit history (`COMMIT.md`).
   any other refusal fails the row. The error detail opens from a `Logs` link in the status
   cell, so the table keeps its four columns and the panel keeps no second copy. Changing
   the Mint Stage clears the verdict and probes the new list ([#125]).
+- Check reads an ERC-20-priced Scatter build's token, spender, wallet balance and
+  allowance, then marks each row Eligible, Needs approval, Blocked or Failed. An
+  allowance-short row disables Start and arming, the log names the token, amount, spender,
+  balance and allowance, and the Cost panel prices the task in that token. A native list
+  keeps its old path and reads neither balance nor allowance; Check sends no transaction
+  ([#135]).
 - A Scatter task carries a Token ID. A `scatter.art/c/{slug}/{tokenId}` URL fills the
   field, a typed ID works without a token page, and the ID reaches the Scatter mint
   request so an ERC-1155 edition mints on its own. Changing the token clears the earlier
@@ -233,6 +239,7 @@ consolidated into a single entry.
 [#115]: https://github.com/K4nes/Velox/issues/115
 [#117]: https://github.com/K4nes/Velox/pull/117
 [#125]: https://github.com/K4nes/Velox/issues/125
+[#135]: https://github.com/K4nes/Velox/issues/135
 [#120]: https://github.com/K4nes/Velox/pull/120
 [#123]: https://github.com/K4nes/Velox/issues/123
 [#124]: https://github.com/K4nes/Velox/issues/124

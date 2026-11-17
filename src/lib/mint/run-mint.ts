@@ -35,8 +35,8 @@ export type MintReadiness = {
 }
 
 // Sends calldata that was already built. It cannot build: the batch reads every wallet's
-// build before any send starts, so an allowance refusal can never arrive after another
-// wallet has signed.
+// build before any send starts, so an unresolved allowance refusal can never arrive after
+// another wallet has signed.
 export async function mintForWallet(input: {
   wallet: StoredWallet
   gas: TxGas
@@ -93,10 +93,11 @@ export function pinnedGasLimitOf(task: Task): bigint | undefined {
   return Number.isFinite(value) && value > 0 ? BigInt(value) : undefined
 }
 
-// Reads every selected wallet's build before any wallet signs. A build that answers with an
-// ERC-20 allowance is refused here, because that fix is in the task, and a run that sent
-// one wallet first would spend before the refusal was known. Any other build failure is
-// left to the wallet's own row, as before.
+// Reads every selected wallet's build before any wallet signs. A build whose allowance
+// requirement cannot be resolved is refused here, because that fix is in the task, and a
+// run that sent one wallet first would spend before the refusal was known. A resolved
+// allowance is not a refusal; the check reads it and the row carries the verdict. Any
+// other build failure is left to the wallet's own row, as before.
 export async function buildMintBatch(input: {
   drop: DropInfo
   stageUuid: string
@@ -108,7 +109,7 @@ export async function buildMintBatch(input: {
   entries: Map<string, PreparedMintEntry>
   refusal: string | null
   // Why a wallet has no calldata, when its build failed for a reason other than an
-  // allowance. The send loop reports it rather than building again.
+  // unresolved allowance. The send loop reports it rather than building again.
   failures: Map<string, string>
 }> {
   const entries = new Map<string, PreparedMintEntry>(input.prepared)
@@ -116,8 +117,9 @@ export async function buildMintBatch(input: {
   let refusal: string | null = null
 
   // Waves, not one shared cursor. A cursor hands the next wallet to whichever worker frees
-  // first, so that wallet is already building when a sibling's allowance answer lands, and
-  // the refusal stops nothing. A wave waits for its own answers before the next starts.
+  // first, so that wallet is already building when a sibling's unresolved-allowance
+  // answer lands, and the refusal stops nothing. A wave waits for its own answers
+  // before the next starts.
   for (let index = 0; index < input.wallets.length; index += WALLET_CONCURRENCY) {
     if (refusal !== null || !input.isCurrent()) break
 

@@ -849,8 +849,8 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         ),
       }))
 
-      // A build can ask for an ERC-20 allowance its list did not state. That refusal is
-      // the task's, not the wallet's, so every build is read before any wallet signs.
+      // A build whose allowance requirement cannot be resolved is the task's problem,
+      // not the wallet's, so every build is read before any wallet signs.
       const batch = await buildMintBatch({
         drop,
         stageUuid: liveStageUuid,
@@ -897,8 +897,8 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         if (stopped()) return
         const preparedEntry = calldata.get(wallet.id)
         // No calldata means this wallet was never built, and the send path cannot build.
-        // That is what keeps an allowance refusal from arriving after another wallet has
-        // signed, so the row reports why it was skipped instead.
+        // That is what keeps an unresolved allowance refusal from arriving after another
+        // wallet has signed, so the row reports why it was skipped instead.
         if (!preparedEntry) {
           updateRun(wallet.id, () => ({
             status: 'failed',

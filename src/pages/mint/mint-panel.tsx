@@ -17,6 +17,7 @@ import {
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import { amountLabel } from '@/lib/mint/amount'
+import { allowanceAmountLabel } from '@/lib/mint/allowance'
 import {
   countdownLabel,
   mintModes,
@@ -102,6 +103,8 @@ export function MintPanel({
     stagePriceWei,
     totalWei,
     mintStage,
+    allowanceUnit,
+    allowanceTotal,
     totalNfts,
   } = view
 
@@ -302,9 +305,11 @@ export function MintPanel({
           <SummaryLine
             label="Unit Price"
             value={
-              stagePriceWei !== null
-                ? amountLabel(stagePriceWei, mintStage)
-                : '—'
+              allowanceUnit !== null
+                ? allowanceAmountLabel(allowanceUnit, allowanceUnit.amount)
+                : stagePriceWei !== null
+                  ? amountLabel(stagePriceWei, mintStage)
+                  : '—'
             }
           />
           <SummaryLine
@@ -314,11 +319,13 @@ export function MintPanel({
           <SummaryLine
             label="Estimated Cost"
             value={
-              totalWei !== null
-                ? amountLabel(totalWei, mintStage)
-                : stagePriceWei !== null
-                  ? `0 ${mintStage?.currency?.symbol ?? 'ETH'}`
-                  : '—'
+              allowanceUnit !== null
+                ? allowanceAmountLabel(allowanceUnit, allowanceTotal ?? 0n)
+                : totalWei !== null
+                  ? amountLabel(totalWei, mintStage)
+                  : stagePriceWei !== null
+                    ? `0 ${mintStage?.currency?.symbol ?? 'ETH'}`
+                    : '—'
             }
             emphasis
           />
