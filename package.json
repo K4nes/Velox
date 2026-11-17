@@ -51,7 +51,7 @@
     "viem": "^2.57.13"
   },
   "devDependencies": {
-    "@e2e-dev/web": "^0.15.5",
+    "@e2e-dev/web": "^0.16.0",
     "@tauri-apps/cli": "^2.12.4",
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
@@ -59,7 +59,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
-    "e2e": "^0.23.0",
+    "e2e": "^0.23.1",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
