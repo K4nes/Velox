@@ -11,6 +11,29 @@ const OUT_DIR = join(ROOT, 'tests', 'contract')
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
 
+const NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
+
+// A mint build is a POST that names the collection, the chain and one list. The recorder
+// reads the collection and its lists the way the app does, so a recording cannot name a
+// list the API did not answer with. The build is unsigned calldata: nothing is signed.
+async function scatterMintRequest(base, slug, pickList, missing) {
+  const collection = await fetchJson(`${base}/collection/${encodeURIComponent(slug)}`)
+  const lists = await fetchJson(
+    `${base}/collection/${encodeURIComponent(slug)}/eligible-invite-lists`
+  )
+  const list = pickList(Array.isArray(lists) ? lists : [])
+  if (collection?.address === undefined || list?.id === undefined) {
+    fail(missing)
+  }
+  return {
+    collectionAddress: collection.address,
+    chainId: collection.chain_id,
+    // A build signs nothing, so the minter is a placeholder rather than a key.
+    minterAddress: '0x0000000000000000000000000000000000000001',
+    lists: [{ id: list.id, quantity: 1 }],
+  }
+}
+
 // `auth` names the env var holding the key; a public endpoint names none.
 const FAMILIES = {
   collectionListings: {
@@ -29,25 +52,33 @@ const FAMILIES = {
     base: 'https://api.scatter.art/v1',
     path: () => '/mint',
     method: 'POST',
-    request: async (base, slug) => {
-      const collection = await fetchJson(
-        `${base}/collection/${encodeURIComponent(slug)}`
-      )
-      const lists = await fetchJson(
-        `${base}/collection/${encodeURIComponent(slug)}/eligible-invite-lists`
-      )
-      const list = Array.isArray(lists) ? lists[0] : undefined
-      if (collection?.address === undefined || list?.id === undefined) {
-        fail(`${slug} has no collection address or no mint list`)
-      }
-      return {
-        collectionAddress: collection.address,
-        chainId: collection.chain_id,
-        // A build signs nothing, so the minter is a placeholder rather than a key.
-        minterAddress: '0x0000000000000000000000000000000000000001',
-        lists: [{ id: list.id, quantity: 1 }],
-      }
-    },
+    request: (base, slug) =>
+      scatterMintRequest(
+        base,
+        slug,
+        (lists) => lists[0],
+        `${slug} has no collection address or no mint list`
+      ),
+  },
+  // The same build, recorded from the collection's first token-priced list. The
+  // answer carries the allowance a native list leaves empty, so the contract test
+  // reads the real token address and base-unit amount rather than a hand-written one.
+  scatterMintErc20: {
+    base: 'https://api.scatter.art/v1',
+    path: () => '/mint',
+    method: 'POST',
+    request: (base, slug) =>
+      scatterMintRequest(
+        base,
+        slug,
+        (lists) =>
+          lists.find(
+            (entry) =>
+              typeof entry?.currency_address === 'string' &&
+              entry.currency_address.toLowerCase() !== NATIVE_CURRENCY
+          ),
+        `${slug} has no collection address or no ERC-20 mint list`
+      ),
   },
 }
 
