@@ -27,17 +27,20 @@ export function allowanceAmountLabel(
 // The log line the row carries: what the token wanted, who moves it, and what the
 // wallet holds and has granted. The wording stays stable because e2e tests assert
 // these words, and the operator reads the same line the verdict was taken from.
+// `required` is the amount the task's quantity needs, while the allowance keeps the
+// per-unit amount the build stated.
 export function allowanceLog(
   reads: readonly {
     allowance: MintAllowance
+    required: bigint
     balance: bigint
     approved: bigint
   }[],
   verdict: 'needs-approval' | 'blocked'
 ): string {
-  const lines = reads.map(({ allowance, balance, approved }) => {
+  const lines = reads.map(({ allowance, required, balance, approved }) => {
     return [
-      `Allowance ${allowanceAmountLabel(allowance, allowance.amount)} (${allowance.amount} base units).`,
+      `Allowance ${allowanceAmountLabel(allowance, required)} (${required} base units).`,
       `Token ${allowance.token}; ${
         allowance.symbol !== undefined && allowance.decimals !== undefined
           ? `symbol ${allowance.symbol}, decimals ${allowance.decimals}`
@@ -49,19 +52,19 @@ export function allowanceLog(
   })
 
   if (verdict === 'needs-approval') {
-    const short = reads.filter((read) => read.approved < read.allowance.amount)
+    const short = reads.filter((read) => read.approved < read.required)
     const shortBy = short
       .map((read) =>
-        allowanceAmountLabel(read.allowance, read.allowance.amount - read.approved)
+        allowanceAmountLabel(read.allowance, read.required - read.approved)
       )
       .join(', ')
     lines.push('Approval is required before this wallet can mint.')
     lines.push(`The allowance is short by ${shortBy}.`)
   } else {
-    const short = reads.filter((read) => read.balance < read.allowance.amount)
+    const short = reads.filter((read) => read.balance < read.required)
     const shortBy = short
       .map((read) =>
-        allowanceAmountLabel(read.allowance, read.allowance.amount - read.balance)
+        allowanceAmountLabel(read.allowance, read.required - read.balance)
       )
       .join(', ')
     lines.push(`The balance is short by ${shortBy}.`)

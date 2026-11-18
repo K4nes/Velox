@@ -47,6 +47,9 @@ export type MintProbe = {
   stageUuid: string
   status: ProbeStatus
   error?: string
+  // The allowance amounts are per unit (the build was made at quantity 1), so the
+  // quantity the verdict priced is what tells a later, larger task quantity apart.
+  quantity?: number
   // The allowance the build named, so the Cost panel can price the task in the token
   // rather than the stage's native currency.
   allowances: MintAllowance[]
@@ -136,6 +139,13 @@ export type Task = {
 }
 
 export type TaskPatch = Partial<Omit<Task, 'id'>>
+
+// The quantity the task asks for, in the same positive-integer terms the panel
+// validates. Anything else falls back to the one the check always proves.
+export function taskQuantity(task: Pick<Task, 'quantity'>): number {
+  const parsed = Number.parseInt(task.quantity, 10)
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1
+}
 
 const PLACEHOLDER_ID = 'placeholder'
 
@@ -429,7 +439,12 @@ export function applyProbeVerdicts(
   stageUuid: string,
   verdicts: ReadonlyMap<
     string,
-    { status: ProbeStatus; error?: string; allowances?: MintAllowance[] }
+    {
+      status: ProbeStatus
+      error?: string
+      allowances?: MintAllowance[]
+      quantity?: number
+    }
   >
 ): WalletRun[] {
   return rows.map((row) => {
@@ -465,6 +480,11 @@ export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   const probe = probeFor(row, stageUuid)
   const checkFailedRow = row.checkFailed && row.statusStage === stageUuid
   if (checkFailedRow && probe?.status !== 'eligible') return false
+
+  // An allowance read that failed leaves the wallet's token position unknown, so the
+  // batch must not include it. A failed native build carries no allowance and stays
+  // here: the run's own build is allowed to answer it again.
+  if (probe?.status === 'failed' && probe.allowances.length > 0) return false
 
   // A block a run already reached is newer than the probe and must keep the row
   // out of the next batch. A block on another list does not.
@@ -549,20 +569,45 @@ export function stageStatusFor(
 }
 
 // A task that cannot start counts the selected rows whose verdict is a fix outside the
-// batch: a provider block, or an allowance the wallet has not granted. The reason for
-// one row is in its execution log.
+// batch: a provider block, an allowance the wallet has not granted, a token read that
+// failed, or a verdict priced for a smaller quantity than the task now asks for. The
+// reason for one row is in its execution log.
 export function startRefusalFor(
   task: Task,
   rows: WalletRun[]
 ): string | null {
-  const statuses = rows
+  const selected = rows
     .filter((row) => task.wallets.includes(row.walletId))
-    .map((row) => stageStatusFor(row, task.stageUuid, false))
-  const blocked = statuses.filter((status) => status === 'blocked').length
-  const needsApproval = statuses.filter(
-    (status) => status === 'needs-approval'
+    .map((row) => ({
+      row,
+      status: stageStatusFor(row, task.stageUuid, false),
+      probe: probeFor(row, task.stageUuid),
+    }))
+  const blocked = selected.filter((entry) => entry.status === 'blocked').length
+  const needsApproval = selected.filter(
+    (entry) => entry.status === 'needs-approval'
   ).length
-  if (blocked === 0 && needsApproval === 0) return null
+  // The token position is unknown when the allowance read itself failed. A failed
+  // native build carries no allowance and is not this.
+  const failed = selected.filter(
+    (entry) =>
+      entry.status === 'failed' &&
+      entry.probe?.status === 'failed' &&
+      entry.probe.allowances.length > 0
+  ).length
+  // The verdict priced a smaller quantity than the task now requests, so its
+  // balance and allowance answers no longer cover the mint.
+  const quantity = taskQuantity(task)
+  const stale = selected.filter(
+    (entry) =>
+      entry.probe?.status === 'eligible' &&
+      entry.probe.allowances.length > 0 &&
+      (entry.probe.quantity ?? 0) < quantity &&
+      mintableRow(entry.row, task.stageUuid)
+  ).length
+  if (blocked === 0 && needsApproval === 0 && failed === 0 && stale === 0) {
+    return null
+  }
 
   const parts: string[] = []
   if (blocked > 0) {
@@ -575,10 +620,25 @@ export function startRefusalFor(
       `${needsApproval} selected wallet${needsApproval === 1 ? ' needs' : 's need'} approval`
     )
   }
-  const hint =
-    needsApproval > 0
-      ? 'Open the row log for the token and amount.'
-      : 'Open the row log for the reason.'
+  if (failed > 0) {
+    parts.push(
+      `${failed} selected wallet${failed === 1 ? ' could' : 's could'} not be checked for the token`
+    )
+  }
+  if (stale > 0) {
+    parts.push(
+      `${stale} selected wallet${stale === 1 ? ' was' : 's were'} checked for a smaller quantity`
+    )
+  }
+
+  let hint: string
+  if (needsApproval > 0 && blocked === 0 && failed === 0 && stale === 0) {
+    hint = 'Open the row log for the token and amount.'
+  } else if (failed > 0 || stale > 0) {
+    hint = 'Run Check again before starting.'
+  } else {
+    hint = 'Open the row log for the reason.'
+  }
   return `${parts.join('; ')}. ${hint}`
 }
 
@@ -601,10 +661,15 @@ export type TaskView = {
   canStartMint: boolean
   mintStage: DropStage | null
   stagePriceWei: bigint | null
-  // The token the selected list charges, taken from the first selected row's build.
-  // Null for a native mint, which keeps the stage's own price display.
-  allowanceUnit: MintAllowance | null
-  allowanceTotal: bigint | null
+  // Every token the selected list charges, taken from the first selected row whose
+  // probe names any. Empty for a native mint, which keeps the stage's own price
+  // display. A multi-token list must keep all of them, not just the first.
+  allowanceUnits: MintAllowance[]
+  // Each unit's amount scaled by the task quantity and the mintable wallets. Empty
+  // until both are known.
+  allowanceTotals: bigint[]
+  // Why Start is refused in the task's own terms, or null when it is offered.
+  startRefusal: string | null
   totalNfts: number | null
   totalWei: bigint | null
 }
@@ -691,19 +756,21 @@ export function taskView(input: {
   const stagePriceWei = mintStage ? weiFromDecimal(mintStage.priceWei) : null
   const totalsApply = quantityReady && mintWalletCount > 0
 
-  let allowanceUnit: MintAllowance | null = null
+  let allowanceUnits: MintAllowance[] = []
   for (const walletId of task.wallets) {
     const row = activeRuns.find((entry) => entry.walletId === walletId)
-    const unit = row ? probeFor(row, task.stageUuid)?.allowances[0] : undefined
-    if (unit !== undefined) {
-      allowanceUnit = unit
+    const units = row ? probeFor(row, task.stageUuid)?.allowances : undefined
+    if (units !== undefined && units.length > 0) {
+      allowanceUnits = [...units]
       break
     }
   }
-  const allowanceTotal =
-    allowanceUnit !== null && totalsApply
-      ? allowanceUnit.amount * BigInt(mintQuantity) * BigInt(mintWalletCount)
-      : null
+  const allowanceTotals = totalsApply
+    ? allowanceUnits.map(
+        (unit) =>
+          unit.amount * BigInt(mintQuantity) * BigInt(mintWalletCount)
+      )
+    : []
 
   const totalNfts =
     mintStage !== null && totalsApply
@@ -733,8 +800,9 @@ export function taskView(input: {
     canStartMint,
     mintStage,
     stagePriceWei,
-    allowanceUnit,
-    allowanceTotal,
+    allowanceUnits,
+    allowanceTotals,
+    startRefusal,
     totalNfts,
     totalWei,
   }

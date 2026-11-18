@@ -103,8 +103,9 @@ export function MintPanel({
     stagePriceWei,
     totalWei,
     mintStage,
-    allowanceUnit,
-    allowanceTotal,
+    allowanceUnits,
+    allowanceTotals,
+    startRefusal,
     totalNfts,
   } = view
 
@@ -305,8 +306,10 @@ export function MintPanel({
           <SummaryLine
             label="Unit Price"
             value={
-              allowanceUnit !== null
-                ? allowanceAmountLabel(allowanceUnit, allowanceUnit.amount)
+              allowanceUnits.length > 0
+                ? allowanceUnits
+                    .map((unit) => allowanceAmountLabel(unit, unit.amount))
+                    .join(' + ')
                 : stagePriceWei !== null
                   ? amountLabel(stagePriceWei, mintStage)
                   : '—'
@@ -319,8 +322,12 @@ export function MintPanel({
           <SummaryLine
             label="Estimated Cost"
             value={
-              allowanceUnit !== null
-                ? allowanceAmountLabel(allowanceUnit, allowanceTotal ?? 0n)
+              allowanceUnits.length > 0
+                ? allowanceUnits
+                    .map((unit, index) =>
+                      allowanceAmountLabel(unit, allowanceTotals[index] ?? 0n)
+                    )
+                    .join(' + ')
                 : totalWei !== null
                   ? amountLabel(totalWei, mintStage)
                   : stagePriceWei !== null
@@ -353,6 +360,7 @@ export function MintPanel({
             className="h-10 w-full"
             onClick={() => (isLiveStage ? onStart() : onArm())}
             disabled={!canStartMint}
+            title={startRefusal ?? undefined}
           >
             {isMinting ? 'Minting…' : 'Start Mint'}
           </Button>

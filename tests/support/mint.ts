@@ -163,6 +163,12 @@ export async function mockMintRpc(options: {
   receiptDelayMs?: number
   nowMs?: number
   revert?: boolean
+  // Answers every `eth_call` with a JSON-RPC error, so a failed allowance read is
+  // observable without a second route.
+  callError?: string
+  // The on-chain symbol/decimals a token states, which a build without payment
+  // metadata leaves to the chain.
+  tokenMetadata?: { token: string; symbol: string; decimals: number }[]
   tokenBalances?: { token: string; owner: string; balance: string }[]
   tokenAllowances?: { token: string; owner: string; spender: string; allowance: string }[]
 }): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
@@ -170,6 +176,12 @@ export async function mockMintRpc(options: {
   const nowMs = options.nowMs ?? Date.now()
   const events: MintEvent[] = []
   const calls: MintCall[] = []
+  const metadataByToken = new Map(
+    (options.tokenMetadata ?? []).map((entry) => [
+      entry.token.toLowerCase(),
+      entry,
+    ])
+  )
   const balanceByKey = new Map(
     (options.tokenBalances ?? []).map((entry) => [
       `${entry.token.toLowerCase()}:${entry.owner.toLowerCase()}`,
@@ -188,6 +200,18 @@ export async function mockMintRpc(options: {
       wallet.sendDelayMs ?? 0,
     ])
   )
+
+  // ABI-encoded `string`, the shape a token's `symbol()` answer takes.
+  function abiString(value: string): string {
+    const bytes = new TextEncoder().encode(value)
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, '0')
+    ).join('')
+    const offset = (32).toString(16).padStart(64, '0')
+    const length = bytes.length.toString(16).padStart(64, '0')
+    const padded = hex.padEnd(Math.ceil(bytes.length / 32) * 64, '0')
+    return `0x${offset}${length}${padded}`
+  }
 
   async function answer(route: WebRoute, result: JsonValue) {
     const request = JSON.parse(route.request.postData ?? '{}') as { id?: JsonValue }
@@ -284,6 +308,29 @@ export async function mockMintRpc(options: {
         const data = call.data ?? ''
         const selector = data.slice(0, 10)
         calls.push({ to, selector })
+        if (options.callError !== undefined) {
+          await route.fulfill({
+            status: 200,
+            json: {
+              jsonrpc: '2.0',
+              id: request.id ?? null,
+              error: { code: -32000, message: options.callError },
+            },
+          })
+          return
+        }
+        const metadata = metadataByToken.get(to)
+        if (selector === '0x95d89b41' && metadata !== undefined) {
+          await answer(route, abiString(metadata.symbol))
+          return
+        }
+        if (selector === '0x313ce567' && metadata !== undefined) {
+          await answer(
+            route,
+            `0x${BigInt(metadata.decimals).toString(16).padStart(64, '0')}`
+          )
+          return
+        }
         let value = '0'
         if (selector === '0x70a08231') {
           const owner = `0x${data.slice(34, 74)}`.toLowerCase()

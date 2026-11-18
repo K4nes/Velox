@@ -57,6 +57,7 @@ import {
   startRefusalFor,
   stageLiveAt,
   stageStatusFor,
+  taskQuantity,
   taskView,
 } from '@/lib/mint/mint-task'
 import type {
@@ -107,6 +108,7 @@ type ProbeRowsInput = {
   stageUuid: string
   baseRows: WalletRun[]
   wallets: StoredWallet[]
+  quantity: number
   epoch?: number
   isCurrent?: () => boolean
 }
@@ -185,6 +187,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
   function updateActive(patch: TaskPatch) {
     if (!realActive) return
+    // A quantity change invalidates the quantity the check priced, so an armed task
+    // must not count down to a mint its verdict no longer covers.
+    if ('quantity' in patch) {
+      clearArmState(realActive.id)
+      updateTask(realActive.id, { ...patch, arm: null })
+      return
+    }
     updateTask(realActive.id, patch)
   }
 
@@ -238,6 +247,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       stageUuid,
       baseRows,
       wallets,
+      quantity,
       epoch: providedEpoch,
       isCurrent,
     } = input
@@ -248,6 +258,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       drop,
       listId: stageUuid,
       wallets,
+      quantity,
       isCurrent: () =>
         probeEpochRef.get(id) === epoch && (isCurrent?.() ?? true),
     })
@@ -291,6 +302,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         stage,
         baseRows,
         wallets,
+        quantity: taskQuantity(task),
         epoch,
       })
       if (probed === null) return
@@ -493,6 +505,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     const id = task.id
     const url = task.url
     const walletIds = [...task.wallets]
+    const probeQuantity = taskQuantity(task)
     bumpProbeEpoch(id)
     const run = (runsRef.get(id) ?? 0) + 1
     runsRef.set(id, run)
@@ -583,6 +596,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           stage: target,
           baseRows,
           wallets: selected,
+          quantity: probeQuantity,
           isCurrent,
         })
         return stale()
