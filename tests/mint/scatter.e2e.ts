@@ -127,6 +127,9 @@ const RECORDED_TOKEN_ADDRESS = RECORDED_TOKEN.toLowerCase()
 const RECORDED_AMOUNT = BigInt(RECORDED_ALLOWANCE.amount)
 const COVERING_BALANCE = ((RECORDED_AMOUNT * 5n) / 4n).toString()
 
+// A second real ERC-20, so a two-token build names a token the recorded build does not.
+const SECOND_TOKEN_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+
 /** A wallet that holds the recorded token and has granted none of it. */
 const shortAllowance = (owner: string, token = RECORDED_TOKEN) => ({
   token,
@@ -149,6 +152,10 @@ type TokenListOptions = {
   revertTo?: string[]
   /** Holds a wallet's broadcast response open, so a stop can arrive mid-send. */
   sendDelayMs?: number
+  /** Holds every build response open, so a stop can arrive mid-build. */
+  mintDelayMs?: number
+  /** Tokens whose balance and allowance reads answer an RPC error. */
+  failCalls?: string[]
 }
 
 /**
@@ -179,6 +186,7 @@ async function seedTokenList(options: TokenListOptions) {
       erc20s: [RECORDED_ALLOWANCE],
       listPayments: RECORDED_LIST_PAYMENTS,
     },
+    mintDelayMs: options.mintDelayMs,
   })
   const rpc = await mockMintRpc({
     browser,
@@ -187,6 +195,7 @@ async function seedTokenList(options: TokenListOptions) {
       sendDelayMs: options.sendDelayMs,
     })),
     revertTo: options.revertTo,
+    failCalls: options.failCalls,
     tokenBalances:
       options.balances ??
       wallets.map((wallet) => ({
@@ -1108,6 +1117,42 @@ test('a covering allowance sends only the mint', async ({
   await expect(log).not.toContainText('Approval 0x')
 })
 
+test('a pinned gas limit applies to the approval and the mint', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Approval Gas')
+  const wallet = oneWallet(folder)
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+    allowances: [shortAllowance(wallet.address)],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // The same fee fields a native mint reads, including the pinned limit.
+  await screen.getByRole('button', { name: 'Advanced Gas' }).click()
+  await screen.getByLabel('Gas Limit').fill('300000')
+  await screen.getByLabel('Max Fee (Gwei)').fill('1')
+  await screen.getByLabel('Priority Fee (Gwei)').fill('0.1')
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Confirmed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // Both transactions are signed with the operator's limit, not an estimate.
+  const sends = sendsOf(rpc.events)
+  expect(sends.map((event) => event.gas)).toEqual(['300000', '300000'])
+})
+
 test('a short allowance approves the exact amount and then mints', async ({
   app,
   browser,
@@ -1209,6 +1254,120 @@ test('a run-time short balance fails the row before any transaction', async ({
   await expect(log).toContainText('15 Basecat')
 })
 
+test('a short balance on the second token fails before any approval is sent', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Two Token Shortfall')
+  const wallet = oneWallet(folder)
+  const secondAmount = (RECORDED_AMOUNT / 4n).toString()
+  // Check sees only the first token, so the row starts. The run's own build asks for
+  // both, and the second token's balance is the one that fails.
+  let builds = 0
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+    mint: () => {
+      builds += 1
+      return builds === 1
+        ? {
+            erc20s: [RECORDED_ALLOWANCE],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
+        : {
+            erc20s: [
+              RECORDED_ALLOWANCE,
+              { address: SECOND_TOKEN_ADDRESS, amount: secondAmount },
+            ],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
+    },
+    balances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: COVERING_BALANCE },
+      { token: SECOND_TOKEN_ADDRESS, owner: wallet.address, balance: '0' },
+    ],
+    allowances: [
+      shortAllowance(wallet.address),
+      shortAllowance(wallet.address, SECOND_TOKEN_ADDRESS),
+    ],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // Every balance is read first, so the second token's shortfall costs no gas and the
+  // first token is never approved for a mint that cannot run.
+  expect(sendsOf(rpc.events)).toHaveLength(0)
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('Balance check failed')
+  await expect(log).toContainText('base units of')
+})
+
+test('a failed allowance read fails the row before any transaction', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Read Failure')
+  const wallet = oneWallet(folder)
+  const secondAmount = (RECORDED_AMOUNT / 4n).toString()
+  // Check sees the first token, so the row starts. The run's build asks for both, and
+  // the second token's read answers an RPC error.
+  let builds = 0
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+    mint: () => {
+      builds += 1
+      return builds === 1
+        ? {
+            erc20s: [RECORDED_ALLOWANCE],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
+        : {
+            erc20s: [
+              RECORDED_ALLOWANCE,
+              { address: SECOND_TOKEN_ADDRESS, amount: secondAmount },
+            ],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
+    },
+    failCalls: [SECOND_TOKEN_ADDRESS],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // A read the run cannot complete stops the wallet before it signs anything.
+  expect(sendsOf(rpc.events)).toHaveLength(0)
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('Balance check failed')
+  await expect(log).toContainText('execution reverted')
+})
+
 test('a reverted approval stops the mint', async ({ app, browser, screen }) => {
   const folder = walletFolder('Scatter Approval Revert')
   const wallet = oneWallet(folder)
@@ -1289,6 +1448,46 @@ test('a mint revert after an approval keeps both hashes', async ({
   await expect(log).toContainText('Mint failed: the transaction reverted.')
 })
 
+test('a re-check keeps the approval hash of the failed run', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Record Kept')
+  const wallet = oneWallet(folder)
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+    allowances: [shortAllowance(wallet.address)],
+    revertTo: [RECORDED_TOKEN],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const approval = sendsOf(rpc.events)[0]
+  if (approval === undefined) throw new Error('the run sent no approval')
+
+  // The next Check re-reads the wallet and restores the Needs approval verdict. The
+  // approval already on chain stays in the log, so its hash is not lost.
+  await screen.getByRole('button', { name: 'Check' }).click()
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(`Approval ${approval.txHash}`)
+})
+
 test('two allowance entries approve in sequence, then the mint', async ({
   app,
   browser,
@@ -1296,7 +1495,7 @@ test('two allowance entries approve in sequence, then the mint', async ({
 }) => {
   const folder = walletFolder('Scatter Two Tokens')
   const wallet = oneWallet(folder)
-  const secondToken = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const secondToken = SECOND_TOKEN_ADDRESS
   const secondAmount = (RECORDED_AMOUNT / 4n).toString()
   const { rpc } = await seedTokenList({
     app,
@@ -1386,6 +1585,48 @@ test('an abort after the approval is broadcast logs it and sends no mint', async
   const log = await openExecutionLog(screen, wallet.address)
   await expect(log).toContainText(`Approval ${approval.txHash}`)
   await expect(log).toContainText('Mint not sent')
+})
+
+test('a stop before anything is sent fails the row and leaves no run status', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Stop Before Send')
+  const wallet = oneWallet(folder)
+  // The run's build is held, so the stop lands before any transaction can be signed.
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+    allowances: [shortAllowance(wallet.address)],
+    mintDelayMs: 3_000,
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  // The row marks the run before the held build resolves, so the stop lands mid-build
+  // rather than before the run reached the batch.
+  await expect(row.getByText('Minting', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
+  await screen.getByRole('button', { name: 'Stop' }).click()
+
+  // The row records why the run ended instead of staying Minting forever.
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 30_000,
+  })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('stopped before anything was sent')
+  await browser.keyboard.press('Escape')
+  expect(sendsOf(rpc.events)).toHaveLength(0)
 })
 
 test('a Needs approval row starts and reaches Confirmed', async ({
@@ -1871,9 +2112,8 @@ test('any other build refusal marks the row failed with its message', async ({
   const log = await openExecutionLog(screen, wallet.address)
   await expect(log).toContainText(message)
   await browser.keyboard.press('Escape')
-  // A failed probe may be transient. The run's own build retries it, so Start stays
-  // offered; only a blocked probe refuses the start.
-  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  // A failed build refuses the batch and the start until a new Check answers it.
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
   expect(rpc.events).toHaveLength(0)
 })
 
@@ -2125,7 +2365,8 @@ test('a run block belongs to the list it was taken against', () => {
   expect(mintableRow(row, 'other')).toBe(true)
   expect(blockedReason(row, 'other')).toBeNull()
 
-  // A failed probe may be transient, so it stays in the batch for the run to retry.
+  // A failed build refuses the batch until a new Check answers it, so it is neither
+  // mintable nor a startable task.
   const failed: WalletRun = {
     ...row,
     status: 'eligible',
@@ -2137,8 +2378,13 @@ test('a run block belongs to the list it was taken against', () => {
       allowances: [],
     },
   }
-  expect(mintableRow(failed, 'public')).toBe(true)
+  expect(mintableRow(failed, 'public')).toBe(false)
   expect(blockedReason(failed, 'public')).toBeNull()
+  const failedTask = createTask()
+  failedTask.wallets = [failed.walletId]
+  failedTask.stageUuid = 'public'
+  failedTask.checked = true
+  expect(startRefusalFor(failedTask, [failed])).toContain('failed')
 
   // A successful build outranks a failed list read: the row becomes eligible and
   // the old read error leaves the log.

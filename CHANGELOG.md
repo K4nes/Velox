@@ -29,9 +29,10 @@ come from the Conventional Commit history (`COMMIT.md`).
 - Start Mint and arming accept a Needs approval row: the run re-reads each wallet's token
   balance and allowance, shows Approving while an exact-amount approval is in flight, waits
   for its receipt, then sends the mint. A short balance fails the row before gas, a failed
-  approval stops the mint, an abort sends no new approval, and the execution log keeps both
-  hashes and the stage that failed. Two allowance entries approve in sequence, and a native
-  list still sends no approval ([#136]).
+  approval stops the mint, and the execution log keeps both hashes and the stage that
+  failed. Two allowance entries approve in sequence, and a native list still sends no
+  approval. A Failed row refuses the start until the next Check, a re-check keeps the
+  approval hash of the failed run, and Stop records what the run left behind ([#136]).
 - A Scatter task carries a Token ID. A `scatter.art/c/{slug}/{tokenId}` URL fills the
   field, a typed ID works without a token page, and the ID reaches the Scatter mint
   request so an ERC-1155 edition mints on its own. Changing the token clears the earlier

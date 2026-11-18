@@ -54,6 +54,8 @@ export type MintEvent =
       txHash: string
       to: string
       data: string
+      /** The gas limit the signed transaction carries, in decimal wei units. */
+      gas: string
       at: number
     }
   | { kind: 'receipt'; txHash: string; at: number }
@@ -182,9 +184,14 @@ export async function mockMintRpc(options: {
   revertTo?: string[]
   tokenBalances?: { token: string; owner: string; balance: string }[]
   tokenAllowances?: { token: string; owner: string; spender: string; allowance: string }[]
+  /** Tokens whose `eth_call` reads answer an RPC error, as a dead node would. */
+  failCalls?: string[]
 }): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
   const nowMs = options.nowMs ?? Date.now()
+  const failedCalls = new Set(
+    (options.failCalls ?? []).map((token) => token.toLowerCase())
+  )
   const events: MintEvent[] = []
   const calls: MintCall[] = []
   const metadataByToken = new Map(
@@ -294,6 +301,7 @@ export async function mockMintRpc(options: {
           txHash,
           to,
           data: transaction.data ?? '0x',
+          gas: (transaction.gas ?? 0n).toString(),
           at: Date.now(),
         })
         sendTargets.set(txHash.toLowerCase(), to)
@@ -337,13 +345,16 @@ export async function mockMintRpc(options: {
         const data = call.data ?? ''
         const selector = data.slice(0, 10)
         calls.push({ to, selector })
-        if (options.callError !== undefined) {
+        if (options.callError !== undefined || failedCalls.has(to)) {
           await route.fulfill({
             status: 200,
             json: {
               jsonrpc: '2.0',
               id: request.id ?? null,
-              error: { code: -32000, message: options.callError },
+              error: {
+                code: -32000,
+                message: options.callError ?? 'execution reverted',
+              },
             },
           })
           return

@@ -325,9 +325,19 @@ export function mergeCheckedRows(
   return [
     ...checkedRows.map((row) => {
       const previous = prior.get(row.address.toLowerCase())
-      if (previous && previous.mintedStages.length > 0) {
+      if (!previous) return row
+
+      // The run record belongs to the stage it was taken against and survives the check.
+      // An approval hash is the only record of a transaction that already cost gas.
+      const record =
+        previous.log !== undefined && previous.statusStage === row.statusStage
+          ? { log: previous.log }
+          : {}
+
+      if (previous.mintedStages.length > 0) {
         return {
           ...row,
+          ...record,
           mintedStages: previous.mintedStages,
           ...(landed(previous)
             ? {
@@ -342,7 +352,7 @@ export function mergeCheckedRows(
             : {}),
         }
       }
-      return row
+      return { ...row, ...record }
     }),
     ...priorRows.filter(
       (row) =>
@@ -409,28 +419,36 @@ const BLOCKED_DEFAULT =
   'The provider blocked this wallet on the selected list.'
 
 // The reason the row's visible status carries. A run or probe on another list does
-// not speak for this one.
+// not speak for this one. The record of a run outlives the check that follows it, so a
+// failed approval or a reverted mint keeps its hash visible beside the new verdict.
 export function reasonFor(row: WalletRun, stageUuid: string): string | null {
   const probe = probeFor(row, stageUuid)
   const checkFailedRow = row.checkFailed && row.statusStage === stageUuid
+  const record =
+    row.log !== undefined && row.statusStage === stageUuid && !checkFailedRow
+      ? row.log
+      : null
+  const withRecord = (reason: string | null) =>
+    reason === null ? record : record === null ? reason : `${reason}\n\n${record}`
+
   if (runOnStage(row, stageUuid) && !checkFailedRow) {
-    return (
-      row.log ??
-      row.error ??
-      (row.status === 'blocked' ? BLOCKED_DEFAULT : null)
-    )
+    return row.log ?? row.error ?? (row.status === 'blocked' ? BLOCKED_DEFAULT : null)
   }
   if (
     probe?.status === 'needs-approval' ||
     probe?.status === 'blocked' ||
     probe?.status === 'failed'
   ) {
-    return probe.error ?? (probe.status === 'blocked' ? BLOCKED_DEFAULT : null)
+    return withRecord(
+      probe.error ?? (probe.status === 'blocked' ? BLOCKED_DEFAULT : null)
+    )
   }
   if (checkFailedRow) {
-    return probe?.status === 'eligible' ? null : (row.error ?? null)
+    return withRecord(
+      probe?.status === 'eligible' ? null : (row.error ?? null)
+    )
   }
-  return null
+  return record
 }
 
 // The fix a blocked row carries, or null when the row is not blocked on this list.
@@ -504,6 +522,9 @@ export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   // and a stale rows map must not leak one in. A wallet that needs approval is not
   // blocked: the run grants it before signing, so the row stays in the batch.
   if (probe?.status === 'blocked') return false
+  // A failed build is the check's verdict, not a guess: the row refuses the batch until
+  // a new Check answers it.
+  if (probe?.status === 'failed') return false
   // A successful build is the strongest answer: a failed list read or a stale cap
   // cannot hide it. A landing on this exact stage still retires the wallet.
   if (probe?.status === 'eligible') {

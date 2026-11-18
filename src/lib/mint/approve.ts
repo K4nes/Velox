@@ -19,6 +19,12 @@ export type ApprovalRun =
   | { kind: 'failed'; stage: ApprovalStage; error: string; log: string[] }
   | { kind: 'aborted'; log: string[] }
 
+type AllowanceRead = {
+  allowance: MintAllowance
+  balance: bigint
+  approved: bigint
+}
+
 // A token is named for the operator when its display metadata resolved, and by address
 // when it did not. The amount always reads from the same rule the check used.
 function approvalLine(allowance: MintAllowance, txHash: string): string {
@@ -48,29 +54,35 @@ export async function runApprovals(input: {
     return { kind: 'failed', stage: 'balance', error: toMessage(error), log }
   }
 
+  // Every balance is read before any approval is signed, so one short token cannot cost
+  // gas on a sibling token's approval first.
+  const reads: AllowanceRead[] = []
   for (const allowance of input.allowances) {
     if (input.shouldAbort()) return { kind: 'aborted', log }
 
-    let balance: bigint
-    let approved: bigint
+    let read: AllowanceRead
     try {
-      balance = await readTokenBalance({
+      const balance = await readTokenBalance({
         client,
         token: allowance.token,
         owner: input.wallet.address as `0x${string}`,
       })
-      approved = await readTokenAllowance({
+      const approved = await readTokenAllowance({
         client,
         token: allowance.token,
         owner: input.wallet.address as `0x${string}`,
         spender: allowance.spender,
       })
+      read = { allowance, balance, approved }
     } catch (error) {
       return { kind: 'failed', stage: 'balance', error: toMessage(error), log }
     }
 
-    if (balance < allowance.amount) {
-      const short = allowanceAmountLabel(allowance, allowance.amount - balance)
+    if (read.balance < allowance.amount) {
+      const short = allowanceAmountLabel(
+        allowance,
+        allowance.amount - read.balance
+      )
       return {
         kind: 'failed',
         stage: 'balance',
@@ -78,7 +90,13 @@ export async function runApprovals(input: {
         log,
       }
     }
+    reads.push(read)
+  }
+
+  for (const read of reads) {
+    const { allowance, approved } = read
     if (approved >= allowance.amount) continue
+    if (input.shouldAbort()) return { kind: 'aborted', log }
 
     input.onApproving()
     let txHash: string
@@ -96,6 +114,8 @@ export async function runApprovals(input: {
       txHash = sent.txHash
       chain = sent.chain
     } catch (error) {
+      // A stop can land while the send is signing, and that is not an approval failure.
+      if (input.shouldAbort()) return { kind: 'aborted', log }
       // A broadcast that may have reached the node carries its hash, and the log keeps
       // it so the operator can find the transaction the run cannot confirm.
       if (error instanceof BroadcastError) {
