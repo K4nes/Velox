@@ -36,6 +36,14 @@ Record the finding, the disposition, and the reason wherever the branch already 
 review notes. A documented-standard violation still gets reported; settled judgement
 calls are the only thing this suppresses.
 
+## Acceptance criteria and state lifelines
+
+- Every acceptance-criterion bullet needs a code path and a test that proves it. A test
+  asserting the opposite of a bullet is a finding, not a test to adjust.
+- A new `WalletRun` field or `RunStatus` member must be traced through `rowsFromCheck`,
+  `mergeCheckedRows`, the run reset, the abort path, and the receipt path. One path that
+  does not handle it is a finding.
+
 ## Finding Requirements
 Every finding must:
 - Identify a specific defect, not merely a possible improvement.

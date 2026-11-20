@@ -63,7 +63,10 @@ Cheapest check that settles the change, in order:
 3. `npm run build`
 4. `npm run test:release` — the release manifest, signature and lockfile logic, the page-state
    store and the pure formatters, in `scripts/`.
-5. `npm run test:e2e` — the suite that covers the touched page.
+5. `npm run test:e2e` — the whole mocked suite. While iterating, narrow it: `npx e2e run
+   tests/<feature>/<file>.e2e.ts` for one file, add `--grep "<title>"` for one test, and
+   `--last-failed` after a red run. A full file takes minutes; a selected test takes
+   seconds. The gate itself still runs the suite that covers the touched page.
 6. `cargo test --manifest-path src-tauri/Cargo.toml` — the sign-in chain the installed app
    runs. `npm run build` has to have produced `dist/` first.
 7. A browser run of the page — only when the task asks for it, or when the change cannot
@@ -121,6 +124,7 @@ is live-only.
 | `src/components/layout/` | `app-layout`, `app-header`, `app-sidebar`, `app-context-menu`. |
 | `src/components/` | Components shared by several pages (`wallet-select`, `empty-state`, `body-message`, `summary-row`, `run-status-cell`, `tx-hash-link`, `token-image`), plus the `dither-kit/` chart primitives, `lightswind/` toggle and `theme/` provider. |
 | `src/lib/` | Domain logic: OpenSea, Seaport, Relay, PnL, transfer, swap, wallets, storage, clipboard. `chain/transport.ts` is the one module that picks between a `/api/*` route and an in-app command, so a caller never branches on the lane. |
+| `src/lib/mint/` | Mint domain: amount, arm schedule, provider registry, prepared calldata, the run, and the ERC-20 allowance model in `allowance.ts`. The Scatter Check probe is `src/lib/scatter/probe.ts`, the run's approval step is `approve.ts`, and `tests/contract/scatterMintErc20.json` pins the collection as spender. |
 | `src/hooks/` | Long-running flows and their run state (scans, listings, mints, swaps). |
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
