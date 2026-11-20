@@ -55,6 +55,8 @@ type Counters = {
 }
 
 type Clock = { startMs: number; leadMs: number; mintDelayMs: number }
+/** The page's timer list, installed by the far-future arm test. */
+type TimerWindow = Window & { __timerDelays?: number[] }
 
 async function serveAuth(browser: Browser, counters: Counters): Promise<void> {
   await browser.route('**/api/auth/**', async (route) => {
@@ -578,7 +580,7 @@ test('a far-future arm sleeps instead of spinning', async ({
   await browser.addInitScript(() => {
     const original = window.setTimeout
     const delays: number[] = []
-    ;(window as unknown as { __timerDelays: number[] }).__timerDelays = delays
+    ;(window as TimerWindow).__timerDelays = delays
     window.setTimeout = ((
       handler: TimerHandler,
       timeout?: number,
@@ -595,11 +597,22 @@ test('a far-future arm sleeps instead of spinning', async ({
   await openSeededTask(app, browser, screen)
   await checkOnce(screen)
   await armMockStage(screen)
-  await new Promise((resolve) => setTimeout(resolve, 1_200))
+  // Wait for the arm's schedule instead of sleeping a fixed second: the timer
+  // list is the precondition, and a loaded runner may take longer to reach it.
+  await expect
+    .poll(
+      () =>
+        browser.evaluate(
+          () =>
+            (window as TimerWindow).__timerDelays?.length ?? 0
+        ),
+      { timeout: 5_000 }
+    )
+    .toBeGreaterThan(0)
 
   const delays = await browser.evaluate<number[]>(
     () =>
-      (window as unknown as { __timerDelays?: number[] }).__timerDelays ?? []
+      (window as TimerWindow).__timerDelays ?? []
   )
   expect(delays.length, 'the arm scheduled a sleep').toBeGreaterThan(0)
   expect(

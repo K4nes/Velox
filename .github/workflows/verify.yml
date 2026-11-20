@@ -4,12 +4,23 @@ on:
   pull_request:
   push:
     branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+# A new commit on a pull request makes the previous run's answer stale. Main
+# keeps every run, because each merged commit is a release candidate.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     # The installer build and the browser suite are both verified on Windows,
     # so the job runs there rather than on a Linux runner it has never seen.
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,6 +87,7 @@ jobs:
     # toolchain nor `dist`. A second job runs it beside `verify` instead of
     # after four minutes of Rust compile.
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -85,7 +97,31 @@ jobs:
 
       - run: npm ci
 
+      # The runner downloads a missing Chromium before the suite's clock
+      # starts. The cache keeps that download out of every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx @e2e-dev/web install chromium
+
       # Deliberately no E2E_* secrets. The mocked lane has to pass without
       # them, and a test that quietly needs one fails here instead of on a
       # maintainer's machine.
-      - run: npx e2e run
+      # Four workers match the runner's four cores; six oversubscribed them
+      # and made the longest file slower. Zero retries keep a flaky test red.
+      - run: npx e2e run --workers 4 --retries 0
+
+      # A trace and a JUnit report are written on failure. Without this step
+      # the job would discard the only evidence of what went wrong.
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            .e2e/report.json
+            .e2e/junit.xml
+            .e2e/results
+          if-no-files-found: warn
+          retention-days: 7

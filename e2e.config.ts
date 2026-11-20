@@ -5,6 +5,9 @@ export default {
   projectId: 'velox',
   tests: ['tests/**/*.e2e.ts', '!tests/**/live/**'],
   reporters: ['list', 'junit'],
+  // A retry would hide a flaky test. CI runs the same number: the config
+  // overrides the runner's CI default of one.
+  retries: 0,
   timeout: 120_000,
   actionTimeout: 30_000,
   assertionTimeout: 10_000,
