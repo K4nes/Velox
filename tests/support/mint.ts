@@ -186,7 +186,20 @@ export async function mockMintRpc(options: {
   tokenAllowances?: { token: string; owner: string; spender: string; allowance: string }[]
   /** Tokens whose `eth_call` reads answer an RPC error, as a dead node would. */
   failCalls?: string[]
-}): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
+}): Promise<{
+  events: MintEvent[]
+  calls: MintCall[]
+  /**
+   * Replaces one allowance the chain answers with, so a test can change it between
+   * Check and Start and prove the run reads it again.
+   */
+  setAllowance: (entry: {
+    token: string
+    owner: string
+    spender: string
+    allowance: string
+  }) => void
+}> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
   const nowMs = options.nowMs ?? Date.now()
   const failedCalls = new Set(
@@ -400,7 +413,16 @@ export async function mockMintRpc(options: {
 
   await options.browser.route(/rpc\.velox\.test/, handleRpc)
 
-  return { events, calls }
+  return {
+    events,
+    calls,
+    setAllowance: (entry) => {
+      allowanceByKey.set(
+        `${entry.token.toLowerCase()}:${entry.owner.toLowerCase()}:${entry.spender.toLowerCase()}`,
+        entry.allowance
+      )
+    },
+  }
 }
 
 /**

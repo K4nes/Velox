@@ -4,7 +4,7 @@ import { test } from '@e2e-dev/web'
 import type { Browser, WebApp } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import type { Screen } from 'e2e'
-import { mintWallets, walletFolder } from '../support/data'
+import { mintWallets, pinWalletChain, walletFolder } from '../support/data'
 import {
   SCATTER_CONTRACT,
   SCATTER_NO_LIMIT,
@@ -231,6 +231,16 @@ async function countOpenSeaAuth(browser: Browser): Promise<{ calls: number }> {
   })
   return calls
 }
+
+test('the chain pin stores the slug the caller names', async ({ app, browser }) => {
+  // The live ERC-20 lane signs on the collection's chain, and the app reads its chain
+  // from storage before the first render, so the pin has to carry the slug it is given.
+  await pinWalletChain(browser, 'base')
+  await app.open('/mint/tasks')
+  expect(
+    await browser.evaluate(() => window.localStorage.getItem('wallet-chain'))
+  ).toBe('base')
+})
 
 test('a Scatter collection fills the picker and prices each list in its own currency', async ({
   app,
@@ -1115,6 +1125,57 @@ test('a covering allowance sends only the mint', async ({
   const log = await openExecutionLog(screen, wallet.address)
   await expect(log).toContainText(`Mint ${mint.txHash}.`)
   await expect(log).not.toContainText('Approval 0x')
+})
+
+test('a stale allowance is re-read at run time before the mint is sent', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Stale Allowance')
+  const wallet = oneWallet(folder)
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // Check read a covering allowance. The wallet then spends it on another list, so a
+  // run that trusted the check would sign the mint alone and revert on chain.
+  rpc.setAllowance({
+    token: RECORDED_TOKEN,
+    owner: wallet.address,
+    spender: SCATTER_CONTRACT,
+    allowance: '0',
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Confirmed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  const sends = sendsOf(rpc.events)
+  expect(sends.map((event) => event.to)).toEqual([
+    RECORDED_TOKEN_ADDRESS,
+    SCATTER_CONTRACT,
+  ])
+
+  const approval = sends[0]
+  const mint = sends[1]
+  if (approval === undefined || mint === undefined) {
+    throw new Error('the run did not send the approval and the mint')
+  }
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(`Approval ${approval.txHash}`)
+  await expect(log).toContainText(`Mint ${mint.txHash}.`)
 })
 
 test('a pinned gas limit applies to the approval and the mint', async ({
