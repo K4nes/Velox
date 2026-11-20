@@ -1,10 +1,10 @@
 import { SCATTER_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import {
   ERC20_REFUSAL_CODE,
-  erc20RefusalForAllowances,
   unreadableAllowanceRefusal,
+  unresolvedSpenderRefusal,
 } from '@/lib/scatter/erc20-refusal'
-import type { ScatterAllowance } from '@/lib/scatter/erc20-refusal'
+import type { MintAllowance } from '@/lib/mint/allowance'
 import type { DropStage } from '@/lib/opensea/index'
 import { ScatterError } from '@/lib/scatter/error'
 
@@ -180,7 +180,12 @@ export function toMintList(value: unknown): ScatterMintList {
   }
 }
 
-export type ScatterMintBuild = { to: string; data: string; value: string }
+export type ScatterMintBuild = {
+  to: string
+  data: string
+  value: string
+  allowances: MintAllowance[]
+}
 
 export type ScatterMintRequest = {
   collectionAddress: string
@@ -192,24 +197,45 @@ export type ScatterMintRequest = {
   tokenId: string
 }
 
+type BuildPayment = {
+  currencyAddress: string
+  currencySymbol: unknown
+  currencyDecimals: unknown
+}
+
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/
+
+function toBuildPayments(value: unknown): BuildPayment[] {
+  if (!Array.isArray(value)) return []
+  const payments: BuildPayment[] = []
+  for (const entry of value) {
+    const record = asRecord(entry)
+    const address = record?.currencyAddress
+    if (typeof address !== 'string') continue
+    payments.push({
+      currencyAddress: address,
+      currencySymbol: record?.currencySymbol,
+      currencyDecimals: record?.currencyDecimals,
+    })
+  }
+  return payments
+}
+
 // The answer is parsed apart from the request, so a recorded upstream body can be run
 // through it without a network. The allowance list is read first and fails closed: an
-// answer that names an allowance, or one whose allowance shape cannot be read, refuses
-// before the caller sees a transaction to sign.
+// answer whose allowance shape cannot be resolved refuses before the caller sees a
+// transaction to sign. A native answer carries no allowance and no extra work.
 export function toScatterMintBuild(
   body: unknown,
-  stage: DropStage | null = null
+  context: { stage?: DropStage | null; collectionAddress?: string } = {}
 ): ScatterMintBuild {
   const record = asRecord(body)
 
-  const allowances = toAllowances(record?.erc20s)
-  if (allowances.length > 0) {
-    throw new ScatterError(
-      422,
-      ERC20_REFUSAL_CODE,
-      erc20RefusalForAllowances(allowances, stage)
-    )
-  }
+  const allowances = toAllowances(
+    record?.erc20s,
+    context,
+    toBuildPayments(record?.listPayments)
+  )
 
   const transaction = asRecord(record?.mintTransaction)
   const to = transaction?.to
@@ -226,11 +252,11 @@ export function toScatterMintBuild(
     throw unexpected('/mint')
   }
 
-  return { to, data, value: String(value) }
+  return { to, data, value: String(value), allowances }
 }
 
-// Sends one build for one list and hands the answer to the parser above, which refuses an
-// allowance list before any caller sees a transaction to sign.
+// Sends one build for one list and hands the answer to the parser above, which resolves
+// the allowance list before any caller sees a transaction to sign.
 export async function buildScatterMintTransaction(
   input: ScatterMintRequest,
   stage: DropStage | null = null
@@ -252,7 +278,10 @@ export async function buildScatterMintTransaction(
     }),
   })
 
-  return toScatterMintBuild(body, stage)
+  return toScatterMintBuild(body, {
+    stage,
+    collectionAddress: input.collectionAddress,
+  })
 }
 
 // Scatter states the token inside the list entry, not at the top level. An empty ID
@@ -277,21 +306,78 @@ function scatterListTokenId(tokenId: string): number | undefined {
   return value
 }
 
-// An absent allowance list is a native-currency mint. Anything else this cannot read is an
-// allowance rather than an absence: the refusal exists to stop that mint, and guessing
-// wrong signs one.
-function toAllowances(value: unknown): ScatterAllowance[] {
+// An absent allowance list is a native-currency mint. Anything else this cannot resolve
+// is an allowance rather than an absence: the refusal exists to stop that mint, and
+// guessing wrong signs a mint the wallet is not funded for.
+function toAllowances(
+  value: unknown,
+  context: { stage?: DropStage | null; collectionAddress?: string },
+  payments: BuildPayment[]
+): MintAllowance[] {
   if (value === undefined || value === null) return []
   if (!Array.isArray(value)) throw unreadableAllowances()
 
-  return value.map((entry) => {
+  const stage = context.stage ?? null
+  const entries: Omit<MintAllowance, 'spender'>[] = value.map((entry) => {
     const record = asRecord(entry)
     const address = record?.address
-    if (typeof address !== 'string' || address === '') {
+    const amount = record?.amount
+    if (
+      typeof address !== 'string' ||
+      !ADDRESS.test(address) ||
+      amount === undefined ||
+      amount === null ||
+      !/^\d+$/.test(String(amount))
+    ) {
       throw unreadableAllowances()
     }
-    return { address, amount: String(record?.amount ?? '') }
+
+    const token = address as `0x${string}`
+    const payment = payments.find(
+      (candidate) =>
+        candidate.currencyAddress.toLowerCase() === token.toLowerCase()
+    )
+    const currency = stage?.currency
+    const resolved: Omit<MintAllowance, 'spender'> = {
+      token,
+      amount: BigInt(String(amount)),
+    }
+    if (
+      payment !== undefined &&
+      typeof payment.currencySymbol === 'string' &&
+      payment.currencySymbol !== '' &&
+      typeof payment.currencyDecimals === 'number' &&
+      Number.isInteger(payment.currencyDecimals) &&
+      payment.currencyDecimals >= 0
+    ) {
+      resolved.symbol = payment.currencySymbol
+      resolved.decimals = payment.currencyDecimals
+    } else if (
+      currency !== undefined &&
+      currency.address.toLowerCase() === token.toLowerCase() &&
+      currency.symbol !== ''
+    ) {
+      resolved.symbol = currency.symbol
+      resolved.decimals = currency.decimals
+    }
+    return resolved
   })
+
+  // The spender is the collection, pinned by the recorded build. The mint transaction's
+  // target may differ, so it is never used as the spender. Without a collection address
+  // there is no safe target and the build is refused rather than guessed.
+  const collection = context.collectionAddress
+  if (
+    entries.length > 0 &&
+    (typeof collection !== 'string' || !ADDRESS.test(collection))
+  ) {
+    throw new ScatterError(422, ERC20_REFUSAL_CODE, unresolvedSpenderRefusal())
+  }
+
+  return entries.map((entry) => ({
+    ...entry,
+    spender: collection as `0x${string}`,
+  }))
 }
 
 function unreadableAllowances(): ScatterError {

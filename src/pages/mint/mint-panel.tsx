@@ -17,6 +17,7 @@ import {
 import { WalletSelect } from '@/components/wallet-select'
 import type { WalletGroup } from '@/components/wallet-select'
 import { amountLabel } from '@/lib/mint/amount'
+import { allowanceAmountLabel } from '@/lib/mint/allowance'
 import {
   countdownLabel,
   mintModes,
@@ -102,6 +103,9 @@ export function MintPanel({
     stagePriceWei,
     totalWei,
     mintStage,
+    allowanceUnits,
+    allowanceTotals,
+    startRefusal,
     totalNfts,
   } = view
 
@@ -302,9 +306,13 @@ export function MintPanel({
           <SummaryLine
             label="Unit Price"
             value={
-              stagePriceWei !== null
-                ? amountLabel(stagePriceWei, mintStage)
-                : '—'
+              allowanceUnits.length > 0
+                ? allowanceUnits
+                    .map((unit) => allowanceAmountLabel(unit, unit.amount))
+                    .join(' + ')
+                : stagePriceWei !== null
+                  ? amountLabel(stagePriceWei, mintStage)
+                  : '—'
             }
           />
           <SummaryLine
@@ -314,11 +322,17 @@ export function MintPanel({
           <SummaryLine
             label="Estimated Cost"
             value={
-              totalWei !== null
-                ? amountLabel(totalWei, mintStage)
-                : stagePriceWei !== null
-                  ? `0 ${mintStage?.currency?.symbol ?? 'ETH'}`
-                  : '—'
+              allowanceUnits.length > 0
+                ? allowanceUnits
+                    .map((unit, index) =>
+                      allowanceAmountLabel(unit, allowanceTotals[index] ?? 0n)
+                    )
+                    .join(' + ')
+                : totalWei !== null
+                  ? amountLabel(totalWei, mintStage)
+                  : stagePriceWei !== null
+                    ? `0 ${mintStage?.currency?.symbol ?? 'ETH'}`
+                    : '—'
             }
             emphasis
           />
@@ -346,6 +360,7 @@ export function MintPanel({
             className="h-10 w-full"
             onClick={() => (isLiveStage ? onStart() : onArm())}
             disabled={!canStartMint}
+            title={startRefusal ?? undefined}
           >
             {isMinting ? 'Minting…' : 'Start Mint'}
           </Button>

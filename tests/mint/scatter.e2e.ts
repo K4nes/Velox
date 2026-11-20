@@ -21,9 +21,12 @@ import {
 import {
   applyProbeVerdicts,
   blockedReason,
+  createTask,
   mintableRow,
   reasonFor,
   stageStatusFor,
+  startRefusalFor,
+  taskView,
 } from '@/lib/mint/mint-task'
 import type { WalletRun } from '@/lib/mint/mint-task'
 import { ScatterError } from '@/lib/scatter/error'
@@ -48,10 +51,18 @@ async function openExecutionLog(screen: Screen, walletAddress: string) {
 const SCATTER_CHAIN_ID = 4663
 
 type RecordedMintBuild = {
-  body: { erc20s?: { address: string; amount: string }[] }
+  body: {
+    erc20s?: { address: string; amount: string }[]
+    listPayments?: {
+      currencyAddress: string
+      currencySymbol: string
+      currencyDecimals: number
+      unitPaymentValue: string
+    }[]
+  }
 }
 
-// The allowance a real ERC-20 build answered with, shared by every refusal test.
+// The allowance a real ERC-20 build answered with, shared by every allowance test.
 const recordedMintBuild: RecordedMintBuild = JSON.parse(
   readFileSync(
     join(import.meta.dirname, '..', 'contract', 'scatterMintErc20.json'),
@@ -63,6 +74,29 @@ const RECORDED_ALLOWANCE = recordedMintBuild.body.erc20s?.[0]
 if (RECORDED_ALLOWANCE === undefined) {
   throw new Error('the recorded ERC-20 build has no allowance')
 }
+const RECORDED_TOKEN = RECORDED_ALLOWANCE.address
+// The build's own display metadata: the only source for the token's symbol and decimals.
+const RECORDED_LIST_PAYMENTS = recordedMintBuild.body.listPayments ?? []
+
+// The recorded build's allowance as the probe carries it, for verdict tests.
+const RECORDED_METADATA = RECORDED_LIST_PAYMENTS[0]
+const recordedAllowanceModel = {
+  token: RECORDED_TOKEN as `0x${string}`,
+  amount: BigInt(RECORDED_ALLOWANCE.amount),
+  spender: SCATTER_CONTRACT as `0x${string}`,
+  ...(RECORDED_METADATA
+    ? {
+        symbol: RECORDED_METADATA.currencySymbol,
+        decimals: RECORDED_METADATA.currencyDecimals,
+      }
+    : {}),
+}
+
+// The two `eth_call` selectors Check may read: ERC-20 balanceOf and allowance.
+const allowanceReads = (calls: { selector: string }[]) =>
+  calls.filter(
+    (call) => call.selector === '0x70a08231' || call.selector === '0xdd62ed3e'
+  )
 
 /** Counts the OpenSea sign-in requests a task makes; a Scatter task must make none. */
 async function countOpenSeaAuth(browser: Browser): Promise<{ calls: number }> {
@@ -689,7 +723,7 @@ test('a reverted send does not retire the wallet for the new token', async ({
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(1)
 })
 
-test('an ERC-20 priced Scatter list refuses with the token and amount named', async ({
+test('an ERC-20 priced Scatter list marks the row eligible after reading balance and allowance', async ({
   app,
   browser,
   screen,
@@ -706,14 +740,31 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
         name: 'Basecat List',
         price: '20',
         currencySymbol: 'Basecat',
-        currencyAddress: RECORDED_ALLOWANCE.address,
+        currencyAddress: RECORDED_TOKEN,
         decimals: 18,
         walletLimit: 1,
       },
     ],
-    mint: { erc20s: [RECORDED_ALLOWANCE] },
+    mint: {
+      erc20s: [RECORDED_ALLOWANCE],
+      listPayments: RECORDED_LIST_PAYMENTS,
+    },
   })
-  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '25000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '20000000000000000000',
+      },
+    ],
+  })
 
   await seedMintPage(app, browser, folder, [wallet])
   await checkCollection(
@@ -724,24 +775,26 @@ test('an ERC-20 priced Scatter list refuses with the token and amount named', as
   )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
-  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
-  const log = await openExecutionLog(screen, wallet.address)
-  await expect(log).toContainText(
-    'This Scatter list needs an ERC-20 allowance for 20.0000 Basecat (0xB200…1D01). Velox mints native-currency lists only'
-  )
-  await browser.keyboard.press('Escape')
 
-  // The row carries the reason and Start stays refused. The panel keeps no second copy.
-  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
-  // One free build per wallet at quantity 1, and no transaction.
+  // The build names the token and the wallet covers both reads, so Start is offered.
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+  // Check sends nothing; the only chain traffic is the two view reads.
+  expect(allowanceReads(rpc.calls)).toHaveLength(2)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+
+  // The Cost panel prices the task in the build's token, not the stage's ETH.
+  await expect(screen.getByText('20 Basecat')).toHaveCount(2)
+  await expect(screen.getByText(/ETH/)).toHaveCount(0)
+
+  // One free build per wallet at quantity 1.
   expect(calls.mintBodies).toHaveLength(1)
   expect(calls.mintBodies[0]?.lists).toEqual([{ id: 'basecat', quantity: 1 }])
-  expect(rpc.events).toHaveLength(0)
 })
 
-test('a build allowance answer blocks that row and disables Start before any wallet signs', async ({
+test('a build allowance answer marks that row Needs approval and disables Start before any wallet signs', async ({
   app,
   browser,
   screen,
@@ -759,10 +812,27 @@ test('a build allowance answer blocks that row and disables Start before any wal
     lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
     mint: (body) =>
       body.minterAddress?.toLowerCase() === second.address.toLowerCase()
-        ? { erc20s: [RECORDED_ALLOWANCE] }
+        ? {
+            erc20s: [RECORDED_ALLOWANCE],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
         : {},
   })
-  const rpc = await mockMintRpc({ browser, wallets })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets,
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: second.address, balance: '25000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: second.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '0',
+      },
+    ],
+  })
 
   await seedMintPage(app, browser, folder, wallets)
   await checkCollection(
@@ -773,94 +843,486 @@ test('a build allowance answer blocks that row and disables Start before any wal
   )
 
   const firstRow = screen.getByRole('row').filter({ hasText: first.address })
-  const blockedRow = screen.getByRole('row').filter({ hasText: second.address })
+  const approvalRow = screen.getByRole('row').filter({ hasText: second.address })
   await expect(firstRow.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
-  await expect(blockedRow.getByText('Blocked', { exact: true })).toBeVisible()
-  const refusalText =
-    'This Scatter list needs an ERC-20 allowance for 20000000000000000000 base units of 0xB200…1D01. Velox mints native-currency lists only'
+  await expect(
+    approvalRow.getByText('Needs approval', { exact: true })
+  ).toBeVisible()
+
+  // The log names the token, its amount, the spender, the balance and the allowance.
   const log = await openExecutionLog(screen, second.address)
-  await expect(log).toContainText(refusalText)
+  await expect(log).toContainText('20 Basecat')
+  await expect(log).toContainText('20000000000000000000 base units')
+  await expect(log).toContainText('Basecat')
+  await expect(log).toContainText('decimals 18')
+  await expect(log).toContainText(`Spender ${SCATTER_CONTRACT}`)
+  await expect(log).toContainText('Wallet balance 25000000000000000000')
+  await expect(log).toContainText('wallet allowance 0')
+  await expect(log).toContainText('short by')
   await browser.keyboard.press('Escape')
 
-  // One build per wallet was read, so the refusal stays on the row that caused it.
+  // One build per wallet was read, so the verdict stays on the row that caused it.
   expect(calls.mintBodies).toHaveLength(3)
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })
 
-test('a run-time allowance block outranks the earlier eligible probe', async ({
+test('a wallet short of the token is Blocked and names the shortfall', async ({
   app,
   browser,
   screen,
 }) => {
-  const folder = walletFolder('Scatter Run Allowance')
+  const folder = walletFolder('Scatter Token Shortfall')
   const wallet = oneWallet(folder)
-  let builds = 0
-  const calls = await mockScatterNetwork({
+  await mockScatterNetwork({
     browser,
     slug: SLUG,
     chainId: SCATTER_CHAIN_ID,
-    lists: [
-      { id: 'public', name: 'Public', walletLimit: 1 },
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    mint: {
+      erc20s: [RECORDED_ALLOWANCE],
+      listPayments: RECORDED_LIST_PAYMENTS,
+    },
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '5000000000000000000' },
+    ],
+    tokenAllowances: [
       {
-        id: 'other',
-        name: 'Other',
-        walletLimit: 1,
-        startTime: new Date(Date.now() - 60_000).toISOString(),
-        endTime: SCATTER_OPEN_END,
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '20000000000000000000',
       },
     ],
-    // The free probe passes; the run's own build is where the allowance appears.
-    // The second list is native, so its own probe clears the old block.
-    mint: (body) => {
-      if (body.lists?.[0]?.id === 'other') return {}
-      builds += 1
-      return builds === 1
-        ? {}
-        : { erc20s: [RECORDED_ALLOWANCE] }
-    },
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  // A balance below the token amount outranks the allowance question.
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('short by')
+  await expect(log).toContainText('15 Basecat')
+  await browser.keyboard.press('Escape')
+
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('an allowance whose token cannot be resolved blocks without a chain read', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Token Unresolved')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    mint: { erc20s: [{ address: '', amount: '1' }] },
   })
   const rpc = await mockMintRpc({ browser, wallets: [wallet] })
 
   await seedMintPage(app, browser, folder, [wallet])
-  await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
-  await selectFolder(browser, screen, folder)
-  await screen.getByRole('button', { name: 'Check' }).click()
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  // An unreadable requirement is a task block, so nothing is read from the chain.
+  expect(allowanceReads(rpc.calls)).toHaveLength(0)
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  expect(rpc.events).toHaveLength(0)
+})
+
+test('a native list reads neither balance nor allowance', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Native Reads')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', walletLimit: 1 }],
+    mint: {},
+  })
+  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
   await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
-  expect(calls.mintBodies).toHaveLength(1)
+  // The native path keeps its old shape: no allowance read, no send.
+  expect(allowanceReads(rpc.calls)).toHaveLength(0)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
 
-  await screen.getByRole('button', { name: 'Start Mint' }).click()
+test('a native stage whose build is token-priced shows the build token in the cost panel', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Native Stage Token Build')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [{ id: 'public', name: 'Public', price: '0.01', walletLimit: 1 }],
+    mint: {
+      erc20s: [RECORDED_ALLOWANCE],
+      listPayments: RECORDED_LIST_PAYMENTS,
+    },
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '25000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '20000000000000000000',
+      },
+    ],
+  })
 
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  // The build's own payment metadata outranks the stage's native price.
+  await expect(screen.getByText('20 Basecat')).toHaveCount(2)
+  await expect(screen.getByText('0.0100 ETH')).toHaveCount(0)
+  expect(allowanceReads(rpc.calls)).toHaveLength(2)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
+
+test('a quantity above the checked quantity disables Start until Check runs again', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Quantity Verdict')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'basecat',
+        name: 'Basecat List',
+        price: '20',
+        currencySymbol: 'Basecat',
+        currencyAddress: RECORDED_TOKEN,
+        decimals: 18,
+        walletLimit: SCATTER_NO_LIMIT,
+      },
+    ],
+    mint: {
+      erc20s: [RECORDED_ALLOWANCE],
+      listPayments: RECORDED_LIST_PAYMENTS,
+    },
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '50000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '40000000000000000000',
+      },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const start = screen.getByRole('button', { name: 'Start Mint' })
+  await expect(start).toBeEnabled()
+
+  // The check priced quantity 1, so a larger task quantity is no longer covered.
+  await screen.getByLabel('Quantity', { exact: true }).fill('3')
+  await expect(start).toBeDisabled()
+  await expect(start).toHaveAttribute('title', /Check again/)
+  await expect(screen.getByText('60 Basecat', { exact: true })).toBeVisible()
+
+  // Check again prices the new quantity and finds the balance short.
+  await screen.getByRole('button', { name: 'Check' }).click()
   await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
-  const refusal =
-    'This Scatter list needs an ERC-20 allowance for 20000000000000000000 base units of 0xB200…1D01'
   const log = await openExecutionLog(screen, wallet.address)
-  await expect(log).toContainText(refusal)
+  await expect(log).toContainText('short by 10 Basecat')
   await browser.keyboard.press('Escape')
-  // The run's block disables Start even though the earlier probe said eligible.
+
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
 
-  // A stage change clears both verdicts, and the new list gets its own probe.
-  await screen.getByLabel('Mint Stage').click()
-  await screen.getByRole('option', { name: 'Other' }).click()
-  await expect(row.getByText('Eligible', { exact: true })).toBeVisible()
-  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+test('a failed allowance read marks the row Failed and refuses Start', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Allowance Read Failure')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'basecat',
+        name: 'Basecat List',
+        price: '20',
+        currencySymbol: 'Basecat',
+        currencyAddress: RECORDED_TOKEN,
+        decimals: 18,
+        walletLimit: 1,
+      },
+    ],
+    mint: {
+      erc20s: [RECORDED_ALLOWANCE],
+      listPayments: RECORDED_LIST_PAYMENTS,
+    },
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    callError: 'execution reverted',
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Failed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('execution reverted')
+  await browser.keyboard.press('Escape')
+
+  // The token position is unknown, so neither Start nor arming may proceed.
+  const start = screen.getByRole('button', { name: 'Start Mint' })
+  await expect(start).toBeDisabled()
+  await expect(start).toHaveAttribute('title', /could not be checked/)
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
+
+test('a token with no build metadata reads its symbol and decimals on chain', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter On-Chain Metadata')
+  const wallet = oneWallet(folder)
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      { id: 'public', name: 'Public', price: '0.01', walletLimit: 1 },
+    ],
+    mint: { erc20s: [RECORDED_ALLOWANCE] },
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenMetadata: [
+      { token: RECORDED_TOKEN, symbol: 'Basecat', decimals: 18 },
+    ],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '25000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '0',
+      },
+    ],
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText('symbol Basecat, decimals 18')
+  await browser.keyboard.press('Escape')
+
+  // Without build metadata the panel still prices the token, not the stage's ETH.
+  await expect(screen.getByText('20 Basecat', { exact: true })).toHaveCount(1)
+  expect(
+    rpc.calls.filter((call) => call.selector === '0x95d89b41')
+  ).toHaveLength(1)
+  expect(
+    rpc.calls.filter((call) => call.selector === '0x313ce567')
+  ).toHaveLength(1)
   await expect(
-    screen.getByRole('button', {
-      name: `Show execution log for ${wallet.address}`,
-    })
-  ).toHaveCount(0)
+    screen.getByRole('button', { name: 'Start Mint' })
+  ).toBeDisabled()
+  expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
+})
 
-  expect(calls.mintBodies).toHaveLength(3)
-  expect(calls.mintBodies[2]?.lists).toEqual([{ id: 'other', quantity: 1 }])
+test('a Needs approval row disables arming on an open list the provider did not mark active', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Arm Approval')
+  const wallet = oneWallet(folder)
+  const now = Date.now()
+  await mockScatterNetwork({
+    browser,
+    slug: SLUG,
+    chainId: SCATTER_CHAIN_ID,
+    lists: [
+      {
+        id: 'first',
+        name: 'First',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 120_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+      {
+        id: 'second',
+        name: 'Second',
+        price: '0.01',
+        walletLimit: 1,
+        startTime: new Date(now - 60_000).toISOString(),
+        endTime: SCATTER_OPEN_END,
+      },
+    ],
+    mint: (body) =>
+      body.lists?.[0]?.id === 'second'
+        ? {
+            erc20s: [RECORDED_ALLOWANCE],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
+        : {},
+  })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        balance: '25000000000000000000',
+      },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '0',
+      },
+    ],
+    nowMs: now,
+  })
+
+  await seedMintPage(app, browser, folder, [wallet])
+  await checkCollection(
+    browser,
+    screen,
+    folder,
+    `https://scatter.art/c/${SLUG}`
+  )
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeEnabled()
+
+  // The second list is open by its own window but is not the provider's active list,
+  // so the same button arms instead of starting. Its allowance verdict still gates it.
+  await screen.getByLabel('Mint Stage').click()
+  await screen.getByRole('option', { name: 'Second' }).click()
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+  await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
+  await expect(screen.getByText('Mint opens in')).toHaveCount(0)
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })
 
@@ -972,10 +1434,27 @@ test('changing the Mint Stage clears the verdict and probes the new list', async
     mintDelayMs: 400,
     mint: (body) =>
       body.lists?.[0]?.id === 'second'
-        ? { erc20s: [RECORDED_ALLOWANCE] }
+        ? {
+            erc20s: [RECORDED_ALLOWANCE],
+            listPayments: RECORDED_LIST_PAYMENTS,
+          }
         : {},
   })
-  const rpc = await mockMintRpc({ browser, wallets: [wallet] })
+  const rpc = await mockMintRpc({
+    browser,
+    wallets: [wallet],
+    tokenBalances: [
+      { token: RECORDED_TOKEN, owner: wallet.address, balance: '25000000000000000000' },
+    ],
+    tokenAllowances: [
+      {
+        token: RECORDED_TOKEN,
+        owner: wallet.address,
+        spender: SCATTER_CONTRACT,
+        allowance: '0',
+      },
+    ],
+  })
 
   await seedMintPage(app, browser, folder, [wallet])
   await screen.getByLabel(URL_LABEL).fill(`https://scatter.art/c/${SLUG}`)
@@ -995,7 +1474,7 @@ test('changing the Mint Stage clears the verdict and probes the new list', async
   await screen.getByLabel('Mint Stage').click()
   await screen.getByRole('option', { name: 'Second' }).click()
   await expect(screen.getByRole('button', { name: 'Start Mint' })).toBeDisabled()
-  await expect(row.getByText('Blocked', { exact: true })).toBeVisible({
+  await expect(row.getByText('Needs approval', { exact: true })).toBeVisible({
     timeout: 60_000,
   })
   expect(calls.mintBodies).toHaveLength(2)
@@ -1176,6 +1655,7 @@ test('a run block belongs to the list it was taken against', () => {
       stageUuid: 'public',
       status: 'failed',
       error: 'The build timed out',
+      allowances: [],
     },
   }
   expect(mintableRow(failed, 'public')).toBe(true)
@@ -1190,7 +1670,7 @@ test('a run block belongs to the list it was taken against', () => {
     checkFailed: true,
     error: 'The list read failed',
     caps: {},
-    probe: { stageUuid: 'public', status: 'eligible' },
+    probe: { stageUuid: 'public', status: 'eligible', allowances: [] },
   }
   expect(stageStatusFor(recovered, 'public', false)).toBe('eligible')
   expect(mintableRow(recovered, 'public')).toBe(true)
@@ -1206,6 +1686,102 @@ test('a run block belongs to the list it was taken against', () => {
   )[0]
   expect(applied?.caps.public).toBeNull()
   expect(mintableRow(applied as WalletRun, 'public')).toBe(true)
+
+  // A wallet that has not granted the allowance is held out of the batch the same way
+  // a block is, and Start refuses it before a run can sign.
+  const needsApproval: WalletRun = {
+    ...row,
+    status: 'eligible',
+    statusStage: 'public',
+    probe: {
+      stageUuid: 'public',
+      status: 'needs-approval',
+      error: 'The allowance is short by 20 Basecat.',
+      allowances: [],
+    },
+  }
+  expect(stageStatusFor(needsApproval, 'public', false)).toBe('needs-approval')
+  expect(mintableRow(needsApproval, 'public')).toBe(false)
+  expect(reasonFor(needsApproval, 'public')).toBe(
+    needsApproval.probe?.error ?? null
+  )
+  const task = createTask()
+  task.wallets = [needsApproval.walletId]
+  task.stageUuid = 'public'
+  task.checked = true
+  expect(startRefusalFor(task, [needsApproval])).toContain('needs approval')
+})
+
+test('an allowance verdict covers the quantity it priced', () => {
+  const row: WalletRun = {
+    walletId: 'wallet-1',
+    label: 'Wallet 1',
+    address: '0x0000000000000000000000000000000000000001',
+    caps: { public: null },
+    status: 'eligible',
+    statusStage: 'public',
+    mintedStages: [],
+    probe: null,
+  }
+  const task = createTask()
+  task.wallets = [row.walletId]
+  task.stageUuid = 'public'
+  task.checked = true
+
+  // An allowance read that failed leaves the token position unknown, so the row is
+  // not mintable and Start explains that Check must run again.
+  const failedRow: WalletRun = {
+    ...row,
+    probe: {
+      stageUuid: 'public',
+      status: 'failed',
+      error: 'execution reverted',
+      allowances: [recordedAllowanceModel],
+      quantity: 1,
+    },
+  }
+  expect(mintableRow(failedRow, 'public')).toBe(false)
+  expect(startRefusalFor(task, [failedRow])).toContain('could not be checked')
+
+  // A verdict priced at quantity 1 does not cover a task raised to 2.
+  const eligibleRow: WalletRun = {
+    ...row,
+    probe: {
+      stageUuid: 'public',
+      status: 'eligible',
+      allowances: [recordedAllowanceModel],
+      quantity: 1,
+    },
+  }
+  task.quantity = '1'
+  expect(startRefusalFor(task, [eligibleRow])).toBeNull()
+  task.quantity = '2'
+  expect(startRefusalFor(task, [eligibleRow])).toContain('smaller quantity')
+
+  // A multi-token allowance keeps every unit and prices each against the quantity.
+  const multiRow: WalletRun = {
+    ...row,
+    probe: {
+      stageUuid: 'public',
+      status: 'eligible',
+      allowances: [recordedAllowanceModel, recordedAllowanceModel],
+      quantity: 2,
+    },
+  }
+  const view = taskView({
+    task,
+    rows: [multiRow],
+    runningIds: [],
+    knownWalletIds: new Set([row.walletId]),
+    locked: false,
+    nowMs: Date.now(),
+    blockSample: null,
+  })
+  expect(view.allowanceUnits).toHaveLength(2)
+  expect(view.allowanceTotals).toEqual([
+    40_000000000000000000n,
+    40_000000000000000000n,
+  ])
 })
 
 test('only a missing token ID refusal is a task block', () => {

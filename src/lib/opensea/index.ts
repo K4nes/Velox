@@ -1,5 +1,6 @@
 import { formatUnits } from 'viem'
 import type { CollectionSource } from '@/lib/collection-source'
+import type { MintAllowance } from '@/lib/mint/allowance'
 import { resolveKeys } from '@/lib/chain/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import { traceMint } from '@/lib/mint/mint-trace'
@@ -116,6 +117,8 @@ export type MintTransaction = {
   to: string
   data: string
   value: string
+  // The ERC-20 the list charges and the allowance it wants. Empty for a native mint.
+  allowances: MintAllowance[]
 }
 
 export type OfferFulfillmentTransaction = {
@@ -631,6 +634,7 @@ export async function buildMintTransaction(
     to: body.to,
     data: body.data,
     value: body.value,
+    allowances: [],
   }
   traceMint({ kind: 'calldata', slug, minter, quantity })
   return transaction
