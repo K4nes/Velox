@@ -89,6 +89,7 @@ export function MintTasksPage() {
           onStage={mint.selectStage}
           onPatch={mint.updateActive}
           onStart={() => void mint.startMint()}
+          onStop={mint.stopMint}
           onArm={mint.armStage}
           onDisarm={mint.disarmStage}
         />

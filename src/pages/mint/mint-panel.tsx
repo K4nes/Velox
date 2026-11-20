@@ -39,6 +39,7 @@ type MintPanelProps = {
   onStage: (uuid: string) => void
   onPatch: (patch: TaskPatch) => void
   onStart: () => void
+  onStop: () => void
   onArm: () => void
   onDisarm: () => void
 }
@@ -86,6 +87,7 @@ export function MintPanel({
   onStage,
   onPatch,
   onStart,
+  onStop,
   onArm,
   onDisarm,
 }: MintPanelProps) {
@@ -355,6 +357,14 @@ export function MintPanel({
               Cancel
             </Button>
           </div>
+        ) : isMinting ? (
+          <Button
+            className="h-10 w-full"
+            variant="outline"
+            onClick={onStop}
+          >
+            Stop
+          </Button>
         ) : (
           <Button
             className="h-10 w-full"
@@ -362,7 +372,7 @@ export function MintPanel({
             disabled={!canStartMint}
             title={startRefusal ?? undefined}
           >
-            {isMinting ? 'Minting…' : 'Start Mint'}
+            Start Mint
           </Button>
         )}
       </div>

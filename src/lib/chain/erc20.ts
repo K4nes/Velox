@@ -1,4 +1,8 @@
+import { encodeFunctionData } from 'viem'
 import type { PublicClient } from 'viem'
+import { sendTransaction } from '@/lib/chain/tx'
+import type { TxGas } from '@/lib/chain/tx'
+import type { StoredWallet } from '@/lib/wallet/wallets'
 
 const ERC20_BALANCE_ABI = [
   {
@@ -40,9 +44,23 @@ const ERC20_METADATA_ABI = [
   },
 ] as const
 
-// Relay's approve step is the only approval path, so there is deliberately no approve
-// writer here. Check reads the allowance so it can tell a wallet that needs approval
-// apart from one that is blocked.
+const ERC20_APPROVE_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const
+
+// Relay's approve step is the only approval path for a swap. A Scatter mint grants its
+// own allowance, so the writer lives here beside the reads; Check also reads the token
+// metadata and the allowance so it can tell a wallet that needs approval apart from one
+// that is blocked.
 export async function readTokenBalance(input: {
   client: PublicClient
   token: `0x${string}`
@@ -103,4 +121,31 @@ export async function readTokenMetadata(input: {
   } catch {
     return {}
   }
+}
+
+// A Scatter list priced in an ERC-20 pulls the token when its mint runs, so the minter
+// first grants that exact amount to the collection. The send goes through the mint's own
+// signing path, so a stop signal and the fee settings apply to both transactions.
+export async function approveToken(input: {
+  wallet: StoredWallet
+  chainSlug: string
+  token: `0x${string}`
+  spender: `0x${string}`
+  amount: bigint
+  gas?: TxGas
+  shouldAbort?: () => boolean
+}): Promise<{ txHash: string; chain: string }> {
+  return sendTransaction({
+    wallet: input.wallet,
+    chainSlug: input.chainSlug,
+    to: input.token,
+    data: encodeFunctionData({
+      abi: ERC20_APPROVE_ABI,
+      functionName: 'approve',
+      args: [input.spender, input.amount],
+    }),
+    value: 0n,
+    gas: input.gas,
+    shouldAbort: input.shouldAbort,
+  })
 }

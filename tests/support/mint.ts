@@ -1,7 +1,7 @@
 import type { JsonValue, Screen } from 'e2e'
 import { expect } from 'e2e'
 import type { Browser, WebApp, WebRoute } from '@e2e-dev/web'
-import { keccak256, recoverTransactionAddress } from 'viem'
+import { keccak256, parseTransaction, recoverTransactionAddress } from 'viem'
 import type { TransactionSerialized } from 'viem'
 import {
   mintWallets,
@@ -44,10 +44,20 @@ export type DropState = {
   now: number
 }
 
-/** One request the mocked mint endpoints saw, in arrival order. */
+/** One request the mocked mint endpoints saw, in arrival order. A send names the
+ * transaction target and its calldata, so a test can tell an approval from a mint. */
 export type MintEvent =
   | { kind: 'calldata'; address: string; at: number }
-  | { kind: 'send'; address: string; txHash: string; at: number }
+  | {
+      kind: 'send'
+      address: string
+      txHash: string
+      to: string
+      data: string
+      /** The gas limit the signed transaction carries, in decimal wei units. */
+      gas: string
+      at: number
+    }
   | { kind: 'receipt'; txHash: string; at: number }
 
 /** Seeded for deterministic runs; every request to it is answered in memory. */
@@ -152,10 +162,12 @@ export type MintCall = { to: string; selector: string }
  * Answers the chain's JSON-RPC in memory, so a mint broadcasts and settles without a
  * node. `sendDelayMs` holds that wallet's broadcast open and `receiptDelayMs` the
  * receipt, which makes one overlap assertion observable. `revert` answers a failed
- * receipt, so a test can prove a reverted send is not a landing. The events keep each
- * request's arrival time, and `calls` records each `eth_call` by target and selector so
- * a native test can prove no allowance read happened. Token balances and allowances are
- * answered from the base-unit values a test states; an unmatched call reads zero.
+ * receipt, so a test can prove a reverted send is not a landing; `revertTo` fails only
+ * the receipts for a send to a listed target, so an approval and the mint behind it can
+ * settle differently. The events keep each request's arrival time, and `calls` records
+ * each `eth_call` by target and selector so a native test can prove no allowance read
+ * happened. Token balances and allowances are answered from the base-unit values a test
+ * states; an unmatched call reads zero.
  */
 export async function mockMintRpc(options: {
   browser: Browser
@@ -169,11 +181,17 @@ export async function mockMintRpc(options: {
   // The on-chain symbol/decimals a token states, which a build without payment
   // metadata leaves to the chain.
   tokenMetadata?: { token: string; symbol: string; decimals: number }[]
+  revertTo?: string[]
   tokenBalances?: { token: string; owner: string; balance: string }[]
   tokenAllowances?: { token: string; owner: string; spender: string; allowance: string }[]
+  /** Tokens whose `eth_call` reads answer an RPC error, as a dead node would. */
+  failCalls?: string[]
 }): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
   const receiptDelayMs = options.receiptDelayMs ?? 0
   const nowMs = options.nowMs ?? Date.now()
+  const failedCalls = new Set(
+    (options.failCalls ?? []).map((token) => token.toLowerCase())
+  )
   const events: MintEvent[] = []
   const calls: MintCall[] = []
   const metadataByToken = new Map(
@@ -182,6 +200,10 @@ export async function mockMintRpc(options: {
       entry,
     ])
   )
+  const revertTo = new Set((options.revertTo ?? []).map((to) => to.toLowerCase()))
+  // The receipt states no target of its own, so the send that produced the hash is the
+  // only source for whether that transaction reverts.
+  const sendTargets = new Map<string, string>()
   const balanceByKey = new Map(
     (options.tokenBalances ?? []).map((entry) => [
       `${entry.token.toLowerCase()}:${entry.owner.toLowerCase()}`,
@@ -270,8 +292,19 @@ export async function mockMintRpc(options: {
         const address = (
           await recoverTransactionAddress({ serializedTransaction: serialized })
         ).toLowerCase()
+        const transaction = parseTransaction(serialized)
+        const to = (transaction.to ?? '').toLowerCase()
         const txHash = keccak256(serialized)
-        events.push({ kind: 'send', address, txHash, at: Date.now() })
+        events.push({
+          kind: 'send',
+          address,
+          txHash,
+          to,
+          data: transaction.data ?? '0x',
+          gas: (transaction.gas ?? 0n).toString(),
+          at: Date.now(),
+        })
+        sendTargets.set(txHash.toLowerCase(), to)
         const delayed = Promise.withResolvers<void>()
         setTimeout(delayed.resolve, sendDelayByAddress.get(address) ?? 0)
         await delayed.promise
@@ -281,6 +314,10 @@ export async function mockMintRpc(options: {
       case 'eth_getTransactionReceipt': {
         const txHash = params[0] as string
         events.push({ kind: 'receipt', txHash, at: Date.now() })
+        const target = sendTargets.get(txHash.toLowerCase())
+        const reverted =
+          options.revert === true ||
+          (target !== undefined && revertTo.has(target))
         const delayed = Promise.withResolvers<void>()
         setTimeout(delayed.resolve, receiptDelayMs)
         await delayed.promise
@@ -296,7 +333,7 @@ export async function mockMintRpc(options: {
           contractAddress: null,
           logs: [],
           logsBloom: `0x${'00'.repeat(256)}`,
-          status: options.revert ? '0x0' : '0x1',
+          status: reverted ? '0x0' : '0x1',
           type: '0x2',
           effectiveGasPrice: '0x1',
         })
@@ -308,13 +345,16 @@ export async function mockMintRpc(options: {
         const data = call.data ?? ''
         const selector = data.slice(0, 10)
         calls.push({ to, selector })
-        if (options.callError !== undefined) {
+        if (options.callError !== undefined || failedCalls.has(to)) {
           await route.fulfill({
             status: 200,
             json: {
               jsonrpc: '2.0',
               id: request.id ?? null,
-              error: { code: -32000, message: options.callError },
+              error: {
+                code: -32000,
+                message: options.callError ?? 'execution reverted',
+              },
             },
           })
           return
