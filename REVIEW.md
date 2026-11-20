@@ -44,6 +44,17 @@ calls are the only thing this suppresses.
   `mergeCheckedRows`, the run reset, the abort path, and the receipt path. One path that
   does not handle it is a finding.
 
+## Live lanes
+
+- A live case pins every input it asserts: quantity, list, chain and spender. A value read
+  from the provider is compared with the value the run used, not assumed.
+- A skip is not proof. A preflight that stops before the browser names the missing value or
+  the short balance; a case that can pass while minting nothing is a finding.
+- A live case reads the target's token standard before it asserts a balance, and refuses a
+  standard it cannot read by name.
+- A lane's env names live in `scripts/live-env.mjs`, and its npm script runs
+  `scripts/check-live-env.mjs <lane>` before the browser.
+
 ## Finding Requirements
 Every finding must:
 - Identify a specific defect, not merely a possible improvement.
