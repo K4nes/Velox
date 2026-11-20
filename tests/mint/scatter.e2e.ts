@@ -1117,6 +1117,57 @@ test('a covering allowance sends only the mint', async ({
   await expect(log).not.toContainText('Approval 0x')
 })
 
+test('a stale allowance is re-read at run time before the mint is sent', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const folder = walletFolder('Scatter Stale Allowance')
+  const wallet = oneWallet(folder)
+  const { rpc } = await seedTokenList({
+    app,
+    browser,
+    screen,
+    folder,
+    wallets: [wallet],
+  })
+
+  const row = screen.getByRole('row').filter({ hasText: wallet.address })
+  await expect(row.getByText('Eligible', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  // Check read a covering allowance. The wallet then spends it on another list, so a
+  // run that trusted the check would sign the mint alone and revert on chain.
+  rpc.setAllowance({
+    token: RECORDED_TOKEN,
+    owner: wallet.address,
+    spender: SCATTER_CONTRACT,
+    allowance: '0',
+  })
+
+  await pinMintGas(screen)
+  await screen.getByRole('button', { name: 'Start Mint' }).click()
+  await expect(row.getByText('Confirmed', { exact: true })).toBeVisible({
+    timeout: 60_000,
+  })
+
+  const sends = sendsOf(rpc.events)
+  expect(sends.map((event) => event.to)).toEqual([
+    RECORDED_TOKEN_ADDRESS,
+    SCATTER_CONTRACT,
+  ])
+
+  const approval = sends[0]
+  const mint = sends[1]
+  if (approval === undefined || mint === undefined) {
+    throw new Error('the run did not send the approval and the mint')
+  }
+  const log = await openExecutionLog(screen, wallet.address)
+  await expect(log).toContainText(`Approval ${approval.txHash}`)
+  await expect(log).toContainText(`Mint ${mint.txHash}.`)
+})
+
 test('a pinned gas limit applies to the approval and the mint', async ({
   app,
   browser,

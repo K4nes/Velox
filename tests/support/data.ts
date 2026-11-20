@@ -6,15 +6,18 @@ import type { FolderRow, WalletRow } from './seed'
 export const FIXED_NOW = 1_760_000_000_000
 
 // The app reads its chain from storage before the first render, so a lane that needs the
-// seeded Robinhood connection pins it in an init script, before the page opens.
-export async function pinWalletChain(browser: Browser): Promise<void> {
-  await browser.addInitScript(() => {
+// seeded connection pins it in an init script, before the page opens.
+export async function pinWalletChain(
+  browser: Browser,
+  chain = 'robinhood'
+): Promise<void> {
+  await browser.addInitScript((slug: string) => {
     try {
-      window.localStorage.setItem('wallet-chain', 'robinhood')
+      window.localStorage.setItem('wallet-chain', slug)
     } catch {
       // An origin that blocks storage keeps the default chain, which is fine here.
     }
-  })
+  }, chain)
 }
 
 /**
