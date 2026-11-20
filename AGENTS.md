@@ -40,7 +40,7 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
 | `npm run test:e2e` | Headless browser suite over `tests/**/*.e2e.ts`, mocked lane. Starts its own Vite server on a free port; no setup. |
 | `npm run test:e2e:live` | Live lane through `e2e.live.config.ts` against real wallets, drops and providers. Loads `.env.e2e.local` and fails before the browser when a required value is missing, so a skipped lane cannot read as green. |
-| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file. The minting cases run only with `E2E_ALLOW_MINT=1`, because they spend gas; `scatter.e2e.ts` reads and needs no value, and `scatter-erc20.e2e.ts` also needs `E2E_SCATTER_ERC20_SLUG` and `E2E_SCATTER_ERC20_RPC_URL`, takes an optional `E2E_SCATTER_ERC20_LIST` name, and skips once the wallet already covers the allowance. |
+| `npm run test:e2e:mint` | Live lane over `tests/mint/live` only. Loads the same file. The minting cases run only with `E2E_ALLOW_MINT=1`, because they spend gas; `scatter.e2e.ts` reads and needs no value, and `scatter-erc20.e2e.ts` also needs `E2E_SCATTER_ERC20_SLUG` and `E2E_SCATTER_ERC20_RPC_URL`, takes an optional `E2E_SCATTER_ERC20_LIST` name, and skips once the wallet already covers the allowance. The script runs the lane preflight first, so a missing value fails before the browser. |
 | `npm run verify` | The check scripts, `build`, `typecheck:test`, `lint`, `test:release` and `test:e2e` in one command. The default gate; see Verify. |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | The app's own commands, driven against a stub upstream in `src-tauri/tests/`. Compiles the crate, so it needs `dist/` from `npm run build`. |
 
@@ -128,6 +128,7 @@ is live-only.
 | `src/hooks/` | Long-running flows and their run state (scans, listings, mints, swaps). |
 | `src/config/` | Chains, routes, nav groups, swap assets. |
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
+| `tests/support/` | Shared fixtures for the browser suites: `mint.ts` (mock network and RPC, seeds, live mint prep), `data.ts` (wallets, the chain pin, connection rows), `seed.ts` (IndexedDB seed), `env.ts`. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
 | `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, `capabilities/default.json` (what the window may call), and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed app. |
 | `docs/` | Local research notes; not tracked by git. |
@@ -137,6 +138,9 @@ is live-only.
 Before writing or changing a browser test, read `RULES.md` § E2E assertions. One test
 asserts one thing. Put a precondition wait in a helper such as `waitForEligible`, then
 assert the subject once. Shared mint setup lives in `tests/support/mint.ts`.
+`.env.e2e.local` is git-ignored and belongs to one worktree, so a fresh worktree needs its
+own copy. The ERC-20 live target and the collection it approves are pinned in
+`tests/contract/scatterMintErc20.json`.
 
 ## Rules that break things if ignored
 
