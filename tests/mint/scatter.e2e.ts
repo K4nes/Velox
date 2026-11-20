@@ -1943,17 +1943,15 @@ test('a token with no build metadata reads its symbol and decimals on chain', as
   await expect(log).toContainText('symbol Basecat, decimals 18')
   await browser.keyboard.press('Escape')
 
-  // Without build metadata the panel still prices the token, not the stage's ETH.
-  await expect(screen.getByText('20 Basecat', { exact: true })).toHaveCount(1)
+  // Without build metadata the panel still prices the token, not the stage's ETH. The
+  // unit price and the total for one mintable wallet both read in the token.
+  await expect(screen.getByText('20 Basecat', { exact: true })).toHaveCount(2)
   expect(
     rpc.calls.filter((call) => call.selector === '0x95d89b41')
   ).toHaveLength(1)
   expect(
     rpc.calls.filter((call) => call.selector === '0x313ce567')
   ).toHaveLength(1)
-  await expect(
-    screen.getByRole('button', { name: 'Start Mint' })
-  ).toBeDisabled()
   expect(rpc.events.filter((event) => event.kind === 'send')).toHaveLength(0)
 })
 

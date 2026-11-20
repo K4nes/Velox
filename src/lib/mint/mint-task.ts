@@ -522,9 +522,6 @@ export function mintableRow(row: WalletRun, stageUuid: string): boolean {
   // and a stale rows map must not leak one in. A wallet that needs approval is not
   // blocked: the run grants it before signing, so the row stays in the batch.
   if (probe?.status === 'blocked') return false
-  // A failed build is the check's verdict, not a guess: the row refuses the batch until
-  // a new Check answers it.
-  if (probe?.status === 'failed') return false
   // A successful build is the strongest answer: a failed list read or a stale cap
   // cannot hide it. A landing on this exact stage still retires the wallet.
   if (probe?.status === 'eligible') {
@@ -616,11 +613,20 @@ export function startRefusalFor(
       probe: probeFor(row, task.stageUuid),
     }))
   const blocked = selected.filter((entry) => entry.status === 'blocked').length
-  // A failed build or a failed run is a refusal. A failed list read that a successful
-  // build answered is not, and neither is a row retired by a landing.
+  // A token read that failed leaves the wallet's position unknown, and the operator
+  // must run Check again; a native build failure is the same class but names no token.
+  const tokenFailed = selected.filter(
+    (entry) =>
+      entry.probe?.status === 'failed' &&
+      entry.probe.allowances.length > 0
+  ).length
+  // Any other failed build or a failed run is a refusal. A failed list read that a
+  // successful build answered is not, and neither is a row retired by a landing.
   const failed = selected.filter((entry) => {
     if (entry.row.mintedStages.includes(task.stageUuid)) return false
-    if (entry.probe?.status === 'failed') return true
+    if (entry.probe?.status === 'failed') {
+      return entry.probe.allowances.length === 0
+    }
     if (
       entry.row.status === 'failed' &&
       !entry.row.checkFailed &&
@@ -644,12 +650,24 @@ export function startRefusalFor(
       (entry.probe.quantity ?? 0) < quantity &&
       mintableRow(entry.row, task.stageUuid)
   ).length
-  if (blocked === 0 && failed === 0 && stale === 0) return null
+  if (
+    blocked === 0 &&
+    tokenFailed === 0 &&
+    failed === 0 &&
+    stale === 0
+  ) {
+    return null
+  }
 
   const parts: string[] = []
   if (blocked > 0) {
     parts.push(
       `${blocked} selected wallet${blocked === 1 ? ' is' : 's are'} blocked`
+    )
+  }
+  if (tokenFailed > 0) {
+    parts.push(
+      `${tokenFailed} selected wallet${tokenFailed === 1 ? ' could' : 's could'} not be checked for the token`
     )
   }
   if (failed > 0) {
@@ -664,7 +682,7 @@ export function startRefusalFor(
   }
 
   const hint =
-    failed > 0 || stale > 0
+    tokenFailed > 0 || failed > 0 || stale > 0
       ? 'Run Check again before starting.'
       : 'Open the row log for the reason.'
   return `${parts.join('; ')}. ${hint}`
