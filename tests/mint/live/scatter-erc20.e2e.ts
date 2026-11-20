@@ -37,7 +37,12 @@ const allowanceAbi = [
   },
 ] as const
 
-type Collection = { address: string; chainId: number; name: string }
+type Collection = {
+  address: string
+  chainId: number
+  name: string
+  standard: 'erc721' | 'erc1155' | 'unknown'
+}
 
 type MintList = {
   id: string
@@ -59,6 +64,30 @@ async function readJson(url: string): Promise<unknown> {
   return response.json()
 }
 
+// The balance this case reads is the ERC-721 `balanceOf(address)`. An ERC-1155 answers
+// only the two-argument form, so the run would fail decoding a value rather than saying
+// why. The provider ships the contract ABI, which states the form without a chain read.
+function tokenStandard(abi: unknown): Collection['standard'] {
+  let entries: unknown = abi
+  if (typeof abi === 'string') {
+    try {
+      entries = JSON.parse(abi)
+    } catch {
+      return 'unknown'
+    }
+  }
+  if (!Array.isArray(entries)) return 'unknown'
+  const balanceOf = entries.find(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as Record<string, unknown>).type === 'function' &&
+      (entry as Record<string, unknown>).name === 'balanceOf'
+  ) as { inputs?: unknown[] } | undefined
+  if (!Array.isArray(balanceOf?.inputs)) return 'unknown'
+  return balanceOf.inputs.length === 2 ? 'erc1155' : 'erc721'
+}
+
 async function readCollection(slug: string): Promise<Collection> {
   const body = (await readJson(
     `https://api.scatter.art/v1/collection/${encodeURIComponent(slug)}`
@@ -68,7 +97,12 @@ async function readCollection(slug: string): Promise<Collection> {
   if (typeof address !== 'string' || typeof chainId !== 'number') {
     throw new Error(`Scatter returned no collection for ${slug}`)
   }
-  return { address, chainId, name: String(body.name ?? '') }
+  return {
+    address,
+    chainId,
+    name: String(body.name ?? ''),
+    standard: tokenStandard(body.abi),
+  }
 }
 
 // A collection can carry several lists, so the case names the one it spends on. Without
@@ -149,6 +183,11 @@ test(
         `${slug} is on chain ${collection.chainId}, which Velox cannot sign for`
       )
     }
+    if (collection.standard === 'erc1155') {
+      throw new Error(
+        `${slug} is an ERC-1155 collection; this case reads the ERC-721 balance and needs an ERC-721 list`
+      )
+    }
     const list = await readErc20List(
       slug,
       wallet.address,
@@ -223,7 +262,11 @@ test(
     await browser.keyboard.press('Escape')
     await screen.getByRole('button', { name: 'Check' }).click()
 
-    // A list the wallet has not approved reads Needs approval, and both verdicts start.
+    // The picker fills once the check reads the collection, and the trigger stays
+    // disabled until then. Clicking first would wait out the shorter action timeout.
+    await expect(screen.getByLabel('Mint Stage')).toBeEnabled({
+      timeout: 180_000,
+    })
     await screen.getByLabel('Mint Stage').click()
     await screen.getByRole('option', { name: list.name }).click()
 
@@ -237,6 +280,10 @@ test(
       screen.getByRole('button', { name: 'Start Mint' })
     ).toBeEnabled({ timeout: 120_000 })
 
+    // The field prefills with the stage's cap, so a list that caps wallets above one
+    // would spend that many tokens and miss the balance assertion below.
+    await screen.getByLabel('Quantity').fill('1')
+
     await pinMintGas(screen)
     await screen.getByRole('button', { name: 'Start Mint' }).click()
     await expect(row.getByText('Confirmed', { exact: true })).toBeVisible({
@@ -249,7 +296,7 @@ test(
     const log = screen.getByRole('dialog')
     const text = (await log.textContent()) ?? ''
     const approval = text.match(
-      /Approval (0x[0-9a-fA-F]{64}) for ([^.]*) to (0x[0-9a-fA-F]{40})\./
+      /Approval (0x[0-9a-fA-F]{64}) for (.+?) to (0x[0-9a-fA-F]{40})\./
     )
     const mint = text.match(/Mint (0x[0-9a-fA-F]{64})\./)
     if (approval === null || mint === null) {

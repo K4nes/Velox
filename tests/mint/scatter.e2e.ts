@@ -4,7 +4,7 @@ import { test } from '@e2e-dev/web'
 import type { Browser, WebApp } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import type { Screen } from 'e2e'
-import { mintWallets, walletFolder } from '../support/data'
+import { mintWallets, pinWalletChain, walletFolder } from '../support/data'
 import {
   SCATTER_CONTRACT,
   SCATTER_NO_LIMIT,
@@ -231,6 +231,16 @@ async function countOpenSeaAuth(browser: Browser): Promise<{ calls: number }> {
   })
   return calls
 }
+
+test('the chain pin stores the slug the caller names', async ({ app, browser }) => {
+  // The live ERC-20 lane signs on the collection's chain, and the app reads its chain
+  // from storage before the first render, so the pin has to carry the slug it is given.
+  await pinWalletChain(browser, 'base')
+  await app.open('/mint/tasks')
+  expect(
+    await browser.evaluate(() => window.localStorage.getItem('wallet-chain'))
+  ).toBe('base')
+})
 
 test('a Scatter collection fills the picker and prices each list in its own currency', async ({
   app,
