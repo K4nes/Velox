@@ -256,3 +256,13 @@ Never copy the private key into the repository.
 - Commits follow `COMMIT.md` (Conventional Commits). Do not claim verification you did not
   run.
 - Reviews follow `REVIEW.md`: defects only, with a failure scenario and impact.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the `K4nes/Velox` GitHub repository and are managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: read `GLOSSARY.md` at the repo root and decisions under `docs/adr/`. See `docs/agents/domain.md`.
