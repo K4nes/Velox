@@ -10,6 +10,13 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Added
 
+- A Linux AppImage build and release path. `npm run build:desktop` produces
+  `Velox_<version>_amd64.AppImage` on Linux; a `vX.Y.Z` tag builds a portable AppImage on
+  Ubuntu 22.04, signs it with the updater key, writes `latest-linux.json`, and uploads it
+  to the same draft release as the Windows installer. The AppImage carries its desktop
+  entry, AppStream metadata, `X-AppImage-Version` and `hicolor` icons, and updates through
+  the existing in-app updater. Supported baseline: Ubuntu 22.04+/Debian 12+ on x86_64; not
+  Ubuntu 20.04/Debian 11.
 - A `scatter.art` collection URL loads on the Mint page: the collection resolves, its mint
   lists fill the Mint Stage picker under their own names, each price reads in the currency
   its list states, a list with no end or no cap reads as what it is, and a chain Velox

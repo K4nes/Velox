@@ -1,8 +1,8 @@
 name: release
 
-# A pushed `vX.Y.Z` tag builds the installer, signs it, and opens a draft
-# release. Nothing is published, so the updater's `latest.json` never points
-# at a half-built version: a person publishes the draft.
+# A pushed `vX.Y.Z` tag builds the Windows installer and the Linux AppImage,
+# signs both, and opens a draft release. Nothing is published, so the updaters'
+# manifests never point at a half-built version: a person publishes the draft.
 on:
   push:
     tags: ['v*']
@@ -113,3 +113,80 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
             ${{ secrets.UPDATER_KEY_PASSWORD }}
         run: npm run release:desktop -- --draft
+
+  linux:
+    # Ubuntu 22.04 is the compatibility baseline: glibc 2.35 and WebKitGTK
+    # 4.1. The AppImage it builds runs on 22.04+ and newer GUI distros.
+    needs: draft
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: dtolnay/rust-toolchain@1.98.1
+
+      - name: install the Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            desktop-file-utils
+
+      - run: npm ci
+
+      - name: check the tag against the package version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - name: check the signing secret
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo 'TAURI_SIGNING_PRIVATE_KEY is not set' >&2
+            exit 1
+          fi
+
+      - name: build, sign and verify the AppImage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
+            ${{ secrets.UPDATER_KEY_PASSWORD }}
+        run: npm run release:linux
+
+      - name: validate the desktop entry
+        run: |
+          bundle=src-tauri/target/release/bundle/appimage/Velox.AppDir
+          desktop-file-validate \
+            "$bundle/usr/share/applications/Velox.desktop"
+
+      - name: upload the Linux assets to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          base=src-tauri/target/release/bundle/appimage
+          gh release upload "$GITHUB_REF_NAME" \
+            "$base/Velox_${version}_amd64.AppImage" \
+            "$base/Velox_${version}_amd64.AppImage.sig" \
+            "$base/latest-linux.json" \
+            --clobber

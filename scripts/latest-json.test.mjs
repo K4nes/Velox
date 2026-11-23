@@ -7,15 +7,20 @@ import { assetUrl, buildManifest, releaseNotes, verifyRelease } from './latest-j
 
 const ROOT = join(import.meta.dirname, '..')
 const ENDPOINT = 'https://github.com/K4nes/Velox/releases/latest/download/latest.json'
+const LINUX_ENDPOINT = 'https://github.com/K4nes/Velox/releases/latest/download/latest-linux.json'
 const ARTIFACT = 'Velox_0.1.2_x64-setup.exe'
+const LINUX_ARTIFACT = 'Velox_0.1.2_amd64.AppImage'
 const PUB_DATE = '2026-11-12T00:00:00.000Z'
 
 // Produced by `tauri signer sign Velox_0.1.2_x64-setup.exe --app-version 0.1.2`.
 const SIGNATURE =
   'dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSTm1ZdjgwNms3bk5JWDlHeTFhV3VtMWs4NHRyeXYydVlOZFVHOGphekl0ZExua3Z3a2c3emN0dVpoMVp5VDRDd2ZPMHBpUGNoOGI3dHhkM1dBUXdqSjNzUE9oOTJzdWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDc4NDYzCWZpbGU6VmVsb3hfMC4xLjJfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMS4yCkFQS2pUdFIxVzNIRTBlSzQ3YVUveDAzWVlZdGV5dDB4N1JxN2RuR3FiUGxhZDg0Tk9xU2xwM2JoRkhBRVFSQmFOZGR6Vk14d1lVVHp1emw4YTlZTEJRPT0K'
 
-// What the signature verifier returns for the artifacts above.
+// What the signature verifier returns for the Windows artifact above.
 const SIGNED = { version: '0.1.2', file: ARTIFACT, box: SIGNATURE }
+// The same box stands in for the Linux artifact; verifyRelease compares fields,
+// not the signature's trusted-comment file name.
+const LINUX_SIGNED = { version: '0.1.2', file: LINUX_ARTIFACT, box: SIGNATURE }
 
 function manifestFor(overrides = {}) {
   return buildManifest({
@@ -40,14 +45,45 @@ function verify(overrides = {}) {
   })
 }
 
-function withPlatform(overrides) {
-  const manifest = manifestFor()
-  const platform = manifest.platforms['windows-x86_64']
-  return { ...manifest, platforms: { 'windows-x86_64': { ...platform, ...overrides } } }
+function linuxManifestFor(overrides = {}) {
+  return buildManifest({
+    version: '0.1.2',
+    notes: 'Release notes.',
+    fileName: LINUX_ARTIFACT,
+    signature: SIGNATURE,
+    pubDate: PUB_DATE,
+    endpoint: LINUX_ENDPOINT,
+    platform: 'linux-x86_64',
+    ...overrides,
+  })
 }
 
-test('the artifacts as they stand pass every check', () => {
+function verifyLinux(overrides = {}) {
+  verifyRelease({
+    manifest: linuxManifestFor(),
+    signed: LINUX_SIGNED,
+    artifactName: LINUX_ARTIFACT,
+    artifactVersion: '0.1.2',
+    endpoint: LINUX_ENDPOINT,
+    platform: 'linux-x86_64',
+    ...overrides,
+  })
+}
+
+function withPlatform(overrides, platform = 'windows-x86_64') {
+  const manifest = platform === 'linux-x86_64' ? linuxManifestFor() : manifestFor()
+  return {
+    ...manifest,
+    platforms: { [platform]: { ...manifest.platforms[platform], ...overrides } },
+  }
+}
+
+test('the Windows artifacts as they stand pass every check', () => {
   assert.doesNotThrow(() => verify())
+})
+
+test('the Linux artifacts as they stand pass every check', () => {
+  assert.doesNotThrow(() => verifyLinux())
 })
 
 test('a manifest version that disagrees with the signed version is refused', () => {
@@ -91,19 +127,30 @@ test('a manifest url that is not the release asset is refused', () => {
   )
 })
 
+test('a manifest for the wrong platform is refused', () => {
+  assert.throws(
+    () => verify({ manifest: linuxManifestFor() }),
+    /manifest platforms must be exactly windows-x86_64, found linux-x86_64/,
+  )
+})
+
 test('a missing CHANGELOG section is refused', () => {
   assert.equal(releaseNotes('## [0.1.2]\n\n- A fix.\n\n## [0.1.1]\n\n- Older.\n', '0.1.2'), '- A fix.')
   assert.throws(() => releaseNotes('## [0.1.2]\n\n- A fix.\n', '0.9.9'), /no CHANGELOG section for 0\.9\.9/)
 })
 
-test('assetUrl derives the download URL and refuses a foreign endpoint', () => {
+test('assetUrl derives both platform URLs and refuses a foreign endpoint', () => {
   assert.equal(
     assetUrl({ endpoint: ENDPOINT, version: '0.1.2', fileName: ARTIFACT }),
     'https://github.com/K4nes/Velox/releases/download/v0.1.2/Velox_0.1.2_x64-setup.exe',
   )
+  assert.equal(
+    assetUrl({ endpoint: LINUX_ENDPOINT, version: '0.1.2', fileName: LINUX_ARTIFACT }),
+    'https://github.com/K4nes/Velox/releases/download/v0.1.2/Velox_0.1.2_amd64.AppImage',
+  )
   assert.throws(
     () => assetUrl({ endpoint: 'https://example.com/latest.json', version: '0.1.2', fileName: ARTIFACT }),
-    /does not end with \/releases\/latest\/download\/latest\.json/,
+    /is not a GitHub latest\/download URL/,
   )
 })
 
@@ -118,6 +165,16 @@ test('buildManifest emits exactly one windows-x86_64 platform', () => {
   assert.deepEqual(manifest.platforms['windows-x86_64'], {
     signature: SIGNATURE,
     url: 'https://github.com/K4nes/Velox/releases/download/v0.1.2/Velox_0.1.2_x64-setup.exe',
+  })
+})
+
+test('buildManifest emits exactly one linux-x86_64 platform', () => {
+  const manifest = linuxManifestFor()
+
+  assert.deepEqual(Object.keys(manifest.platforms), ['linux-x86_64'])
+  assert.deepEqual(manifest.platforms['linux-x86_64'], {
+    signature: SIGNATURE,
+    url: 'https://github.com/K4nes/Velox/releases/download/v0.1.2/Velox_0.1.2_amd64.AppImage',
   })
 })
 
