@@ -32,9 +32,10 @@ All wallet signing happens locally with keys from IndexedDB.
 | `npm run build` | `tsc -b` then `vite build`. The type-check gate. |
 | `npm run typecheck` | `tsc -b` behind the local-toolchain guard. Refuses an empty `node_modules` instead of falling back to a global `tsc`. |
 | `npm run typecheck:test` | Type-checks `tests/` and the e2e configs with `tsconfig.test.json`. |
-| `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it in the app, and bundles the NSIS installer under `src-tauri/target/release/bundle/nsis/`. Needs the Rust toolchain and the C++ build tools. |
-| `npm run release:desktop` | Release build of the installer: signs it with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
-| `npm run release:verify` | Re-checks the installer, its `.sig` and `latest.json` in the bundle directory without rebuilding. |
+| `npm run build:desktop` | `tauri build`. Builds `dist/`, embeds it, and bundles the platform's installer: the NSIS installer under `.../bundle/nsis/` on Windows, or the AppImage under `.../bundle/appimage/` on Linux. Needs the Rust toolchain; Windows also needs the C++ build tools. |
+| `npm run release:desktop` | Windows release build: signs the NSIS installer with the updater key, writes `latest.json` beside it, and prints the commands that tag the commit and open a draft release. `-- --draft` opens that draft itself; `-- --dry-run` prints the command without building. Needs `TAURI_SIGNING_PRIVATE_KEY`; `VELOX_WIN_CERT_THUMBPRINT` and `VELOX_WIN_TIMESTAMP_URL` add Authenticode. |
+| `npm run release:linux` | Linux release build: builds and signs the AppImage, reads its `X-AppImage-Version`, verifies the signature and manifest, and writes `latest-linux.json` beside it. Refuses a build host other than Ubuntu 22.04 or Debian 12 unless `VELOX_ALLOW_NON_BASELINE=1`; `-- --dry-run` prints paths and config without building. Needs `TAURI_SIGNING_PRIVATE_KEY`. |
+| `npm run release:verify` | Windows-only re-check of the NSIS installer, its `.sig` and `latest.json` without rebuilding. |
 | `npm run test:release` | Unit tests for the release manifest and the page-state store in `scripts/`. |
 | `npm run lint` | oxlint. |
 | `npm run preview` | Serves `dist/` with the same `/api` routes. |
@@ -130,7 +131,7 @@ is live-only.
 | `tests/` | E2E suites, one folder per feature; `live/` holds the ones that need real credentials. |
 | `tests/support/` | Shared fixtures for the browser suites: `mint.ts` (mock network and RPC, seeds, live mint prep), `data.ts` (wallets, the chain pin, connection rows), `seed.ts` (IndexedDB seed), `env.ts`. |
 | `server/` | Vite middleware: SIWE proxy, CMC price route. |
-| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, `capabilities/default.json` (what the window may call), and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed app. |
+| `src-tauri/` | The Tauri v2 shell: `tauri.conf.json`, `tauri.linux.conf.json` (AppImage target, icons, desktop/AppStream files and the Linux updater endpoint), `linux/hicolor-index.theme`, `capabilities/default.json` (what the window may call), and `src/lib.rs` + `src/auth.rs` + `src/siwe.rs` + `src/price.rs` + `src/reply.rs`, the commands the installed app runs. `tests/` holds the stub-upstream suites. `scripts/desktop-check.mjs` checks the installed Windows app. |
 | `docs/` | Local research notes; not tracked by git. |
 
 ## Tests
@@ -219,35 +220,56 @@ git push origin v0.1.0
 Annotated tags, never lightweight. A pushed tag is never moved or deleted: fix forward
 with the next patch version.
 
-### Desktop release
+### Desktop releases
 
-The installer carries two independent signing chains, which README describes under "Two
-signing chains". The rules that bind work here:
+Windows and Linux share the updater key and `src-tauri/tauri.release.conf.json`, which
+turns on `bundle.createUpdaterArtifacts`. Only `npm run release:desktop` and
+`npm run release:linux` pass that overlay, so `npm run build:desktop` keeps producing an
+unsigned bundle with no `.sig`.
+
+**Windows.** The NSIS installer carries two independent signing chains:
 
 - Authenticode is optional. Without a certificate the SmartScreen warning is expected.
 - The updater key is mandatory. `requireSignedVersion` refuses an unsigned version.
 
-`src-tauri/tauri.release.conf.json` is an overlay that turns on
-`bundle.createUpdaterArtifacts`. Only `npm run release:desktop` passes it, so
-`npm run build:desktop` keeps producing a plain installer with no `.sig`.
+`npm run release:desktop` writes the installer, its `.sig` and `latest.json` into
+`src-tauri/target/release/bundle/nsis/`; `npm run release:verify` re-checks those files
+without rebuilding. This path is Windows-only.
 
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`, which runs
-`npm run release:desktop -- --draft` and leaves the installer, its `.sig` and `latest.json`
-in a draft release. It never publishes.
+**Linux.** `npm run build:desktop` produces
+`src-tauri/target/release/bundle/appimage/Velox_<version>_amd64.AppImage` on a Linux host.
+The AppImage is portable only when it is built on the oldest supported baseline, because
+glibc cannot be bundled and the AppImage carries the host's WebKitGTK/GTK libraries.
+`npm run release:linux` therefore refuses any host other than Ubuntu 22.04 or Debian 12
+(glibc 2.35/2.36). `VELOX_ALLOW_NON_BASELINE=1` bypasses that guard only for a deliberate
+local test; a CachyOS build iterates locally but is not a release artifact.
 
-The tag must equal `v` plus the package version. The job fails rather than ship unsigned
-when the updater key is missing, when `WINDOWS_CERTIFICATE` arrives without its password,
-and, once `VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent.
+The Linux release runs on `ubuntu-22.04`. It builds and signs the AppImage, reads
+`X-AppImage-Version` from the artifact, verifies the minisign signature and the manifest,
+and writes `latest-linux.json` beside it. The Linux updater endpoint in
+`tauri.linux.conf.json` points at that manifest; the manifest's platform key is
+`linux-x86_64`. The Windows and Linux manifests stay separate, so `latest.json` remains a
+one-platform Windows manifest and neither release job has to merge the other's file.
+
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`. The Windows job opens the
+draft; the Linux job `needs` it, uploads the AppImage, its `.sig` and `latest-linux.json`
+to the same draft, and never publishes. It never runs on a pull request: a Linux build is
+proven at tag time, not on every change. The tag must equal `v` plus the package version;
+the Windows job also fails rather than ship unsigned when the updater key is missing, when
+`WINDOWS_CERTIFICATE` arrives without its password, and, once
+`VELOX_REQUIRE_AUTHENTICODE` is `true`, when the certificate is absent. Linux has no
+Authenticode chain; the updater key is the only signature it needs.
 
 The updater reads its own keys from `tauri-plugin-updater`'s `config.rs`: `pubkey`,
 `endpoints`, `requireSignedVersion`, `windows.installMode`. `@tauri-apps/cli`'s
-`config.schema.json` describes only `bundle.createUpdaterArtifacts`, so a key absent from the
-schema is not a key the plugin ignores.
+`config.schema.json` describes only `bundle.createUpdaterArtifacts`, so a key absent from
+the schema is not a key the plugin ignores.
 
 The updater private key lives outside the repository at
-`%USERPROFILE%\.velox\velox-updater.key`, with a backup in a second offline location. Only
-the public key is committed, as `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
-Never copy the private key into the repository.
+`%USERPROFILE%\.velox\velox-updater.key`, with a backup in a second offline location. The
+release workflows read it from the `TAURI_SIGNING_PRIVATE_KEY` secret; only the public key
+is committed, as `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. Never copy the
+private key into the repository.
 
 ## Conventions
 

@@ -12,10 +12,10 @@
 </p>
 
 Velox is a console for running NFT operations across a set of EVM wallets without
-switching between tabs. It ships as a Windows desktop app, and the same code runs in a
-browser from a Vite dev server. Mint tasks, eligibility checks, PnL tracking, portfolio
-scans, bulk listings, offer sales, transfers and swaps all read the same wallet list and
-the same provider settings.
+switching between tabs. It ships as a Windows installer and a Linux AppImage, and the same
+code runs in a browser from a Vite dev server. Mint tasks, eligibility checks, PnL tracking,
+portfolio scans, bulk listings, offer sales, transfers and swaps all read the same wallet
+list and the same provider settings.
 
 It runs on your machine. Wallet keys live in the app's own store and signing happens
 locally, so there is no account, no upload and no remote backend. Some calls cannot happen
@@ -40,7 +40,8 @@ and in the web lane they stay as routes on the dev server.
 
 ## Requirements
 
-- Windows, for the installed app; the installer builds for x64.
+- Windows or Linux x86_64, for the installed app. The Windows installer builds for x64;
+  the Linux AppImage targets Ubuntu 22.04+/Debian 12+ and needs FUSE2 at runtime.
 - Node `^20.19` or `>=22.12` (the engine range Vite 8 declares) and npm, for the dev server
   and for building.
 - Network access to OpenSea, Relay, CoinMarketCap and the RPC endpoints you configure.
@@ -54,8 +55,8 @@ cd velox
 npm install
 ```
 
-There is no published npm package. Install the Windows app from the repository's releases
-page, or build the installer from source; see
+There is no published npm package. Install the Windows app or the Linux AppImage from the
+repository's releases page, or build the platform bundle from source; see
 [Desktop app and updates](#desktop-app-and-updates). The clone above is for the web lane
 and for that build.
 
@@ -202,17 +203,20 @@ wallets.
 
 ## Desktop app and updates
 
-The Windows build packages the same app with Tauri and produces an NSIS installer:
+The desktop build packages the same app with Tauri. On Windows it produces an NSIS
+installer; on Linux it produces an AppImage:
 
 ```bash
 npm run build:desktop
 ```
 
-The installer lands at `src-tauri/target/release/bundle/nsis/Velox_<version>_x64-setup.exe`.
-It installs for the current user, so it needs no administrator prompt. Wallet, folder and
-PnL data lives in the app's IndexedDB, which survives an in-place update because the
-application identifier and the per-user install do not change. The desktop install keeps
-its own data, separate from the browser copy at `localhost`.
+- Windows: `src-tauri/target/release/bundle/nsis/Velox_<version>_x64-setup.exe`
+- Linux: `src-tauri/target/release/bundle/appimage/Velox_<version>_amd64.AppImage`
+
+The Windows installer installs for the current user, so it needs no administrator prompt.
+Wallet, folder and PnL data lives in the app's IndexedDB, which survives an in-place update
+because the application identifier and the per-user install do not change. The desktop
+install keeps its own data, separate from the browser copy at `localhost`.
 
 **The uninstaller can delete the wallets.** The Windows uninstaller offers a "delete app
 data" box. That box removes `%LOCALAPPDATA%\com.k4nes.velox`, the folder that holds the
@@ -224,25 +228,50 @@ Windows SmartScreen shows "Windows protected your PC" with an unknown publisher.
 **More info**, then **Run anyway**. With a certificate configured, the installer and
 `Velox.exe` verify and the prompt shows the publisher name from the certificate.
 
-### Two signing chains
+### Linux AppImage
 
-Updates use a second signature chain beside Authenticode, and the two are independent:
+`npm run build:desktop` on Linux writes
+`src-tauri/target/release/bundle/appimage/Velox_<version>_amd64.AppImage`. Make it
+executable and run it directly. It needs FUSE2 on the host, or
+`--appimage-extract-and-run` when FUSE is unavailable. Its data lives in
+`~/.local/share/com.k4nes.velox`; deleting the AppImage does not delete that folder.
 
-- Authenticode signs the installer and `Velox.exe` for the Windows prompt. It is a
-distribution convenience and can be absent.
-- The updater key signs the installer for the in-app update. The installed app checks that
-  signature before it runs an installer, and the signature binds the version the manifest
-  announces to the artifact. A manifest whose version disagrees with the signed version is
-  refused.
+A build on CachyOS/Arch is for local iteration. The portable AppImage is built on Ubuntu
+22.04 in `.github/workflows/release.yml`, because glibc cannot be bundled and the AppImage
+carries the build host's WebKitGTK/GTK libraries. One baseline build runs on Ubuntu
+22.04+, Debian 12+, Fedora, CachyOS and other x86_64 GUI distros; it does not run on Ubuntu
+20.04/Debian 11. `npm run release:linux` refuses any host other than Ubuntu 22.04 or Debian
+12; `VELOX_ALLOW_NON_BASELINE=1` bypasses that only for a deliberate local test.
 
-A signed update does not remove the SmartScreen warning, and an Authenticode certificate
-does not let the app accept an unsigned update. Configure each chain on its own.
+The release script signs the AppImage with the updater key, reads `X-AppImage-Version` from
+the artifact, verifies it, and writes `latest-linux.json` beside the AppImage. The Linux
+updater endpoint in `tauri.linux.conf.json` points at that manifest; Windows keeps
+`latest.json`. The AppImage also carries a desktop entry, AppStream metadata and
+`hicolor` icons.
+
+The AppImage updates in place only when it runs from the AppImage file. Extract it or launch
+the inner binary another way and the updater cannot replace it.
+
+### Signing
+
+Windows carries two independent signature chains; Linux carries one:
+
+- Authenticode signs the Windows installer and `Velox.exe` for the Windows prompt. It is a
+  distribution convenience and can be absent; Linux has no Authenticode chain.
+- The updater key signs the artifact for the in-app update on both platforms. The installed
+  app checks that signature before it runs an installer or replaces the AppImage, and the
+  signature binds the version the manifest announces to the artifact. A manifest whose
+  version disagrees with the signed version is refused.
+
+A signed update does not remove the Windows SmartScreen warning, and an Authenticode
+certificate does not let the app accept an unsigned update. Configure each chain on its
+own.
 
 The updater key pair lives outside the repository:
 
 | Item | Location |
 | --- | --- |
-| Private key | `%USERPROFILE%\.velox\velox-updater.key` |
+| Private key | `%USERPROFILE%\.velox\velox-updater.key` on Windows; the `TAURI_SIGNING_PRIVATE_KEY` secret in CI |
 | Backup | A second location, never the repository |
 | Public key | `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` |
 
@@ -255,57 +284,69 @@ Only the public key is committed. Never copy, print or commit the private key;
    `## [x.y.z] - YYYY-MM-DD` section and bump `package.json`. The version and the notes are
    read from those two files.
 2. Merge the change to `main`, tag the merged commit with an annotated `vX.Y.Z` tag, and
-   push the tag. `.github/workflows/release.yml` then builds the installer, writes its
-   `.sig` file and `latest.json`, checks all three, and opens a **draft** release. The tag
-   must equal `v` plus the package version, because the manifest points at
-   `releases/download/v<version>/`.
-3. Publish the draft once its three files are attached. A draft is not served by
-   `releases/latest/download/latest.json`, so no installed copy sees the version before
-   this step.
+   push the tag. `.github/workflows/release.yml` builds the Windows installer, signs it,
+   writes `latest.json`, and opens a **draft** release. The Linux job then builds the
+   portable AppImage on `ubuntu-22.04`, signs it, writes `latest-linux.json`, and uploads
+   those three files to the same draft. The tag must equal `v` plus the package version,
+   because both manifests point at `releases/download/v<version>/`.
+3. Publish the draft once the Windows and Linux assets are attached. A draft is not served
+   by `releases/latest/download`, so no installed copy sees the version before this step.
 4. Check the installed update once per release that changes it (see below).
 
-To build on your own machine instead, set `TAURI_SIGNING_PRIVATE_KEY` to the path of the
-private key or to its contents, and `VELOX_WIN_CERT_THUMBPRINT` (plus
-`VELOX_WIN_TIMESTAMP_URL` if the default timestamp server does not suit) to sign with
-Authenticode. Then run `npm run release:desktop`. It writes the same three files into
-`src-tauri/target/release/bundle/nsis/` and prints the commands that tag, push and open the
-draft. Add `-- --draft` to open that draft from the script instead, or `-- --dry-run` to see
-its command before anything builds.
+To build a release on your own machine instead:
 
-`npm run release:verify` repeats the checks on the existing artifacts without rebuilding.
-It verifies the signature against the installer bytes, then refuses a `latest.json` whose
-version, signed version, file name or URL disagree with them.
+- Windows: set `TAURI_SIGNING_PRIVATE_KEY` to the path of the private key or to its
+  contents, and `VELOX_WIN_CERT_THUMBPRINT` (plus `VELOX_WIN_TIMESTAMP_URL` if the default
+  timestamp server does not suit) to sign with Authenticode. Then run
+  `npm run release:desktop`. It writes the same three files into
+  `src-tauri/target/release/bundle/nsis/` and prints the commands that tag, push and open
+  the draft. Add `-- --draft` to open that draft from the script instead, or `-- --dry-run`
+  to see its command before anything builds.
+- Linux: run `npm run release:linux` on Ubuntu 22.04 or Debian 12 with
+  `TAURI_SIGNING_PRIVATE_KEY` set. It writes the AppImage, its `.sig` and
+  `latest-linux.json` into `src-tauri/target/release/bundle/appimage/` and prints the
+  upload command. Add `-- --dry-run` to print the paths and endpoint without building. On
+  any other host the script refuses before compiling; `VELOX_ALLOW_NON_BASELINE=1` is only
+  for a deliberate local test.
+
+`npm run release:verify` repeats the Windows checks on the existing artifacts without
+rebuilding. It verifies the signature against the installer bytes, then refuses a
+`latest.json` whose version, signed version, file name or URL disagree with them.
 
 The workflow reads these repository secrets:
 
 | Secret | Use |
 | --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | The updater key. Required. |
+| `TAURI_SIGNING_PRIVATE_KEY` | The updater key. Required by both the Windows and Linux jobs. |
 | `UPDATER_KEY_PASSWORD` | That key's password, when it has one. |
-| `WINDOWS_CERTIFICATE` | The Authenticode certificate as base64 `.pfx`. Optional. |
-| `WINDOWS_CERTIFICATE_PASSWORD` | That certificate's password. Required with it. |
+| `WINDOWS_CERTIFICATE` | The Authenticode certificate as base64 `.pfx`. Optional; Windows only. |
+| `WINDOWS_CERTIFICATE_PASSWORD` | That certificate's password. Required with it; Windows only. |
 
 Make the base64 value with
 `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`.
 
-The job fails when the updater key is missing, when the certificate is set without its
-password, and when an import does not produce a thumbprint, so a half-configured run cannot
-ship unsigned artifacts. Set the repository variable `VELOX_REQUIRE_AUTHENTICODE` to `true`
-once a certificate identity is chosen: the job then also fails when `WINDOWS_CERTIFICATE` is
-absent.
+The Windows job fails when the updater key is missing, when the certificate is set without
+its password, and when an import does not produce a thumbprint, so a half-configured run
+cannot ship unsigned artifacts. Set the repository variable `VELOX_REQUIRE_AUTHENTICODE` to
+`true` once a certificate identity is chosen: the job then also fails when
+`WINDOWS_CERTIFICATE` is absent. The Linux job fails when the updater key is missing, the
+tag disagrees with `package.json`, or the build host is not Ubuntu 22.04 or Debian 12; a
+failed Linux job leaves the Windows draft unpublished.
 
-An installed copy checks the endpoint in `tauri.conf.json`
-(`releases/latest/download/latest.json`) on launch. When a newer version is published it
-offers the update once, downloads it, installs it in place and relaunches. A build without
-`TAURI_SIGNING_PRIVATE_KEY` (`npm run build:desktop`) still produces a working installer,
-but it carries no updater signature and no manifest.
+An installed copy checks its endpoint on launch. Windows uses
+`releases/latest/download/latest.json` from `tauri.conf.json`; Linux uses
+`releases/latest/download/latest-linux.json` from `tauri.linux.conf.json`. When a newer
+version is published it offers the update once, downloads it, installs it in place and
+relaunches. A build without `TAURI_SIGNING_PRIVATE_KEY` (`npm run build:desktop`) still
+produces a working installer or AppImage, but it carries no updater signature and no
+manifest.
 
 ### Update smoke test
 
-The update runs only inside an installed copy. Build, install and persistence checks have
-their own repeatable check, `scripts/desktop-check.mjs --phase drive` then `--phase
-restart`, run against the installed app. The updater itself needs a newer published
-release, so run this loop by hand on a release that changes it:
+The update runs only inside an installed copy. On Windows, build, install and persistence
+checks have their own repeatable check, `scripts/desktop-check.mjs --phase drive` then
+`--phase restart`, run against the installed app. The updater itself needs a newer
+published release, so run this loop by hand on a release that changes it:
 
 1. Install the previous version and add a wallet, a folder and a PnL record.
 2. Publish the next version as a draft release with its installer, `.sig` and
@@ -313,6 +354,17 @@ release, so run this loop by hand on a release that changes it:
 3. Launch the older installed copy, accept the offer, and wait for the relaunch.
 4. Check the version of the new build and that the wallet, the folder and the PnL record
    are still there.
+
+On Linux the same loop uses the previous AppImage and `latest-linux.json`:
+
+1. Run the previous `Velox_<version>_amd64.AppImage` and add a wallet, a folder and a PnL
+   record.
+2. Publish the next release with its AppImage, `.sig` and `latest-linux.json`.
+3. Run the older AppImage again, accept the offer, and wait for the relaunch.
+4. Check the version and that the wallet, the folder and the PnL record are still there.
+
+The first Linux release cannot run this loop yet; it becomes testable from the second
+Linux release onward. An extracted AppImage or its inner binary cannot update itself.
 
 ## Contributing
 
