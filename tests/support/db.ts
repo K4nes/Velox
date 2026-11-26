@@ -62,7 +62,7 @@ export type LegacyConnection = {
 
 export type LegacyProfileSeed = {
   /** The database version the profile sat at before the app opens it. */
-  version: 3 | 5
+  version: 3 | 5 | 6
   secrets: LegacySecret[]
   pnlRecords: LegacyPnlRecord[]
   connections: LegacyConnection[]

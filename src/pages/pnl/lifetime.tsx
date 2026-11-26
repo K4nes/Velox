@@ -251,7 +251,12 @@ export function PnlLifetimePage() {
         </dl>
       </Card>
 
-      {view.months.some((entry) => entry.incomparable) ? (
+      {view.seriesChanged ? (
+        <p className="text-xs text-muted-foreground">
+          Wallet selection changed between months; those months are not ranked
+          and the cumulative chart is hidden.
+        </p>
+      ) : view.months.some((entry) => entry.incomparable) ? (
         <p className="text-xs text-muted-foreground">
           Wallet selection changed between checks; those months mix baselines.
         </p>
@@ -281,6 +286,11 @@ export function PnlLifetimePage() {
           {view.months.length === 0 ? (
             <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
               {records.length === 0 ? 'No PnL records yet.' : 'No complete checks yet.'}
+            </div>
+          ) : view.seriesChanged ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-muted-foreground">
+              Wallet selection changed between months; the cumulative chart
+              cannot compare these positions.
             </div>
           ) : (
             <div className="min-h-0 flex-1">

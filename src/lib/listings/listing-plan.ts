@@ -104,7 +104,10 @@ export type ListingPlanErrorCode =
   | 'currency-mismatch'
   | 'decaying-order'
   | 'approval-sender-mismatch'
+  | 'approval-contract-mismatch'
   | 'approval-operator-mismatch'
+  | 'protocol-not-seaport'
+  | 'protocol-domain-mismatch'
 
 export class ListingPlanError extends Error {
   readonly code: ListingPlanErrorCode
@@ -266,6 +269,20 @@ function planWallet(input: {
         )
       }
 
+      // The approval is blanket transfer rights for one collection. A response
+      // that names a contract outside the selected batch would hand that
+      // contract's tokens to the operator before any listing is signed.
+      if (
+        !input.batch.tokens.some(
+          (token) => token.contract.toLowerCase() === envelope.to.toLowerCase()
+        )
+      ) {
+        throw new ListingPlanError(
+          'approval-contract-mismatch',
+          `OpenSea asked to approve ${envelope.to}, which is not a selected token contract`
+        )
+      }
+
       approvals.push({
         id: `approval:${address}:${approvals.length}`,
         kind: 'approval',
@@ -285,6 +302,24 @@ function planWallet(input: {
       throw new ListingPlanError(
         'chain-mismatch',
         `Orders are signed for chain ${leafDomain.chainId}, expected ${input.chainId}`
+      )
+    }
+
+    // The order names its own Seaport. Taking that address on trust would let a
+    // tampered response add an arbitrary operator to the approval allowlist.
+    if (seaportVersion(envelope.protocolAddress) === null) {
+      throw new ListingPlanError(
+        'protocol-not-seaport',
+        `OpenSea named ${envelope.protocolAddress} as the order's protocol, which is not a known Seaport`
+      )
+    }
+    if (
+      leafDomain.verifyingContract.toLowerCase() !==
+      envelope.protocolAddress.toLowerCase()
+    ) {
+      throw new ListingPlanError(
+        'protocol-domain-mismatch',
+        `Order domain names ${leafDomain.verifyingContract}, not the protocol ${envelope.protocolAddress}`
       )
     }
 

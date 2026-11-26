@@ -72,9 +72,11 @@ come from the Conventional Commit history (`COMMIT.md`).
 - The Monthly PnL chart accumulates within the month, so a 15 ETH baseline and a
   12 ETH change draw 15 then 27 instead of two separate daily spikes. Lifetime Best
   and Worst withhold a ranking until two comparable months exist; a month that mixes
-  wallet sets is not ranked at all.
-- The Transfer Status column uses short states (`Available`, `Sending`, `Sent`,
-  `Unavailable`, `Failed`) and keeps the full reason in the tooltip.
+  wallet sets is not ranked at all, a change that spans months hides the cumulative
+  chart instead of summing two positions, and the header names its figure the latest net.
+- The Transfer Status column uses short states (`Available`, `Checking`, `Sending`,
+  `Sent`, `Unavailable`, `Unsupported`, `Empty`, `Failed`, `Unconfirmed`) and keeps
+  the full reason in the tooltip.
 - A swap batch refuses two saved records that share one address before any quote or
   send, because both passed the per-record balance check and the second swap would
   spend a balance the first already spent. A repriced replacement is now indexed and
@@ -84,8 +86,10 @@ come from the Conventional Commit history (`COMMIT.md`).
   allowance before it can be signed, and its label names the spender.
 - Listing and instant-sell approvals are checked before a wallet signs: the listing
   response's `setApprovalForAll` calldata is decoded and its operator must be the order's
-  Seaport or the conduit resolved on chain from the order's key, and an offer whose
-  protocol is not a known Seaport never reaches an approval. Cancel listings drops rows
+  Seaport or the conduit resolved on chain from the order's key, an order's named
+  protocol must be a known Seaport whose EIP-712 domain matches it, an approval must
+  target a selected token's contract, and an offer whose protocol is not a known
+  Seaport never reaches an approval. Cancel listings drops rows
   read for another collection and refuses to submit until the current read is ready, a
   listing the API reports as non-`ACTIVE` is not cancellable, instant sell fills the held
   units against the bid's depth and leaves a partial fill sellable, and the price route

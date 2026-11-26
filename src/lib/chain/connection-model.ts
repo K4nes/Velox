@@ -78,6 +78,64 @@ export function endpointUrlTemplate(
   }
 }
 
+// A stored endpoint can predate the provider-template rule. Adopt a URL on the
+// provider's own host: a bare host becomes the template, and a full URL with the
+// key in the template's key slot yields that key so it can move into credentials.
+// A foreign URL is not a supported connection any more, so it yields null and
+// the caller drops the endpoint.
+export function adoptStoredEndpoint(
+  url: string,
+  template: string
+): { url: string; key: string | null } | null {
+  if (template === '') return null
+  const trimmed = url.trim()
+  if (trimmed === '' || trimmed === template) {
+    return { url: template, key: null }
+  }
+
+  const placeholder = '{key}'
+  const at = template.indexOf(placeholder)
+  if (at === -1) {
+    try {
+      const parsed = new URL(trimmed)
+      const target = new URL(template)
+      const bare =
+        parsed.pathname === '/' && parsed.search === '' && parsed.hash === ''
+      return bare && parsed.origin === target.origin
+        ? { url: template, key: null }
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  const before = template.slice(0, at)
+  const after = template.slice(at + placeholder.length)
+  const origin = new URL(template).origin
+  const bare = before.endsWith('/') ? before.slice(0, -1) : before
+  if (
+    trimmed === origin ||
+    trimmed === `${origin}/` ||
+    trimmed === bare ||
+    trimmed === `${bare}/` ||
+    trimmed === before
+  ) {
+    return { url: template, key: null }
+  }
+  if (!trimmed.startsWith(before) || !trimmed.endsWith(after)) return null
+
+  const key = trimmed.slice(before.length, trimmed.length - after.length)
+  if (
+    key === '' ||
+    key.includes('/') ||
+    key.includes('?') ||
+    key.includes('#')
+  ) {
+    return null
+  }
+  return { url: template, key }
+}
+
 // Save and the probes share this answer, so a cleartext URL carrying a key
 // cannot slip past the rule by being tested instead of saved.
 export function endpointIsCallable(

@@ -1,6 +1,10 @@
 import { chains } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
-import { endpointTemplate, seedPlan } from '@/lib/chain/connection-model'
+import {
+  adoptStoredEndpoint,
+  endpointTemplate,
+  seedPlan,
+} from '@/lib/chain/connection-model'
 
 export type UpgradeContext = {
   /** The version the profile sat at before this upgrade. */
@@ -185,7 +189,8 @@ function retireCustomProviders(store: IDBObjectStore): void {
     const row = cursor.value as {
       kind?: string
       provider?: string
-      endpoints?: { chain: ChainSlug }[]
+      credentials?: { id: string; value: string }[]
+      endpoints?: { id: string; chain: ChainSlug; url: string }[]
     }
     if (row.kind !== 'rpc') {
       cursor.continue()
@@ -199,11 +204,31 @@ function retireCustomProviders(store: IDBObjectStore): void {
       return
     }
 
-    const endpoints = (row.endpoints ?? []).flatMap((endpoint) => {
-      const url = endpointTemplate(provider, endpoint.chain)
-      return url === '' ? [] : [{ ...endpoint, url }]
-    })
-    cursor.update({ ...row, endpoints })
+    let credentials = [...(row.credentials ?? [])]
+    const endpoints = []
+    for (const endpoint of row.endpoints ?? []) {
+      const template = endpointTemplate(provider, endpoint.chain)
+      if (template === '') continue
+      const adopted = adoptStoredEndpoint(endpoint.url, template)
+      if (adopted === null) continue
+      if (
+        adopted.key !== null &&
+        !credentials.some((credential) => credential.value === adopted.key)
+      ) {
+        credentials = [
+          ...credentials,
+          { id: `legacy-${endpoint.id}`, value: adopted.key },
+        ]
+      }
+      if (
+        template.includes('{key}') &&
+        !credentials.some((credential) => credential.value.trim() !== '')
+      ) {
+        continue
+      }
+      endpoints.push({ ...endpoint, url: adopted.url })
+    }
+    cursor.update({ ...row, credentials, endpoints })
     cursor.continue()
   }
 }

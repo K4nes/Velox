@@ -84,3 +84,63 @@ test('a month holding only a partial check does not claim a zero net', async ({
   await expect(monthNet).not.toContainText('0.0000 ETH')
   await expect(screen.getByText('No complete checks this month.')).toBeVisible()
 })
+
+test('a cross-month wallet change hides the lifetime chart and ranking', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const now = new Date()
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1, 9)
+  const current = new Date(now.getFullYear(), now.getMonth(), 1, 9)
+  const day = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+  const contract = `0x${'e2'.repeat(20)}`
+  const walletA = `0x${'a1'.repeat(20)}`
+  const walletB = `0x${'b2'.repeat(20)}`
+
+  await app.open('/pnl/monthly')
+  await seedVelox(browser, {
+    pnlRecords: [
+      pnlRecordFixture({
+        contract,
+        name: 'Cross Month',
+        day: day(prev),
+        createdAt: prev.getTime(),
+        wallets: [walletA, walletB],
+        netPnl: '15000000000000000000',
+      }),
+      pnlRecordFixture({
+        contract,
+        name: 'Cross Month',
+        day: day(current),
+        createdAt: current.getTime(),
+        wallets: [walletA],
+        netPnl: '6000000000000000000',
+      }),
+    ],
+  })
+  await app.open('/pnl/monthly')
+
+  // The narrowed month is a new baseline, not a 6 ETH change from January.
+  await expect(
+    browser.locator('span:text-is("Month net") + span')
+  ).toContainText('6.0000 ETH')
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between checks; this month mixes baselines.',
+    ),
+  ).toBeVisible()
+
+  await app.open('/pnl/lifetime')
+
+  await expect(screen.getByText('Latest Net PnL')).toBeVisible()
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between months; those months are not ranked and the cumulative chart is hidden.',
+    ),
+  ).toBeVisible()
+  await expect(
+    screen.getByText('Only one comparable month').first(),
+  ).toBeVisible()
+})

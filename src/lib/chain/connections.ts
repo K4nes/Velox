@@ -1,6 +1,7 @@
 import { chainBySlug } from '@/config/chains'
 import { getAll, put } from '@/lib/db/db'
 import {
+  adoptStoredEndpoint,
   endpointTemplate,
   pickKeys,
   pickRpcUrls,
@@ -9,6 +10,7 @@ import {
 import type {
   Connection,
   DataService,
+  Endpoint,
   Issue,
 } from '@/lib/chain/connection-model'
 
@@ -111,16 +113,42 @@ function normalizeConnection(value: Connection): Connection {
     return { ...base, kind: 'data-api', id: value.id }
   }
 
+  // The URL is the provider's template, never a pasted endpoint. An older row
+  // may still carry a full URL with its key embedded; adopt that key into
+  // credentials instead of overwriting it. A foreign URL, an unsupported chain
+  // or a keyed template with no key drops the endpoint so the chain can fall
+  // back to `chains.ts`.
+  let credentials = base.credentials
+  const endpoints: Endpoint[] = []
+  for (const endpoint of value.endpoints) {
+    const template = endpointTemplate(value.provider, endpoint.chain)
+    if (template === '') continue
+    const adopted = adoptStoredEndpoint(endpoint.url, template)
+    if (adopted === null) continue
+    if (
+      adopted.key !== null &&
+      !credentials.some((credential) => credential.value === adopted.key)
+    ) {
+      credentials = [
+        ...credentials,
+        { id: `legacy-${endpoint.id}`, value: adopted.key },
+      ]
+    }
+    if (
+      template.includes('{key}') &&
+      !credentials.some((credential) => credential.value.trim() !== '')
+    ) {
+      continue
+    }
+    endpoints.push({ ...endpoint, url: adopted.url })
+  }
+
   return {
     ...base,
+    credentials,
     kind: 'rpc',
     id: value.id,
     provider: value.provider,
-    // The URL is the provider's template, never a pasted endpoint. An imported
-    // or older row is normalized on save and unsupported chains are dropped.
-    endpoints: value.endpoints.flatMap((endpoint) => {
-      const url = endpointTemplate(value.provider, endpoint.chain)
-      return url === '' ? [] : [{ ...endpoint, url }]
-    }),
+    endpoints,
   }
 }
