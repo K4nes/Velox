@@ -34,7 +34,11 @@ export function DataSection({ onImported }: DataSectionProps) {
     setError(null)
     try {
       const backup = await readBackup()
-      saveJson(backupJson(backup), backupFileName(backup.exportedAt))
+      const fileName = backupFileName(backup.exportedAt)
+      saveJson(backupJson(backup), fileName)
+      // The click starts a browser download; whether the file lands is outside
+      // the page. The toast names the file rather than claiming it was saved.
+      toast.success(`Backup download started: ${fileName}`)
     } catch (failure) {
       setError(toMessage(failure))
     } finally {
