@@ -230,6 +230,12 @@ export function PnlLifetimePage() {
         </dl>
       </Card>
 
+      {view.months.some((entry) => entry.incomparable) ? (
+        <p className="text-xs text-muted-foreground">
+          Wallet selection changed between checks; those months mix baselines.
+        </p>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
           <div className="flex h-12 items-center justify-between border-b px-4">

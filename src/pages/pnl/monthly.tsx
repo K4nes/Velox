@@ -72,7 +72,7 @@ export function PnlMonthlyPage() {
 
   const monthRecords = recordsInMonth(records, month)
   const totals = monthNet(records, month)
-  const series = dailyNetSeries(records, month)
+  const { days, partial } = dailyNetSeries(records, month)
   const day = selectedDay ? dayKey(selectedDay) : null
   const dayLabel = selectedDay ? dayFormat.format(selectedDay) : null
   const search = query.trim().toLowerCase()
@@ -98,6 +98,11 @@ export function PnlMonthlyPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-6">
+      {totals.incomparable ? (
+        <p className="text-xs text-muted-foreground">
+          Wallet selection changed between checks; this month mixes baselines.
+        </p>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
           <div className="flex h-12 items-center justify-between border-b px-4">
@@ -111,9 +116,13 @@ export function PnlMonthlyPage() {
               </span>
               <span className="flex items-baseline gap-1.5">
                 <span className="text-xs font-medium">
-                  {formatEth(totals.wei)} ETH
+                  {totals.partial ? '—' : `${formatEth(totals.wei)} ETH`}
                 </span>
-                {totals.usd === '—' ? null : (
+                {totals.partial ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    partial read
+                  </span>
+                ) : totals.usd === '—' ? null : (
                   <span className="text-[11px] text-muted-foreground">
                     {totals.usd}
                   </span>
@@ -125,10 +134,14 @@ export function PnlMonthlyPage() {
             <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
               No PnL records yet.
             </div>
+          ) : partial && !monthRecords.some(isComplete) ? (
+            <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
+              No complete checks this month.
+            </div>
           ) : (
             <div className="min-h-0 flex-1">
               <AreaChart
-                data={series}
+                data={days}
                 config={{
                   net: {
                     label: 'Net PnL',
