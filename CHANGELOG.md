@@ -60,8 +60,10 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 - Listing and instant-sell approvals are checked before a wallet signs: the listing
   response's `setApprovalForAll` calldata is decoded and its operator must be the order's
-  Seaport or the conduit resolved on chain from the order's key, and an offer whose
-  protocol is not a known Seaport never reaches an approval. Cancel listings drops rows
+  Seaport or the conduit resolved on chain from the order's key, an order's named
+  protocol must be a known Seaport whose EIP-712 domain matches it, an approval must
+  target a selected token's contract, and an offer whose protocol is not a known
+  Seaport never reaches an approval. Cancel listings drops rows
   read for another collection and refuses to submit until the current read is ready, a
   listing the API reports as non-`ACTIVE` is not cancellable, instant sell fills the held
   units against the bid's depth and leaves a partial fill sellable, and the price route

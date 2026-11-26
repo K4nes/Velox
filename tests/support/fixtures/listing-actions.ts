@@ -35,7 +35,7 @@ export function listingActionFixture(input: {
   endTimeSec: number
   amountWei: string
   quantity: number
-  approval?: { operator: string; approved?: boolean }
+  approval?: { operator: string; approved?: boolean; contract?: string }
 }): JsonValue {
   const quantity = String(input.quantity)
   const chainId = input.chainId
@@ -47,13 +47,13 @@ export function listingActionFixture(input: {
             {
               itemApprovalAction: {
                 assetIdentifier: {
-                  contractAddress: input.contract,
+                  contractAddress: input.approval.contract ?? input.contract,
                   tokenId: input.tokenId,
                 },
                 transaction: {
                   chainIdentifier: { chainId },
                   from: input.offerer,
-                  to: input.contract,
+                  to: input.approval.contract ?? input.contract,
                   data: encodeFunctionData({
                     abi: SET_APPROVAL_FOR_ALL_ABI,
                     functionName: 'setApprovalForAll',
