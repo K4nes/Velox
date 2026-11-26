@@ -3,7 +3,7 @@ import { expect } from 'e2e'
 import { createPublicClient, formatUnits, http, parseUnits } from 'viem'
 import { chainByChainId } from '@/config/chains'
 import {
-  customRpc,
+  testRpc,
   liveWallet,
   openseaConnection,
   pinWalletChain,
@@ -246,7 +246,7 @@ test(
       folders: [folder],
       wallets: [wallet],
       connections: [
-        customRpc(chain.slug, rpcUrl),
+        testRpc(chain.slug, rpcUrl),
         openseaConnection('deterministic-key'),
       ],
     })

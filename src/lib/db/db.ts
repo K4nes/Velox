@@ -8,7 +8,7 @@ export type StoreName =
   | 'connections'
 
 const DB_NAME = 'velox'
-const DB_VERSION = 6
+const DB_VERSION = 7
 
 let dbPromise: Promise<IDBDatabase> | undefined
 

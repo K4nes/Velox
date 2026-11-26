@@ -59,6 +59,15 @@ come from the Conventional Commit history (`COMMIT.md`).
   NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
   ([#124]).
 
+### Removed
+
+- The custom RPC provider option. Settings now offers only Alchemy and Ankr; the
+  endpoint URL is the provider's own, and an arbitrary URL is no longer a supported
+  connection. Version 7 of the local database deletes retired provider rows and
+  rewrites surviving endpoints to their provider template; a chain left without an
+  endpoint falls back to `src/config/chains.ts`. A deleted row's provider key is not
+  carried into another provider (a QuickNode key only works on QuickNode's host).
+
 ### Fixed
 
 - The Monthly PnL chart accumulates within the month, so a 15 ETH baseline and a

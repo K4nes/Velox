@@ -6,7 +6,7 @@ import { encodeFunctionData, keccak256 } from 'viem'
 import { generatePrivateKey } from 'viem/accounts'
 
 import {
-  customRpc,
+  testRpc,
   mintWallets,
   walletFolder,
   walletRow,
@@ -112,7 +112,7 @@ test('two saved records of one address block the batch before any request', asyn
   await openSwap(app, browser, {
     folders: [first, second],
     wallets: [a, b],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
 
   await selectFolder(screen, browser, [first.name, second.name])
@@ -232,7 +232,7 @@ test('a repriced replacement is indexed and linked by its replacement hash', asy
   await openSwap(app, browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
 
   await selectFolder(screen, browser, [folder.name])
@@ -282,7 +282,7 @@ test('the rail shows the minimum received, price impact and Relay fee', async ({
   await openSwap(app, browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
 
   await selectFolder(screen, browser, [folder.name])
@@ -347,7 +347,7 @@ test('an approve step aimed at another token fails before any send', async ({
   await openSwap(app, browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
 
   await selectFolder(screen, browser, [folder.name])

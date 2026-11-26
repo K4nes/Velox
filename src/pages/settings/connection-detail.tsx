@@ -1,16 +1,6 @@
-import { useState } from 'react'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import type { Connection, Credential, Issue } from '@/lib/chain/connections'
 import {
   connectionIsReady,
@@ -30,7 +20,6 @@ type DetailActions = {
   save: () => void
   testAll: () => void
   testKey: (credential: Credential) => void
-  remove: () => void
 }
 
 type ConnectionDetailProps = {
@@ -50,7 +39,6 @@ export function ConnectionDetail({
   busy,
   actions,
 }: ConnectionDetailProps) {
-  const custom = draft.kind === 'rpc' && draft.provider === 'custom'
   const testing = busy.has(`all:${draft.id}`)
 
   return (
@@ -58,23 +46,9 @@ export function ConnectionDetail({
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
         <ProviderMark id={draft.id} />
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          {custom ? (
-            <Input
-              value={draft.name}
-              onChange={(event) =>
-                actions.patch((current) => ({
-                  ...current,
-                  name: event.target.value,
-                }))
-              }
-              aria-label="Provider name"
-              className="h-7 w-auto max-w-[220px] min-w-[4ch] rounded-none border-0 bg-transparent px-0 text-[13px] font-semibold field-sizing-content focus-visible:border-transparent focus-visible:ring-0 md:text-[13px] dark:bg-transparent"
-            />
-          ) : (
-            <h2 className="truncate text-[13px] font-semibold">
-              {draft.name}
-            </h2>
-          )}
+          <h2 className="truncate text-[13px] font-semibold">
+            {draft.name}
+          </h2>
           <span className="truncate text-[11px] text-muted-foreground">
             {connectionSummary(draft)}
           </span>
@@ -90,9 +64,6 @@ export function ConnectionDetail({
           {draft.kind === 'rpc' ? 'Test endpoints' : 'Test all keys'}
         </Button>
         <Button onClick={actions.save}>Save</Button>
-        {custom ? (
-          <RemoveProvider name={draft.name} onRemove={actions.remove} />
-        ) : null}
       </div>
 
       {issues.length > 0 ? (
@@ -156,53 +127,5 @@ export function ConnectionDetail({
         ) : null}
       </div>
     </div>
-  )
-}
-
-type RemoveProviderProps = {
-  name: string
-  onRemove: () => void
-}
-
-function RemoveProvider({ name, onRemove }: RemoveProviderProps) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Remove ${name}`}
-          className="text-muted-foreground"
-        >
-          <Trash2 />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64">
-        <PopoverHeader>
-          <PopoverTitle className="text-[13px] font-semibold">Remove {name}?</PopoverTitle>
-          <PopoverDescription className="text-xs">
-            Its keys and endpoints are deleted. Chains fall back to their
-            default RPC.
-          </PopoverDescription>
-        </PopoverHeader>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setOpen(false)
-              onRemove()
-            }}
-          >
-            Remove
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }

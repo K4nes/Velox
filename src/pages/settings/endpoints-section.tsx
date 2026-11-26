@@ -3,7 +3,6 @@ import { Plus, X } from 'lucide-react'
 import { chainBySlug, chains } from '@/config/chains'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
@@ -19,7 +18,6 @@ import type { Credential, Endpoint, RpcProvider } from '@/lib/chain/connections'
 import {
   endpointAcceptsKey,
   endpointTemplate,
-  endpointUrlTemplate,
   hasUsableCredentials,
   providerChains,
 } from '@/lib/chain/connections'
@@ -78,11 +76,6 @@ export function EndpointsSection({
             const label = chainBySlug(endpoint.chain)?.name ?? endpoint.chain
             const needsKey = endpointAcceptsKey(endpoint, provider) && !hasKey
             const template = endpointTemplate(provider, endpoint.chain)
-            // The provider's own URL wins whenever the row still points at it,
-            // so the user only supplies the key. A pasted URL keeps its input.
-            const derived =
-              template !== '' &&
-              endpointUrlTemplate(endpoint, provider) === template
 
             return (
               <div
@@ -92,30 +85,12 @@ export function EndpointsSection({
                 <span className="w-24 shrink-0 truncate text-[11px] font-medium">
                   {label}
                 </span>
-                {derived ? (
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-                    {template.replace('{key}', '••••')}
-                  </span>
-                ) : (
-                  <Input
-                    value={endpoint.url}
-                    onChange={(event) =>
-                      onPatch((list) =>
-                        list.map((entry) =>
-                          entry.id === endpoint.id
-                            ? { ...entry, url: event.target.value, probe: null }
-                            : entry
-                        )
-                      )
-                    }
-                    aria-label={`${label} endpoint URL`}
-                    placeholder="https://"
-                    spellCheck={false}
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    className="h-7 min-w-0 flex-1 rounded-none border-0 bg-transparent px-0 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent"
-                  />
-                )}
+                <span
+                  className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                  title={template.replace('{key}', '••••')}
+                >
+                  {template.replace('{key}', '••••')}
+                </span>
                 <EndpointLatency
                   endpoint={endpoint}
                   needsKey={needsKey}

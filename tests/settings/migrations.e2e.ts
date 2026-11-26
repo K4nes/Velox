@@ -44,7 +44,7 @@ async function openSeedPage(browser: Browser): Promise<void> {
   await browser.goto('/velox-logo.png')
 }
 
-test('v5 → v6: the untouched QuickNode seed is dropped and the edited one becomes custom', async ({
+test('v5 → v7: QuickNode and custom RPC rows are retired', async ({
   app,
   browser,
   screen,
@@ -131,8 +131,8 @@ test('v5 → v6: the untouched QuickNode seed is dropped and the edited one beco
 
   await app.open('/settings')
   await expect(
-    screen.getByRole('button', { name: /QuickNode \(kept\)/ }),
-  ).toBeVisible()
+    screen.getByRole('button', { name: /QuickNode/ }),
+  ).toHaveCount(0)
 
   const rows = await readVeloxRows<ConnectionRow>(browser, 'connections')
   expect(
@@ -142,11 +142,10 @@ test('v5 → v6: the untouched QuickNode seed is dropped and the edited one beco
     { id: 'opensea', provider: null },
     { id: 'rpc:alchemy', provider: 'alchemy' },
     { id: 'rpc:ankr', provider: 'ankr' },
-    { id: 'rpc:quicknode:kept', provider: 'custom' },
   ])
 })
 
-test('v3 → v6: legacy secrets become the OpenSea key and a custom RPC connection', async ({
+test('v3 → v7: legacy secrets become the OpenSea key; legacy RPC URLs are dropped', async ({
   app,
   browser,
   screen,
@@ -182,15 +181,10 @@ test('v3 → v6: legacy secrets become the OpenSea key and a custom RPC connecti
     { id: 'opensea', credentials: [OPEN_SEA_KEY], endpoints: [] },
     { id: 'rpc:alchemy', credentials: [], endpoints: [] },
     { id: 'rpc:ankr', credentials: [], endpoints: [] },
-    {
-      id: 'rpc:custom:legacy',
-      credentials: [],
-      endpoints: [`ethereum ${ETH_RPC}`, `base ${BASE_RPC}`],
-    },
   ])
 })
 
-test('v3 → v6: same-day PnL rows merge per contract and day, keeping the complete read', async ({
+test('v3 → v7: same-day PnL rows merge per contract and day, keeping the complete read', async ({
   app,
   browser,
   screen,
@@ -273,4 +267,129 @@ test('clearing the profile empties the snapshots store', async ({
   await browser.evaluate(clearVeloxStores)
 
   expect(await browser.evaluate(countVeloxRows, 'snapshots')).toBe(0)
+})
+
+test('v6 → v7: custom rows are deleted and a pasted provider key survives', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const pastedKey = ['pasted', 'key', '1234'].join('-')
+  const seeded: LegacyConnection[] = [
+    {
+      kind: 'rpc',
+      id: 'rpc:alchemy',
+      name: 'Alchemy',
+      provider: 'alchemy',
+      order: 2,
+      autoFallback: true,
+      credentials: [],
+      endpoints: [
+        {
+          id: 'eth-endpoint',
+          chain: 'ethereum',
+          url: `https://eth-mainnet.g.alchemy.com/v2/${pastedKey}/`,
+          probe: null,
+        },
+        {
+          id: 'base-endpoint',
+          chain: 'base',
+          url: 'https://base-mainnet.g.alchemy.com',
+          probe: null,
+        },
+        {
+          id: 'unknown-endpoint',
+          chain: 'mystery',
+          url: 'https://example.invalid/rpc',
+          probe: null,
+        },
+        {
+          id: 'literal-template',
+          chain: 'ape_chain',
+          url: 'https://apechain-mainnet.g.alchemy.com/v2/{key}/',
+          probe: null,
+        },
+      ],
+      updatedAt: AT,
+    },
+    {
+      kind: 'rpc',
+      id: 'rpc:ankr',
+      name: 'Ankr',
+      provider: 'ankr',
+      order: 3,
+      autoFallback: true,
+      credentials: [],
+      endpoints: [
+        {
+          id: 'ankr-bare',
+          chain: 'ethereum',
+          url: 'https://rpc.ankr.com/eth',
+          probe: null,
+        },
+        {
+          id: 'ankr-foreign',
+          chain: 'base',
+          url: 'https://my-node.example/rpc',
+          probe: null,
+        },
+      ],
+      updatedAt: AT,
+    },
+    {
+      kind: 'rpc',
+      id: 'rpc:custom:legacy',
+      name: 'Custom RPC',
+      provider: 'custom',
+      order: 4,
+      autoFallback: true,
+      credentials: [],
+      endpoints: [
+        {
+          id: 'custom-eth',
+          chain: 'ethereum',
+          url: 'https://my-node.example/rpc',
+          probe: null,
+        },
+      ],
+      updatedAt: AT,
+    },
+  ]
+
+  await openSeedPage(browser)
+  await seedLegacyProfile(browser, {
+    version: 6,
+    secrets: [],
+    pnlRecords: [],
+    connections: seeded,
+  })
+
+  await app.open('/settings')
+  await expect(
+    screen.getByRole('button', { name: /Custom RPC/ }),
+  ).toHaveCount(0)
+
+  const rows = await readVeloxRows<ConnectionRow>(browser, 'connections')
+  expect(
+    rows
+      .map((row) => ({
+        id: row.id,
+        credentials: (row.credentials ?? []).map((credential) => credential.value),
+        endpoints: (row.endpoints ?? []).map(
+          (endpoint) => `${endpoint.chain} ${endpoint.url}`,
+        ),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  ).toEqual([
+    {
+      id: 'rpc:alchemy',
+      credentials: [pastedKey],
+      endpoints: [
+        'ethereum https://eth-mainnet.g.alchemy.com/v2/{key}',
+        'base https://base-mainnet.g.alchemy.com/v2/{key}',
+        'ape_chain https://apechain-mainnet.g.alchemy.com/v2/{key}',
+      ],
+    },
+    { id: 'rpc:ankr', credentials: [], endpoints: [] },
+  ])
 })

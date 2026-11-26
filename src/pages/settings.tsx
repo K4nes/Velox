@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,7 +11,6 @@ import {
 import type { ProbeResult } from '@/lib/chain/connection-probes'
 import {
   ConnectionError,
-  deleteConnection,
   endpointAcceptsKey,
   endpointIsCallable,
   expandEndpoint,
@@ -23,7 +22,6 @@ import type {
   Credential,
   EndpointProbe,
   Issue,
-  RpcConnection,
 } from '@/lib/chain/connections'
 import { toMessage } from '@/lib/core/message'
 import { ConnectionDetail } from './settings/connection-detail'
@@ -43,9 +41,6 @@ export function SettingsPage() {
   const [loadFailed, setLoadFailed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [reloadToken, setReloadToken] = useState(0)
-  // A save and a remove can race on the same key. The delete lands first, the
-  // queued put recreates the record, and a reload brings the provider back.
-  const removed = useRef(new Set<string>())
 
   useEffect(() => {
     let cancelled = false
@@ -56,13 +51,6 @@ export function SettingsPage() {
 
         if (cancelled) {
           return
-        }
-
-        // An import or another tab can restore a row this page deleted. The
-        // tombstone covers a save that was already in flight, so a row the
-        // loader can see is back must not stay a delete on the next Save.
-        for (const entry of list) {
-          removed.current.delete(entry.id)
         }
 
         setConnections(list)
@@ -151,27 +139,6 @@ export function SettingsPage() {
   async function save(connection: Connection) {
     try {
       const saved = await saveConnection(connection)
-      if (removed.current.has(saved.id) && saved.kind === 'rpc') {
-        await deleteConnection(saved.id)
-        // The row was deleted before this save landed, and the write brought
-        // it back. Drop it from the page with the delete and say so, instead
-        // of leaving a draft on screen that the store no longer holds.
-        removed.current.delete(saved.id)
-        setConnections((current) =>
-          current.filter((entry) => entry.id !== saved.id)
-        )
-        setDrafts((current) => {
-          const next = { ...current }
-          delete next[saved.id]
-          return next
-        })
-        setIssues([])
-        setLoadError(null)
-        toast.info(
-          `${saved.name} was deleted while saving. The change was not kept.`
-        )
-        return
-      }
       setConnections((current) =>
         current.map((entry) => (entry.id === saved.id ? saved : entry))
       )
@@ -188,54 +155,6 @@ export function SettingsPage() {
     } catch (failure) {
       reportFailure(failure)
     }
-  }
-
-  async function addProvider(name: string) {
-    const order =
-      connections.reduce((max, entry) => Math.max(max, entry.order), 0) + 1
-    const next: RpcConnection = {
-      kind: 'rpc',
-      id: `rpc:${crypto.randomUUID()}`,
-      provider: 'custom',
-      name,
-      order,
-      autoFallback: true,
-      credentials: [],
-      endpoints: [],
-      updatedAt: Date.now(),
-    }
-
-    try {
-      const saved = await saveConnection(next)
-      setConnections((current) => [...current, saved])
-      setDrafts((current) => ({ ...current, [saved.id]: saved }))
-      setSelectedId(saved.id)
-      setIssues([])
-      setLoadError(null)
-    } catch (failure) {
-      reportFailure(failure)
-    }
-  }
-
-  async function removeConnection(id: RpcConnection['id']) {
-    removed.current.add(id)
-    try {
-      await deleteConnection(id)
-    } catch (failure) {
-      removed.current.delete(id)
-      reportFailure(failure)
-      return
-    }
-
-    const remaining = connections.filter((entry) => entry.id !== id)
-    setConnections(remaining)
-    setDrafts((current) => {
-      const next = { ...current }
-      delete next[id]
-      return next
-    })
-    setSelectedId(remaining[0]?.id ?? null)
-    setIssues([])
   }
 
   function testKey(connection: Connection, credential: Credential) {
@@ -369,7 +288,6 @@ export function SettingsPage() {
           selectedId={selectedId}
           loading={loading}
           onSelect={selectConnection}
-          onAdd={(name) => void addProvider(name)}
         />
 
         <Card className="flex min-h-[520px] min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0 xl:min-h-0">
@@ -411,11 +329,6 @@ export function SettingsPage() {
                 save: () => void save(draft),
                 testAll: () => testAll(draft),
                 testKey: (credential) => testKey(draft, credential),
-                remove: () => {
-                  if (draft.kind === 'rpc' && draft.provider === 'custom') {
-                    void removeConnection(draft.id)
-                  }
-                },
               }}
             />
           ) : (

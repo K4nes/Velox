@@ -1,6 +1,8 @@
 import { chainBySlug } from '@/config/chains'
-import { getAll, put, remove } from '@/lib/db/db'
+import { getAll, put } from '@/lib/db/db'
 import {
+  adoptStoredEndpoint,
+  endpointTemplate,
   pickKeys,
   pickRpcUrls,
   validateConnection,
@@ -8,8 +10,8 @@ import {
 import type {
   Connection,
   DataService,
+  Endpoint,
   Issue,
-  RpcConnection,
 } from '@/lib/chain/connection-model'
 
 // One import site for the page: the model's types and pure helpers ride along
@@ -37,7 +39,16 @@ export class RpcConfigError extends Error {
 
 export async function listConnections(): Promise<Connection[]> {
   const all = await getAll<Connection>('connections')
-  return [...all].sort((a, b) => a.order - b.order)
+  // A backup or an older profile can still hold a retired provider. It is
+  // ignored rather than rendered, and the migration deletes it on upgrade.
+  return [...all]
+    .filter(
+      (entry) =>
+        entry.kind !== 'rpc' ||
+        entry.provider === 'alchemy' ||
+        entry.provider === 'ankr'
+    )
+    .sort((a, b) => a.order - b.order)
 }
 
 export async function saveConnection(next: Connection): Promise<Connection> {
@@ -49,12 +60,6 @@ export async function saveConnection(next: Connection): Promise<Connection> {
 
   await put<Connection>('connections', normalized)
   return normalized
-}
-
-export async function deleteConnection(
-  id: RpcConnection['id']
-): Promise<void> {
-  await remove('connections', id)
 }
 
 export async function resolveKeys(service: DataService): Promise<string[]> {
@@ -85,7 +90,7 @@ export async function resolveRpcUrls(slug: string): Promise<string[]> {
   if (deduped.length === 0) {
     throw new RpcConfigError(
       stored
-        ? `No usable RPC for ${slug}: add a key or fix the endpoint`
+        ? `No usable RPC for ${slug}: add a provider key`
         : `No RPC configured for ${slug}`
     )
   }
@@ -108,14 +113,42 @@ function normalizeConnection(value: Connection): Connection {
     return { ...base, kind: 'data-api', id: value.id }
   }
 
+  // The URL is the provider's template, never a pasted endpoint. An older row
+  // may still carry a full URL with its key embedded; adopt that key into
+  // credentials instead of overwriting it. A foreign URL, an unsupported chain
+  // or a keyed template with no key drops the endpoint so the chain can fall
+  // back to `chains.ts`.
+  let credentials = base.credentials
+  const endpoints: Endpoint[] = []
+  for (const endpoint of value.endpoints) {
+    const template = endpointTemplate(value.provider, endpoint.chain)
+    if (template === '') continue
+    const adopted = adoptStoredEndpoint(endpoint.url, template)
+    if (adopted === null) continue
+    if (
+      adopted.key !== null &&
+      !credentials.some((credential) => credential.value === adopted.key)
+    ) {
+      credentials = [
+        ...credentials,
+        { id: `legacy-${endpoint.id}`, value: adopted.key },
+      ]
+    }
+    if (
+      template.includes('{key}') &&
+      !credentials.some((credential) => credential.value.trim() !== '')
+    ) {
+      continue
+    }
+    endpoints.push({ ...endpoint, url: adopted.url })
+  }
+
   return {
     ...base,
+    credentials,
     kind: 'rpc',
     id: value.id,
     provider: value.provider,
-    endpoints: value.endpoints.map((endpoint) => ({
-      ...endpoint,
-      url: endpoint.url.trim(),
-    })),
+    endpoints,
   }
 }

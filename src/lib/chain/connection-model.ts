@@ -2,14 +2,12 @@
 import type { ChainSlug } from '@/config/chains'
 
 export type DataService = 'opensea' | 'coinmarketcap'
-export type RpcProvider = 'alchemy' | 'ankr' | 'custom'
+export type RpcProvider = 'alchemy' | 'ankr'
 
 // Copied from each provider's own docs, which print the URL for a new project:
 // the chain host and the key segment are the same for every account. `{key}`
-// marks the segment a credential fills. A provider the docs do not pin down
-// ships no template and the user adds it as a custom provider, pasting the URL
-// it issued: a self-hosted node, or a paid host whose account subdomain is part
-// of the URL.
+// marks the segment a credential fills. Only these two providers are offered;
+// an arbitrary RPC URL is not a supported connection.
 const providerEndpoints: Record<
   RpcProvider,
   Partial<Record<ChainSlug, string>>
@@ -25,7 +23,6 @@ const providerEndpoints: Record<
     base: 'https://rpc.ankr.com/base/{key}',
     robinhood: 'https://rpc.ankr.com/robinhood_mainnet/{key}',
   },
-  custom: {},
 }
 
 export function endpointTemplate(
@@ -35,19 +32,18 @@ export function endpointTemplate(
   return (providerEndpoints[provider] ?? {})[chain] ?? ''
 }
 
-// The chains this provider serves on a URL the app can build. Empty means the
-// provider's endpoints only exist as URLs the user pastes.
+// The chains this provider serves on a URL the app can build.
 export function providerChains(provider: RpcProvider): Set<string> {
   return new Set(Object.keys(providerEndpoints[provider] ?? {}))
 }
 
-// A URL carrying its own path is used as typed, which keeps a pasted endpoint.
-// A foreign host is left alone too: swapping in the provider's host would send
-// that row's key to a server the user never configured. Only a bare host the
-// provider itself hands out, or an empty row from an older build, takes the
-// template, so the chain still points somewhere real. The scheme is ignored
-// for the provider's own host: it serves https only, so the http form of that
-// host is the same host mistyped and the template is the one URL that works.
+// A stored row from an older profile or the e2e harness may carry a foreign
+// URL, and it is used as typed so that row keeps working. Settings no longer
+// edits the URL, and save normalizes it to the provider template. A bare host
+// the provider itself hands out takes the template, so the chain still points
+// somewhere real. The scheme is ignored for the provider's own host: it serves
+// https only, so the http form of that host is the same host mistyped and the
+// template is the one URL that works.
 export function endpointUrlTemplate(
   endpoint: Endpoint,
   provider: RpcProvider
@@ -80,6 +76,70 @@ export function endpointUrlTemplate(
   } catch {
     return endpoint.url
   }
+}
+
+// A stored endpoint can predate the provider-template rule. Adopt a URL on the
+// provider's own host: a bare host becomes the template, and a full URL with the
+// key in the template's key slot yields that key so it can move into credentials.
+// A foreign URL is not a supported connection any more, so it yields null and
+// the caller drops the endpoint.
+export function adoptStoredEndpoint(
+  url: string,
+  template: string
+): { url: string; key: string | null } | null {
+  if (template === '') return null
+  const trimmed = url.trim()
+  if (trimmed === '' || trimmed === template) {
+    return { url: template, key: null }
+  }
+
+  const placeholder = '{key}'
+  const at = template.indexOf(placeholder)
+  if (at === -1) {
+    try {
+      const parsed = new URL(trimmed)
+      const target = new URL(template)
+      const bare =
+        parsed.pathname === '/' && parsed.search === '' && parsed.hash === ''
+      return bare && parsed.origin === target.origin
+        ? { url: template, key: null }
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  const before = template.slice(0, at)
+  const after = template.slice(at + placeholder.length)
+  // A pasted URL often keeps the template's trailing slash after the key.
+  const candidate =
+    after === '' && trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
+  if (candidate === template) return { url: template, key: null }
+  const origin = new URL(template).origin
+  const bare = before.endsWith('/') ? before.slice(0, -1) : before
+  if (
+    candidate === origin ||
+    candidate === `${origin}/` ||
+    candidate === bare ||
+    candidate === `${bare}/` ||
+    candidate === before
+  ) {
+    return { url: template, key: null }
+  }
+  if (!candidate.startsWith(before) || !candidate.endsWith(after)) return null
+
+  const key = candidate.slice(before.length, candidate.length - after.length)
+  if (
+    key === '' ||
+    key.includes('/') ||
+    key.includes('?') ||
+    key.includes('#') ||
+    key.includes('{') ||
+    key.includes('}')
+  ) {
+    return null
+  }
+  return { url: template, key }
 }
 
 // Save and the probes share this answer, so a cleartext URL carrying a key
@@ -270,36 +330,16 @@ export function pickRpcUrls(all: readonly Connection[], slug: string): string[] 
 
 export function seedPlan(
   legacy: readonly { id: string; value: string }[],
-  at: number,
-  knownSlugs: readonly ChainSlug[]
+  at: number
 ): Connection[] {
   const openSeaKey = legacyValue(legacy, 'opensea-api-key')
 
-  const legacyEndpoints: Endpoint[] = []
-  for (const slug of knownSlugs) {
-    const url = legacyValue(legacy, `rpc:${slug}`)
-    if (url === '') {
-      continue
-    }
-    legacyEndpoints.push({
-      id: `legacy-${slug}`,
-      chain: slug,
-      url,
-      probe: null,
-    })
-  }
-
-  const hasCustom = legacyEndpoints.length > 0
-  // A stored override used to be the only RPC for its chain, so it keeps
-  // priority: the seeded providers shift up by one instead of outranking it.
-  const shift = hasCustom ? 1 : 0
-
-  const seeded: Connection[] = [
+  return [
     {
       kind: 'data-api',
       id: 'opensea',
       name: 'OpenSea',
-      order: shift,
+      order: 0,
       autoFallback: true,
       credentials:
         openSeaKey === '' ? [] : [{ id: 'legacy-opensea', value: openSeaKey }],
@@ -309,7 +349,7 @@ export function seedPlan(
       kind: 'data-api',
       id: 'coinmarketcap',
       name: 'CoinMarketCap',
-      order: shift + 1,
+      order: 1,
       autoFallback: true,
       credentials: [],
       updatedAt: at,
@@ -319,7 +359,7 @@ export function seedPlan(
       id: 'rpc:alchemy',
       name: 'Alchemy',
       provider: 'alchemy',
-      order: shift + 2,
+      order: 2,
       autoFallback: true,
       credentials: [],
       endpoints: [],
@@ -330,29 +370,10 @@ export function seedPlan(
       id: 'rpc:ankr',
       name: 'Ankr',
       provider: 'ankr',
-      order: shift + 3,
+      order: 3,
       autoFallback: true,
       credentials: [],
       endpoints: [],
-      updatedAt: at,
-    },
-  ]
-
-  if (!hasCustom) {
-    return seeded
-  }
-
-  return [
-    ...seeded,
-    {
-      kind: 'rpc',
-      id: 'rpc:custom:legacy',
-      name: 'Custom RPC',
-      provider: 'custom',
-      order: 0,
-      autoFallback: true,
-      credentials: [],
-      endpoints: legacyEndpoints,
       updatedAt: at,
     },
   ]

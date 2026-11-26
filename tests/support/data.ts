@@ -60,14 +60,14 @@ export function destWallet(privateKey: string): WalletRow {
   }
 }
 
-/** A custom RPC connection row for any chain slug the app knows. */
-export function customRpc(chain: string, url: string) {
-  const endpoint = `${chain}-custom`
+/** An RPC connection row for a local test node under a built-in provider. */
+export function testRpc(chain: string, url: string) {
+  const endpoint = `${chain}-test`
   return {
     kind: 'rpc',
-    id: `rpc:custom:${endpoint}`,
-    name: `${chain} custom RPC`,
-    provider: 'custom',
+    id: `rpc:test:${endpoint}`,
+    name: `${chain} test RPC`,
+    provider: 'alchemy',
     order: 0,
     autoFallback: true,
     credentials: [],
@@ -77,10 +77,10 @@ export function customRpc(chain: string, url: string) {
 }
 
 export function robinhoodRpc(url: string) {
-  const row = customRpc('robinhood', url)
+  const row = testRpc('robinhood', url)
   return {
     ...row,
-    id: 'rpc:custom:robinhood-alchemy',
+    id: 'rpc:test:robinhood-alchemy',
     name: 'Robinhood Alchemy',
     endpoints: [{ ...row.endpoints[0], id: 'robinhood-alchemy' }],
   }
