@@ -45,6 +45,10 @@ export type SellTarget = {
   chain: string
   contract: string
   tokenId: string
+  // Whole units the wallet holds, and how many of them this fill covers. A bid
+  // with less depth than the balance fills only what it covers.
+  quantity: number
+  units: number
   offer: CollectionOffer
 }
 
@@ -250,8 +254,14 @@ export function planSales(input: {
       continue
     }
 
+    const quantity = Math.floor(token.quantity)
+    if (quantity < 1) continue
+
     const offer = offers[cursor]
-    depth[cursor] -= 1
+    // A token held five times fills five units against a five-unit bid, and
+    // only the bid's own depth against a shallower one.
+    const units = Math.min(quantity, depth[cursor])
+    depth[cursor] -= units
     assigned.set(token.key, offer)
     targets.push({
       key: token.key,
@@ -260,16 +270,21 @@ export function planSales(input: {
       chain: token.chain,
       contract: token.contract,
       tokenId: token.tokenId,
+      quantity,
+      units,
       offer,
     })
   }
 
   const totals = targets.reduce(
-    (sum, target) => ({
-      grossWei: sum.grossWei + target.offer.grossWei,
-      feeWei: sum.feeWei + target.offer.feeWei,
-      netWei: sum.netWei + target.offer.netWei,
-    }),
+    (sum, target) => {
+      const units = BigInt(target.units)
+      return {
+        grossWei: sum.grossWei + target.offer.grossWei * units,
+        feeWei: sum.feeWei + target.offer.feeWei * units,
+        netWei: sum.netWei + target.offer.netWei * units,
+      }
+    },
     { grossWei: 0n, feeWei: 0n, netWei: 0n }
   )
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { usePageStore } from '@/hooks/use-page-store'
 import { useSelection } from '@/hooks/use-selection'
 import type { SelectionFields } from '@/hooks/use-selection'
@@ -26,9 +26,14 @@ import { listWallets } from '@/lib/wallet/wallets'
 
 export type ActiveListingsState =
   | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'ready'; failed: number; failure: string | null }
-  | { status: 'failed'; message: string }
+  | { status: 'loading'; collectionKey: string }
+  | {
+      status: 'ready'
+      collectionKey: string
+      failed: number
+      failure: string | null
+    }
+  | { status: 'failed'; collectionKey: string; message: string }
 
 // The API names the offerer by address; the rail names it by the wallet label the
 // operator picked, so the join happens where the wallets are known.
@@ -40,15 +45,29 @@ export type CancelFields = RunState<CancelRunProgress> &
     read: ActiveListingsState
   }
 
+// The identity the rows were read for. A cancel may only withdraw rows read for
+// the collection the page is showing now, so the key travels with the read.
+export function cancelCollectionKey(collection: CollectionInfo): string {
+  return `${collection.chain.toLowerCase()}:${collection.slug}:${collection.contractAddress.toLowerCase()}`
+}
+
 // Every wallet is asked separately: the API filters by one maker at a time, and a
 // wallet whose read fails must not erase the listings the other wallets returned.
 async function readActiveListings(input: {
   store: PageStore<CancelFields>
   collection: CollectionInfo
+  collectionKey: string
   wallets: readonly ScanWallet[]
 }): Promise<void> {
   const read = input.store.open('scan')
-  input.store.set({ read: { status: 'loading' }, progress: null })
+  // Rows belong to the read that produced them. A read for another collection,
+  // or one that failed, must not leave the previous collection's orders armed.
+  input.store.set({
+    listings: [],
+    selectedKeys: [],
+    read: { status: 'loading', collectionKey: input.collectionKey },
+    progress: null,
+  })
 
   const settled = await mapLimitSettled(
     input.wallets,
@@ -67,8 +86,11 @@ async function readActiveListings(input: {
 
   if (settled.resolved.length === 0 && settled.firstError !== null) {
     input.store.set({
+      listings: [],
+      selectedKeys: [],
       read: {
         status: 'failed',
+        collectionKey: input.collectionKey,
         message: scanFailureMessage(settled.firstError, 'wallet'),
       },
     })
@@ -96,6 +118,7 @@ async function readActiveListings(input: {
     selectedKeys: ordered.map((listing) => listing.orderHash),
     read: {
       status: 'ready',
+      collectionKey: input.collectionKey,
       failed: settled.failed.length,
       failure:
         settled.firstError === null
@@ -121,13 +144,38 @@ export function useCancelRun(input: {
 
   const collection = input.collection
   const wallets = input.wallets
+  const collectionKey =
+    collection === null ? null : cancelCollectionKey(collection)
+  const previousKey = useRef<string | null>(null)
+
+  // Switching collections drops the rows and selection the moment the page names
+  // another one, even while the rail's tab is closed. The read for the old
+  // collection may still land, so its epoch is closed too.
+  useEffect(() => {
+    const previous = previousKey.current
+    previousKey.current = collectionKey
+    if (previous === null || previous === collectionKey) return
+
+    input.store.open('scan')
+    input.store.set({
+      listings: [],
+      selectedKeys: [],
+      read: { status: 'idle' },
+      progress: null,
+    })
+  }, [collectionKey, input.store])
 
   useEffect(() => {
     if (!input.active) return
-    if (!collection || wallets.length === 0) return
+    if (!collection || collectionKey === null || wallets.length === 0) return
     if (input.store.get().running) return
-    void readActiveListings({ store: input.store, collection, wallets })
-  }, [input.active, input.store, collection, wallets])
+    void readActiveListings({
+      store: input.store,
+      collection,
+      collectionKey,
+      wallets,
+    })
+  }, [input.active, input.store, collection, collectionKey, wallets])
 
   const steps: Map<string, CancelStepState> = run.progress
     ? cancelSteps(run.progress)
@@ -154,12 +202,27 @@ export function useCancelRun(input: {
   )
 
   async function cancel() {
-    if (collection === null || pending.length === 0) return
+    const current = input.store.get()
+    if (collection === null || collectionKey === null) return
+    // The rows must be the ones this page's collection produced, and their read
+    // must have settled, or the batch could withdraw another collection's orders.
+    if (
+      current.read.status !== 'ready' ||
+      current.read.collectionKey !== collectionKey
+    ) {
+      return
+    }
+
+    const selectedNow = new Set(current.selectedKeys)
+    const pendingNow = pendingCancels(current.listings, current.progress).filter(
+      (listing) => selectedNow.has(listing.orderHash)
+    )
+    if (pendingNow.length === 0) return
 
     await run.start(async ({ publish, shouldAbort }) => {
       const records = await listWallets()
       return runCancelPlan({
-        listings: pending,
+        listings: pendingNow,
         wallets: records,
         onProgress: publish,
         shouldAbort,
@@ -168,10 +231,11 @@ export function useCancelRun(input: {
   }
 
   async function reload() {
-    if (!collection || wallets.length === 0) return
+    if (!collection || collectionKey === null || wallets.length === 0) return
     await readActiveListings({
       store: input.store,
       collection,
+      collectionKey,
       wallets,
     })
   }

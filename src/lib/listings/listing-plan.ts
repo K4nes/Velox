@@ -1,8 +1,10 @@
 import { formatUnits, parseUnits } from 'viem'
+import { resolveApprovalOperator } from '@/lib/offers/approval'
 import {
   leavesOf,
   orderToken,
   parseDomain,
+  seaportVersion,
   splitConsideration,
   toSeaportParameters,
   typedDataForLeaf,
@@ -19,6 +21,8 @@ import type { CollectionFee, ListingActionEnvelope } from '@/lib/opensea/index'
 // OpenSea rounds the end time it echoes back; a plan that demanded an exact
 // match would reject its own request.
 const END_TIME_TOLERANCE_SEC = 5 * 60
+const ZERO_BYTES32 = `0x${'00'.repeat(32)}`
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
 export type ListingToken = {
   key: string
@@ -38,7 +42,9 @@ export type PlannedApproval = {
   chainId: number
   from: string
   to: `0x${string}`
-  data: `0x${string}`
+  // The operator the plan accepted from the decoded calldata. The run signs
+  // setApprovalForAll for this address, not for the raw response bytes.
+  operator: `0x${string}`
   value: string
 }
 
@@ -98,6 +104,10 @@ export type ListingPlanErrorCode =
   | 'currency-mismatch'
   | 'decaying-order'
   | 'approval-sender-mismatch'
+  | 'approval-contract-mismatch'
+  | 'approval-operator-mismatch'
+  | 'protocol-not-seaport'
+  | 'protocol-domain-mismatch'
 
 export class ListingPlanError extends Error {
   readonly code: ListingPlanErrorCode
@@ -229,6 +239,9 @@ function assertOrderEconomics(input: {
 function planWallet(input: {
   batch: ListingBatch
   envelopes: readonly ListingActionEnvelope[]
+  // Conduit operators resolved from the orders' conduit keys. Empty when the
+  // response asked for no approval or every order settles through Seaport.
+  conduits: readonly string[]
   chainId: number
   expectedEndSec: number
   priceAmount: bigint
@@ -256,6 +269,20 @@ function planWallet(input: {
         )
       }
 
+      // The approval is blanket transfer rights for one collection. A response
+      // that names a contract outside the selected batch would hand that
+      // contract's tokens to the operator before any listing is signed.
+      if (
+        !input.batch.tokens.some(
+          (token) => token.contract.toLowerCase() === envelope.to.toLowerCase()
+        )
+      ) {
+        throw new ListingPlanError(
+          'approval-contract-mismatch',
+          `OpenSea asked to approve ${envelope.to}, which is not a selected token contract`
+        )
+      }
+
       approvals.push({
         id: `approval:${address}:${approvals.length}`,
         kind: 'approval',
@@ -264,7 +291,7 @@ function planWallet(input: {
         chainId: envelope.chainId,
         from: envelope.from,
         to: envelope.to,
-        data: envelope.data,
+        operator: envelope.operator,
         value: envelope.value,
       })
       continue
@@ -275,6 +302,24 @@ function planWallet(input: {
       throw new ListingPlanError(
         'chain-mismatch',
         `Orders are signed for chain ${leafDomain.chainId}, expected ${input.chainId}`
+      )
+    }
+
+    // The order names its own Seaport. Taking that address on trust would let a
+    // tampered response add an arbitrary operator to the approval allowlist.
+    if (seaportVersion(envelope.protocolAddress) === null) {
+      throw new ListingPlanError(
+        'protocol-not-seaport',
+        `OpenSea named ${envelope.protocolAddress} as the order's protocol, which is not a known Seaport`
+      )
+    }
+    if (
+      leafDomain.verifyingContract.toLowerCase() !==
+      envelope.protocolAddress.toLowerCase()
+    ) {
+      throw new ListingPlanError(
+        'protocol-domain-mismatch',
+        `Order domain names ${leafDomain.verifyingContract}, not the protocol ${envelope.protocolAddress}`
       )
     }
 
@@ -344,11 +389,71 @@ function planWallet(input: {
     )
   }
 
+  // An approval is blanket transfer rights on the collection contract. The only
+  // operators this app grants them to are the Seaport the batch settles on, a
+  // known Seaport, or the conduit resolved on chain from the order's key.
+  if (approvals.length > 0) {
+    const operators = new Set(input.conduits.map((entry) => entry.toLowerCase()))
+    for (const order of orders.values()) {
+      operators.add(order.protocolAddress.toLowerCase())
+    }
+
+    for (const approval of approvals) {
+      const operator = approval.operator.toLowerCase()
+      if (!operators.has(operator) && seaportVersion(operator) === null) {
+        throw new ListingPlanError(
+          'approval-operator-mismatch',
+          `OpenSea asked to approve ${approval.operator}, which is not a Seaport operator for these orders`
+        )
+      }
+    }
+  }
+
   return {
     address,
     label: input.batch.label,
     steps: [...approvals, ...orders.values()],
   }
+}
+
+// An order that names a conduit settles through it, so the approval has to name
+// the conduit too. `getConduit` is the controller's own answer: a key that names
+// nothing fails the plan rather than widening what the wallet may approve.
+export async function resolveListingConduits(input: {
+  chainSlug: string
+  envelopes: readonly ListingActionEnvelope[]
+}): Promise<string[]> {
+  const pending = new Map<
+    string,
+    { protocolAddress: `0x${string}`; conduitKey: `0x${string}` }
+  >()
+
+  for (const envelope of input.envelopes) {
+    if (envelope.kind !== 'listings') continue
+    if (!ADDRESS_PATTERN.test(envelope.protocolAddress)) continue
+
+    for (const leaf of leavesOf(envelope.typedData)) {
+      if (leaf.conduitKey.toLowerCase() === ZERO_BYTES32) continue
+      if (!/^0x[0-9a-fA-F]{64}$/.test(leaf.conduitKey)) continue
+      const key = `${envelope.protocolAddress.toLowerCase()}:${leaf.conduitKey.toLowerCase()}`
+      pending.set(key, {
+        protocolAddress: envelope.protocolAddress as `0x${string}`,
+        conduitKey: leaf.conduitKey as `0x${string}`,
+      })
+    }
+  }
+
+  const conduits: string[] = []
+  for (const entry of pending.values()) {
+    conduits.push(
+      await resolveApprovalOperator({
+        chainSlug: input.chainSlug,
+        protocolAddress: entry.protocolAddress,
+        fulfillerConduitKey: entry.conduitKey,
+      })
+    )
+  }
+  return conduits
 }
 
 export function buildListingPlan(input: {
@@ -360,6 +465,8 @@ export function buildListingPlan(input: {
   endTimeSec: number
   decimals: number
   currency: string
+  // Operators resolved from the orders' conduit keys by `resolveListingConduits`.
+  conduits?: readonly string[]
   envelopes: readonly {
     address: string
     label: string
@@ -374,6 +481,7 @@ export function buildListingPlan(input: {
     planWallet({
       batch,
       envelopes: byAddress.get(batch.address)?.envelopes ?? [],
+      conduits: input.conduits ?? [],
       chainId: input.chainId,
       expectedEndSec: input.endTimeSec,
       priceAmount: input.priceAmount,
