@@ -32,6 +32,7 @@ import {
   removeWallet,
 } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
+import { addressKey } from '@/lib/wallet/address'
 import {
   folderBalance,
   folderState,
@@ -42,7 +43,7 @@ import {
   uid,
   walletCount,
 } from '@/lib/wallet/wallet-model'
-import type { FolderRecord } from '@/lib/wallet/wallet-model'
+import type { FolderRecord, WalletProfile } from '@/lib/wallet/wallet-model'
 import { cn } from '@/lib/utils'
 
 export function WalletProfilesPage() {
@@ -108,14 +109,15 @@ export function WalletProfilesPage() {
     }
   }, [])
 
-  // The tile sums every folder, so every folder's wallets have to be fetched or
-  // the rest of the page reports "Unfunded" for balances it never asked for.
-  const addressKey = useMemo(() => {
+  // One key in two folders signs the same balance, so the request names each
+  // address once. Every folder still has to be read or the rest of the page
+  // reports "Unfunded" for balances it never asked for.
+  const uniqueAddressCsv = useMemo(() => {
     const addresses = new Set<string>()
     for (const folder of folderRecords) {
       for (const wallet of walletRecords) {
         if (wallet.folderId === folder.id) {
-          addresses.add(wallet.address)
+          addresses.add(addressKey(wallet.address))
         }
       }
     }
@@ -127,7 +129,7 @@ export function WalletProfilesPage() {
     loading: balanceLoading,
     errorMessage: visibleBalanceError,
     runRefresh,
-  } = useWalletBalances(chainSlug, addressKey)
+  } = useWalletBalances(chainSlug, uniqueAddressCsv)
 
   const folders = useMemo(
     () => toFolders(folderRecords, walletRecords, balances, chainSlug),
@@ -186,16 +188,32 @@ export function WalletProfilesPage() {
       .join(', ')
   }
 
-  const profileCount = folders.reduce(
-    (total, folder) => total + folder.wallets.length,
-    0
-  )
-  const totalBalance = folders.reduce(
-    (total, folder) => total + folderBalance(folder),
+  // The same key may live in two folders by design, but both rows sign for one
+  // address and hold one balance. The folder rows still show their own sum;
+  // the page tiles count each address once.
+  const uniqueWallets = useMemo(() => {
+    const seen = new Map<string, WalletProfile>()
+    for (const folder of folders) {
+      for (const wallet of folder.wallets) {
+        const key = addressKey(wallet.address)
+        if (!seen.has(key)) {
+          seen.set(key, wallet)
+        }
+      }
+    }
+    return [...seen.values()]
+  }, [folders])
+  const duplicateRows =
+    folders.reduce((total, folder) => total + folder.wallets.length, 0) -
+    uniqueWallets.length
+
+  const profileCount = uniqueWallets.length
+  const totalBalance = uniqueWallets.reduce(
+    (total, wallet) => total + (wallet.balance ?? 0n),
     0n
   )
-  const totalKnown = folders.every((folder) =>
-    folder.wallets.every((wallet) => wallet.balance !== null)
+  const totalKnown = uniqueWallets.every(
+    (wallet) => wallet.balance !== null
   )
 
   const stats = [
@@ -422,6 +440,14 @@ export function WalletProfilesPage() {
           </Card>
         ))}
       </dl>
+      {duplicateRows > 0 ? (
+        <p className="text-muted-foreground text-xs">
+          Totals count each address once;{' '}
+          {duplicateRows === 1
+            ? '1 row repeats an address in another folder.'
+            : `${duplicateRows} rows repeat an address in another folder.`}
+        </p>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <Card className="flex w-full shrink-0 flex-col gap-0 overflow-hidden py-0 lg:w-[340px]">
@@ -574,8 +600,8 @@ export function WalletProfilesPage() {
                     size="icon-sm"
                     aria-label="Check balances"
                     aria-busy={balanceLoading}
-                    disabled={balanceLoading || !addressKey}
-                    onClick={() => void runRefresh(addressKey.split(','))}
+                    disabled={balanceLoading || !uniqueAddressCsv}
+                    onClick={() => void runRefresh(uniqueAddressCsv.split(','))}
                   >
                     <RefreshCw className={cn(balanceLoading && 'animate-spin')} />
                   </Button>

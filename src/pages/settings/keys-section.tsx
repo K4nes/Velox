@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/tooltip'
 import type { Credential } from '@/lib/chain/connections'
 import type { ProbeResult } from '@/lib/chain/connection-probes'
+import { writeClipboardText } from '@/lib/clipboard/clipboard'
 
 type KeysSectionProps = {
   testable: boolean
@@ -102,7 +103,7 @@ export function KeysSection({
 
   async function copy(credential: Credential, label: string) {
     try {
-      await navigator.clipboard.writeText(credential.value)
+      await writeClipboardText(credential.value)
       toast.success(`${label} copied`)
     } catch {
       toast.error('Could not copy to the clipboard')
