@@ -316,7 +316,12 @@ test('a rescan keeps a spent token blocked', async ({
   await screen.getByRole('button', { name: 'Rescan' }).click()
   await expect.poll(() => holdings.count).toBe(2)
 
-  await expect(screen.getByText('Sent', { exact: true })).toBeVisible()
+  const sent = screen.getByText('Sent', { exact: true })
+  await expect(sent).toBeVisible()
+  await expect(sent).toHaveAttribute(
+    'title',
+    'This token has already been transferred'
+  )
   await expect(
     screen.getByRole('checkbox', { name: 'Select token #1' })
   ).toBeDisabled()
