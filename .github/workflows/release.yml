@@ -177,7 +177,7 @@ jobs:
         run: |
           bundle=src-tauri/target/release/bundle/appimage/Velox.AppDir
           desktop-file-validate \
-            "$bundle/usr/share/applications/Velox.desktop"
+            "$bundle/usr/share/applications/com.k4nes.velox.desktop"
 
       - name: upload the Linux assets to the draft
         env:
