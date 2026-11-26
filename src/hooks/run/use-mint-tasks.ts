@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 import { useWalletGroups } from '@/hooks/data/use-wallets'
 import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
@@ -39,7 +39,7 @@ import {
   stageConfirmed,
 } from '@/lib/mint/run-mint'
 import type { PreparedMint } from '@/lib/mint/run-mint'
-import { chainTime, waitForReceipt } from '@/lib/chain/tx'
+import { chainTime, waitForReceiptOutcome } from '@/lib/chain/tx'
 import { runApprovals } from '@/lib/mint/approve'
 import {
   applyProbeVerdicts,
@@ -103,6 +103,206 @@ const readinessFailuresRef = new Map<string, number>()
 const openCheckRef = new Map<string, { key: string; check: CheckResult }>()
 const probeEpochRef = new Map<string, number>()
 
+type BlockSample = { ms: number; at: number; chain: string }
+
+// The chain's clock outlives the page. The arm loop keeps sampling while the
+// operator is elsewhere, and a remount reads the last sample instead of the
+// desktop clock.
+let chainSample: BlockSample | null = null
+const chainSampleListeners = new Set<() => void>()
+
+function publishChainSample(sample: BlockSample) {
+  chainSample = sample
+  for (const listener of chainSampleListeners) listener()
+}
+
+function subscribeChainSample(listener: () => void): () => void {
+  chainSampleListeners.add(listener)
+  return () => {
+    chainSampleListeners.delete(listener)
+  }
+}
+
+// A chain read that fails leaves no sample for that chain. The page then falls
+// back to the desktop clock, which is what an unreadable node leaves it with.
+function forgetChainSample(chain: string) {
+  if (chainSample?.chain !== chain) return
+  chainSample = null
+  for (const listener of chainSampleListeners) listener()
+}
+
+type ArmWindow = { stageUuid: string; startMs: number }
+
+type ArmRunner = {
+  tasks: () => Task[]
+  prepare: (taskId: string, arm: ArmWindow) => Promise<void>
+  open: (taskId: string, blockMs: number) => Promise<void>
+  disarm: (taskId: string, message: string) => void
+}
+
+type ArmLoop = {
+  key: string
+  cancelled: boolean
+  timer: number | null
+  wake: (() => void) | null
+}
+
+// The arm belongs to the retained store, not to the page that armed it. The
+// page hands over the callbacks; the loop keeps running until the store no
+// longer holds the arm.
+const armLoops = new Map<string, ArmLoop>()
+
+function stopArmLoop(taskId: string, loop: ArmLoop) {
+  loop.cancelled = true
+  if (loop.timer !== null) {
+    window.clearTimeout(loop.timer)
+    loop.timer = null
+  }
+  const wake = loop.wake
+  loop.wake = null
+  wake?.()
+  if (armLoops.get(taskId) === loop) armLoops.delete(taskId)
+}
+
+async function runArmLoop(
+  taskId: string,
+  runner: ArmRunner,
+  loop: ArmLoop
+): Promise<void> {
+  // The project's TS lib predates Promise.withResolvers.
+  const sleep = (ms: number) => {
+    let wake = () => {}
+    const pending = new Promise<void>((resolve) => {
+      wake = resolve
+    })
+    loop.wake = wake
+    loop.timer = window.setTimeout(() => {
+      loop.timer = null
+      loop.wake = null
+      wake()
+    }, ms)
+    return pending
+  }
+
+  // A chain with no usable RPC never recovers on its own, so arming stops instead
+  // of counting down to a fire that cannot land.
+  const disarmOnRpcError = (error: unknown): boolean => {
+    if (!(error instanceof RpcConfigError)) return false
+    runner.disarm(taskId, error.message)
+    return true
+  }
+
+  // One offset for the whole arm. The chain's whole-second timestamps make the
+  // local target approximate, which the tight window resolves.
+  let offsetMs: number | null = null
+  let postOpenDelay = 1_000
+  let openReached = false
+
+  try {
+    while (!loop.cancelled) {
+      const task = runner.tasks().find((entry) => entry.id === taskId)
+      const arm = task?.arm
+      if (!task || !arm) return
+      if (task.status === 'running') {
+        await sleep(ARM_TICK_MS)
+        continue
+      }
+
+      const chain = task.drop?.chain
+      if (!chain) {
+        runner.disarm(
+          taskId,
+          'The scheduled mint was cancelled. Check the collection again.'
+        )
+        return
+      }
+
+      if (offsetMs === null) {
+        try {
+          const ms = await chainTime(chain)
+          if (loop.cancelled) return
+          offsetMs = ms - Date.now()
+          publishChainSample({ ms, at: Date.now(), chain })
+          traceMint({ kind: 'poll', taskId, chainMs: ms })
+        } catch (error) {
+          if (disarmOnRpcError(error)) return
+          await sleep(ARM_TICK_MS)
+          continue
+        }
+      }
+
+      const wait = armWait(arm.startMs - offsetMs, Date.now())
+      // Prepare off the timer's path: the fire still happens if calldata or a
+      // sign-in is slower than the remaining lead time. Once the open has
+      // passed, readiness owns calldata, so a second prepare cannot race it.
+      if (
+        wait.prepare &&
+        !openReached &&
+        !firingRef.has(taskId) &&
+        !prepareTaskRef.has(taskId)
+      ) {
+        const running = runner.prepare(taskId, arm)
+        prepareTaskRef.set(taskId, running)
+        const finished = () => {
+          if (prepareTaskRef.get(taskId) === running) {
+            prepareTaskRef.delete(taskId)
+          }
+        }
+        void running.then(finished, finished)
+      }
+      if (!wait.tighten) {
+        await sleep(wait.delayMs)
+        continue
+      }
+
+      const tickStart = Date.now()
+      try {
+        const ms = await chainTime(chain)
+        if (loop.cancelled) return
+        traceMint({ kind: 'poll', taskId, chainMs: ms })
+        publishChainSample({ ms, at: Date.now(), chain })
+        if (ms >= arm.startMs) {
+          openReached = true
+          await runner.open(taskId, ms)
+          if (loop.cancelled) return
+          const latest = runner.tasks().find((entry) => entry.id === taskId)
+          if (!latest?.arm) return
+          // Past the open, a failed readiness check must not become four
+          // provider round trips a second. Ramp 1s -> 2s -> 4s, cap there.
+          await sleep(postOpenDelay)
+          postOpenDelay = Math.min(postOpenDelay * 2, 4_000)
+          continue
+        }
+      } catch (error) {
+        // An RPC hiccup must not disarm anything; the next tick retries.
+        if (disarmOnRpcError(error)) return
+      }
+      await sleep(Math.max(0, ARM_TICK_MS - (Date.now() - tickStart)))
+    }
+  } finally {
+    if (armLoops.get(taskId) === loop) armLoops.delete(taskId)
+  }
+}
+
+function syncArmLoops(runner: ArmRunner) {
+  const tasks = runner.tasks()
+  for (const task of tasks) {
+    const arm = task.arm
+    if (!arm) continue
+    const key = `${arm.stageUuid}:${arm.startMs}`
+    const existing = armLoops.get(task.id)
+    if (existing?.key === key) continue
+    if (existing) stopArmLoop(task.id, existing)
+    const loop: ArmLoop = { key, cancelled: false, timer: null, wake: null }
+    armLoops.set(task.id, loop)
+    void runArmLoop(task.id, runner, loop)
+  }
+  for (const [taskId, loop] of [...armLoops]) {
+    const task = tasks.find((entry) => entry.id === taskId)
+    if (!task?.arm) stopArmLoop(taskId, loop)
+  }
+}
+
 type ProbeRowsInput = {
   id: string
   drop: DropInfo
@@ -120,9 +320,7 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   // The countdown renders from a local tick, but the fire decision comes from the
   // chain's clock: a desktop that is a minute off would mint before the stage opens.
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const [blockSample, setBlockSample] = useState<{ ms: number; at: number } | null>(
-    null
-  )
+  const sampled = useSyncExternalStore(subscribeChainSample, () => chainSample)
   const { groups, loading: walletsLoading, error: walletsError } = useWalletGroups()
   const knownWalletIds = useMemo(
     () =>
@@ -132,6 +330,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
 
   const realActive = tasks.find((task) => task.id === activeId) ?? tasks[0] ?? null
   const active = realActive ?? placeholderTask
+  // A sample from another chain says nothing about this drop's stage window.
+  const blockSample =
+    sampled !== null && sampled.chain === active.drop?.chain ? sampled : null
   const isPlaceholder = realActive === null
   const locked = isPlaceholder
   const hasUrl = active.url.trim().length > 0
@@ -213,12 +414,13 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     )
   }
 
-  // The probe reads the same clock as the countdown: the arm's sample when there is
-  // one, otherwise the chain. A failed read falls back to local time. Check does not
-  // write the countdown's sample.
+  // The probe reads the same clock as the countdown: the chain sample when there
+  // is one, otherwise the chain. A failed read falls back to local time. Check
+  // does not write the countdown's sample.
   async function stageNowMs(chain: string): Promise<number> {
-    if (blockSample) {
-      return blockTimeAt(blockSample, Date.now())
+    const sample = chainSample
+    if (sample !== null && sample.chain === chain) {
+      return blockTimeAt(sample, Date.now())
     }
     try {
       return await chainTime(chain)
@@ -227,15 +429,19 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     }
   }
 
-  // The drop's active list needs no clock read: the fetch that produced it already
-  // decided it is open. A list the provider did not mark active is probed only when
-  // the chain clock says its own window is open.
+  // OpenSea states the active stage itself. A Scatter list's active stage is
+  // derived from whatever clock fetched the drop, so its own window on chain is
+  // the authority: a list the desktop thinks is open is not probed until the
+  // chain says it opened, and a stage the chain says is live is probed even when
+  // the desktop clock has not reached it.
   async function stageProbeable(
     drop: DropInfo,
     stage: DropStage | null
   ): Promise<boolean> {
     if (!stage) return false
-    if (drop.activeStage?.uuid === stage.uuid) return true
+    if (drop.source !== 'scatter' && drop.activeStage?.uuid === stage.uuid) {
+      return true
+    }
     return stageLiveAt(stage, await stageNowMs(drop.chain))
   }
 
@@ -674,6 +880,17 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       }
 
       updateRuns((currentRuns) => ({ ...currentRuns, [id]: finalRows }))
+      // A token-priced probe priced one quantity. Prefilling to the cap would
+      // invalidate the allowance read the operator just paid for, and Start would
+      // refuse a task the row had already proved. Raising it still needs a new
+      // Check, which is the stale guard.
+      const tokenPriced = finalRows.some(
+        (row) =>
+          row.probe?.stageUuid === finalStageUuid &&
+          row.probe.allowances.length > 0
+      )
+      const prefill =
+        quantityMax > 0 ? Math.min(probeQuantity, quantityMax) : probeQuantity
       updateTask(id, {
         name: drop.name || collection.slug,
         status: 'idle',
@@ -682,7 +899,9 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         stageUuid: finalStageUuid,
         quantityMax,
         probing: false,
-        quantity: initialQuantity(quantityMax, finalStage),
+        quantity: tokenPriced
+          ? String(prefill)
+          : initialQuantity(quantityMax, finalStage),
       })
       checked = true
       return { drop, rows: finalRows, quantityMax }
@@ -786,7 +1005,33 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     try {
       const fresh = options.drop ?? (await fetchMintDrop(drop.source, drop.slug))
       if (stopped()) return
-      if (!options.stageVerified && fresh.activeStage === null) {
+      // Scatter's fetch picks its active list from the desktop clock, so the
+      // list's own window on the chain decides whether it can mint. OpenSea
+      // states the active stage from its server, and its SeaDrop restriction is
+      // the authority there.
+      const freshStage =
+        fresh.stages.find((entry) => entry.uuid === task.stageUuid) ?? null
+      const chainNow = blockTimeAt(
+        chainSample !== null && chainSample.chain === fresh.chain
+          ? chainSample
+          : null,
+        Date.now()
+      )
+      const scatterStageOpen =
+        fresh.source === 'scatter' && stageLiveAt(freshStage, chainNow)
+      // The endpoint sends only minter and quantity, so it mints the live stage
+      // whatever the picker says. Sending a batch built from another stage would
+      // mint A for wallets counted against B, and the doomed retry would wipe the
+      // record of a transaction that already landed. A Scatter build names its
+      // list, so the task's stage is the live one once its own window is open.
+      const liveStageUuid = options.stageVerified
+        ? task.stageUuid
+        : fresh.source === 'scatter'
+          ? scatterStageOpen
+            ? task.stageUuid
+            : ''
+          : (fresh.activeStage?.uuid ?? '')
+      if (!options.stageVerified && liveStageUuid === '') {
         updateRuns((current) => ({
           ...current,
           [id]: (current[id] ?? []).filter(reachedChain),
@@ -802,14 +1047,6 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         toast.error('No stage is minting. Check the collection again.')
         return
       }
-
-      // The endpoint sends only minter and quantity, so it mints the live stage
-      // whatever the picker says. Sending a batch built from another stage would
-      // mint A for wallets counted against B, and the doomed retry would wipe the
-      // record of a transaction that already landed.
-      const liveStageUuid = options.stageVerified
-        ? task.stageUuid
-        : (fresh.activeStage?.uuid ?? '')
       if (!options.stageVerified && liveStageUuid !== task.stageUuid) {
         updateTask(id, { checked: false })
         toast.error('The live stage changed. Check the collection again.')
@@ -930,7 +1167,16 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       const appendLine = (log: string | undefined, line: string) =>
         log === undefined || log === '' ? line : `${log}\n${line}`
 
-      const broadcast: { walletId: string; chain: string; txHash: string }[] = []
+      const broadcast: {
+        walletId: string
+        chain: string
+        txHash: string
+        from: `0x${string}`
+        nonce: number
+        to: `0x${string}`
+        input: `0x${string}`
+        value: bigint
+      }[] = []
 
       // Two wallets at a time, handed out in wallet-list order so wallet 0 is
       // in the first pair.
@@ -1021,6 +1267,11 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
             walletId: wallet.id,
             chain: result.chain,
             txHash: result.txHash,
+            from: result.from,
+            nonce: result.nonce,
+            to: preparedEntry.transaction.to as `0x${string}`,
+            input: preparedEntry.transaction.data as `0x${string}`,
+            value: BigInt(preparedEntry.transaction.value),
           })
         } catch (error) {
           if (stopped()) return
@@ -1067,26 +1318,64 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
           }))
           return
         }
-        try {
-          const status = await waitForReceipt(entry.chain, entry.txHash)
-          writeRun(entry.walletId, (row) =>
-            status === 'success'
-              ? { status: 'confirmed' }
-              : {
-                  status: 'failed',
-                  error: 'Transaction reverted',
-                  log: appendLine(
-                    row.log,
-                    'Mint failed: the transaction reverted.'
-                  ),
-                }
-          )
-        } catch (error) {
-          writeRun(entry.walletId, (row) => ({
-            error: toMessage(error),
-            log: appendLine(row.log, `Mint failed: ${toMessage(error)}`),
-          }))
-        }
+        // A reorged outcome needs the nonce slot: the sender's replacement may be
+        // what actually mined, and only its receipt says whether this mint landed.
+        const outcome = await waitForReceiptOutcome(entry.chain, entry.txHash, {
+          from: entry.from,
+          nonce: entry.nonce,
+          to: entry.to,
+          input: entry.input,
+          value: entry.value,
+        })
+        writeRun(entry.walletId, (row) => {
+          if (outcome.status === 'success') {
+            return {
+              status: 'confirmed' as const,
+              txHash: outcome.txHash,
+              ...(outcome.txHash.toLowerCase() !== entry.txHash.toLowerCase()
+                ? {
+                    log: appendLine(
+                      row.log,
+                      `Mint repriced to ${outcome.txHash}.`
+                    ),
+                  }
+                : {}),
+            }
+          }
+          // The mint did not land. Retiring the stage would leave Check + Start
+          // with no retry and no reason, so only a still-possible transaction
+          // keeps the retirement.
+          if (outcome.status === 'reverted') {
+            return {
+              status: 'failed' as const,
+              txHash: outcome.txHash,
+              error: 'Transaction reverted',
+              mintedStages: row.mintedStages.filter(
+                (stage) => stage !== liveStageUuid
+              ),
+              log: appendLine(row.log, 'Mint failed: the transaction reverted.'),
+            }
+          }
+          if (outcome.status === 'replaced') {
+            return {
+              status: 'failed' as const,
+              error: 'The transaction was replaced before it minted',
+              mintedStages: row.mintedStages.filter(
+                (stage) => stage !== liveStageUuid
+              ),
+              log: appendLine(
+                row.log,
+                `Mint replaced by ${outcome.txHash}; the replacement did not mint this stage.`
+              ),
+            }
+          }
+          return {
+            log: appendLine(
+              row.log,
+              'Receipt unresolved: the transaction may still land.'
+            ),
+          }
+        })
       })
     } catch (error) {
       const message = `Mint failed — ${toMessage(error)}`
@@ -1238,8 +1527,10 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
       }
 
       // A different active_stage that is still inside its own window is a real
-      // stage change. A stale one whose window has closed does not block the
-      // scheduled fire; the calldata check below is the authority on the open.
+      // stage change on OpenSea. A stale one whose window has closed does not
+      // block the scheduled fire; the calldata check below is the authority on
+      // the open. A Scatter build names its own list, so another live list is
+      // not a change.
       const active = drop.activeStage
       const activeStart = active?.startTime ? Date.parse(active.startTime) : NaN
       const activeEnd = active?.endTime ? Date.parse(active.endTime) : NaN
@@ -1247,7 +1538,12 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         active !== null &&
         (!Number.isFinite(activeStart) || activeStart <= blockMs) &&
         (!Number.isFinite(activeEnd) || blockMs < activeEnd)
-      if (active && active.uuid !== arm.stageUuid && activeLive) {
+      if (
+        drop.source !== 'scatter' &&
+        active &&
+        active.uuid !== arm.stageUuid &&
+        activeLive
+      ) {
         toast.error('The live stage changed. Check the collection again.')
         return
       }
@@ -1306,7 +1602,12 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
         prepareAttemptRef.delete(taskId)
         if (failures < READINESS_FALLBACK_ATTEMPTS) return
 
-        const activeConfirmed = active?.uuid === arm.stageUuid && activeLive
+        // A Scatter list is confirmed by its own window; OpenSea by the stage its
+        // server reports live.
+        const activeConfirmed =
+          drop.source === 'scatter'
+            ? stageLiveAt(stage, blockMs)
+            : active?.uuid === arm.stageUuid && activeLive
         if (!activeConfirmed) {
           updateTask(taskId, { arm: null })
           clearArmState(taskId)
@@ -1348,21 +1649,37 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
   const needsClock =
     armedCount > 0 || tasks.some((task) => task.checked && task.drop !== null)
 
-  const openArmedRef = useRef(openArmed)
-  useEffect(() => {
-    openArmedRef.current = openArmed
-  })
-  const prepareArmedRef = useRef(prepareArmed)
-  useEffect(() => {
-    prepareArmedRef.current = prepareArmed
-  })
-
   useEffect(() => {
     if (!needsClock) return
     const period = armedCount > 0 ? 1000 : 10000
     const timer = window.setInterval(() => setNowMs(Date.now()), period)
     return () => window.clearInterval(timer)
   }, [needsClock, armedCount])
+
+  // Start and the stage window read the selected drop's chain clock. The arm
+  // loop publishes its own sample every tick; an unarmed task gets the same
+  // reading here, so a fast or slow desktop clock cannot open or close a stage.
+  const clockChain = active.drop?.chain ?? null
+  useEffect(() => {
+    if (clockChain === null) return
+    let cancelled = false
+    const sample = async () => {
+      try {
+        const ms = await chainTime(clockChain)
+        if (!cancelled) {
+          publishChainSample({ ms, at: Date.now(), chain: clockChain })
+        }
+      } catch {
+        if (!cancelled) forgetChainSample(clockChain)
+      }
+    }
+    void sample()
+    const timer = window.setInterval(() => void sample(), 10_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [clockChain])
 
   const armSignature = tasks
     .flatMap((task) =>
@@ -1374,138 +1691,19 @@ export function useMintTasks(store: PageStore<MintTasksState> | undefined) {
     .join('|')
 
   useEffect(() => {
-    if (armSignature === '') return
-    let cancelled = false
-    const timers = new Set<number>()
-
-    const sleep = (ms: number) =>
-      new Promise<void>((resolve) => {
-        const timer = window.setTimeout(() => {
-          timers.delete(timer)
-          resolve()
-        }, ms)
-        timers.add(timer)
-      })
-
-    const sampleChain = async (task: Task, chain: string) => {
-      const ms = await chainTime(chain)
-      if (cancelled) return null
-      traceMint({ kind: 'poll', taskId: task.id, chainMs: ms })
-      setBlockSample({ ms, at: Date.now() })
-      return ms
-    }
-
-    const disarmTask = (taskId: string, message: string) => {
-      updateTask(taskId, { arm: null })
-      toast.error(message)
-    }
-    // A chain with no usable RPC never recovers on its own, so arming stops instead of
-    // counting down to a fire that cannot land.
-    const disarmOnRpcError = (error: unknown, taskId: string): boolean => {
-      if (!(error instanceof RpcConfigError)) return false
-      disarmTask(taskId, error.message)
-      return true
-    }
-
-
-    const runArm = async (taskId: string) => {
-      // One offset for the whole arm. The chain's whole-second timestamps make
-      // the local target approximate, which the tight window resolves.
-      let offsetMs: number | null = null
-      let postOpenDelay = 1_000
-      let openReached = false
-
-      while (!cancelled) {
-        const task = scoped.get().tasks.find((entry) => entry.id === taskId)
-        const arm = task?.arm
-        if (!task || !arm) return
-        if (task.status === 'running') {
-          await sleep(ARM_TICK_MS)
-          continue
-        }
-
-        const chain = task.drop?.chain
-        if (!chain) {
-          disarmTask(
-            task.id,
-            'The scheduled mint was cancelled. Check the collection again.'
-          )
-          return
-        }
-
-        if (offsetMs === null) {
-          try {
-            const ms = await sampleChain(task, chain)
-            if (ms === null) return
-            offsetMs = ms - Date.now()
-          } catch (error) {
-            if (disarmOnRpcError(error, task.id)) return
-            await sleep(ARM_TICK_MS)
-            continue
-          }
-        }
-
-        const wait = armWait(arm.startMs - offsetMs, Date.now())
-        // Prepare off the timer's path: the fire still happens if calldata or a
-        // sign-in is slower than the remaining lead time. Once the open has
-        // passed, readiness owns calldata, so a second prepare cannot race it.
-        if (
-          wait.prepare &&
-          !openReached &&
-          !firingRef.has(task.id) &&
-          !prepareTaskRef.has(task.id)
-        ) {
-          const running = prepareArmedRef.current(task.id, arm)
-          prepareTaskRef.set(task.id, running)
-          const finished = () => {
-            if (prepareTaskRef.get(task.id) === running) {
-              prepareTaskRef.delete(task.id)
-            }
-          }
-          void running.then(finished, finished)
-        }
-        if (!wait.tighten) {
-          await sleep(wait.delayMs)
-          continue
-        }
-
-        const tickStart = Date.now()
-        try {
-          const ms = await sampleChain(task, chain)
-          if (ms === null) return
-          if (ms >= arm.startMs) {
-            openReached = true
-            await openArmedRef.current(task.id, ms)
-            if (cancelled) return
-            const latest = scoped.get().tasks.find(
-              (entry) => entry.id === taskId
-            )
-            if (!latest?.arm) return
-            // Past the open, a failed readiness check must not become four
-            // provider round trips a second. Ramp 1s -> 2s -> 4s, cap there.
-            await sleep(postOpenDelay)
-            postOpenDelay = Math.min(postOpenDelay * 2, 4_000)
-            continue
-          }
-        } catch (error) {
-          // An RPC hiccup must not disarm anything; the next tick retries.
-          if (disarmOnRpcError(error, task.id)) return
-        }
-        await sleep(Math.max(0, ARM_TICK_MS - (Date.now() - tickStart)))
-      }
-    }
-
-    for (const task of scoped.get().tasks) {
-      if (task.arm) void runArm(task.id)
-    }
-
-    return () => {
-      cancelled = true
-      for (const timer of timers) window.clearTimeout(timer)
-      timers.clear()
-    }
-    // The loop must not restart on a render. The helpers it calls write through
-    // the same store, and the tasks it reads are re-read from that store each tick.
+    // The loop runs from module scope and outlives this page, so it stops when
+    // the retained store no longer holds the arm, not when the route unmounts.
+    // The callbacks read the store each time; a remount hands over equivalent
+    // ones without restarting the loop.
+    syncArmLoops({
+      tasks: () => scoped.get().tasks,
+      prepare: prepareArmed,
+      open: openArmed,
+      disarm: (taskId, message) => {
+        updateTask(taskId, { arm: null })
+        toast.error(message)
+      },
+    })
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [armSignature])
 

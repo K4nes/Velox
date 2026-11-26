@@ -738,8 +738,6 @@ export function taskView(input: {
   const stageItems = task.drop?.stages ?? []
   const selectedStage =
     task.drop?.stages.find((stage) => stage.uuid === task.stageUuid) ?? null
-  const isLiveStage =
-    selectedStage !== null && selectedStage.uuid === task.drop?.activeStage?.uuid
   const blockNow = blockTimeAt(blockSample, nowMs)
   // A stage that has not opened reports no cap, so a zero cap alone cannot tell
   // "not eligible" apart from "not open yet". The schedule can.
@@ -748,6 +746,9 @@ export function taskView(input: {
   const stageEndMs = stageWindowValue.endMs
   const stageNotOpen = stageWindowValue.notOpen
   const stageClosed = stageWindowValue.closed
+  // The chain clock, not the provider's active marker (which some sources derive
+  // from the desktop clock), decides whether the selected stage is live.
+  const isLiveStage = selectedStage !== null && stageWindowValue.open
 
   const mintWalletCount = task.wallets.filter((walletId) => {
     if (!knownWalletIds.has(walletId)) return false
