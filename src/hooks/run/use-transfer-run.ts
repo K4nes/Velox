@@ -156,7 +156,13 @@ export function useTransferRun(input: {
       input.onDeselect([...spent.keys()])
 
       const parts: string[] = []
-      if (result.sent > 0) parts.push(`${result.sent} sent`)
+      if (result.sent > 0) {
+        parts.push(
+          result.units === result.sent
+            ? `${result.sent} sent`
+            : `${result.units} units sent`
+        )
+      }
       if (result.unknown > 0) parts.push(`${result.unknown} unconfirmed`)
       if (result.failed > 0) parts.push(`${result.failed} failed`)
       const line = parts.join(', ')

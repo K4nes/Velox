@@ -8,6 +8,9 @@ export type WalletScan = {
   wallet: ScanWallet
   tokens: number
   error: string | null
+  // True when the page cap, a repeated cursor or an abort stopped this wallet
+  // before its listing ended.
+  truncated: boolean
 }
 
 export type HeldToken = {
@@ -60,22 +63,38 @@ export function resolveScanWallets(
   }
 }
 
+// A wallet usually lists a handful of tokens per collection. The cap bounds a
+// pathological account instead of pacing a normal one, matching the listing and
+// offer readers.
+const HOLDINGS_PAGE_CAP = 5
+
 export async function scanHeldTokens(input: {
   chain: string
   slug: string
   wallets: readonly ScanWallet[]
   onToken?: (token: HeldToken) => void
   onWallet?: (scan: WalletScan) => void
-}): Promise<{ tokens: HeldToken[]; scans: WalletScan[] }> {
+  signal?: AbortSignal
+}): Promise<{ tokens: HeldToken[]; scans: WalletScan[]; truncated: boolean }> {
   const tokens = new Map<string, HeldToken>()
   const scans = new Map<string, WalletScan>()
+  let truncated = false
 
   async function scanWallet(wallet: ScanWallet): Promise<WalletScan> {
     let cursor: string | undefined
     let found = 0
+    let walletTruncated = false
 
     try {
-      do {
+      const seen = new Set<string>()
+      let pages = 0
+
+      while (true) {
+        if (input.signal?.aborted) {
+          walletTruncated = true
+          break
+        }
+
         const page = await getAccountNfts({
           chain: input.chain,
           address: wallet.address,
@@ -109,17 +128,35 @@ export async function scanHeldTokens(input: {
           input.onToken?.(token)
         }
 
-        cursor = page.next ?? undefined
-      } while (cursor)
+        pages += 1
+        const next = page.next ?? undefined
+        if (next === undefined) break
+
+        // The same cursor twice would fetch the same page forever; the page cap
+        // catches a chain of ever-new cursors instead.
+        if (next === cursor || seen.has(next) || pages >= HOLDINGS_PAGE_CAP) {
+          walletTruncated = true
+          break
+        }
+
+        seen.add(next)
+        cursor = next
+      }
     } catch (failure) {
-      return { wallet, tokens: found, error: scanFailureMessage(failure, 'wallet') }
+      return {
+        wallet,
+        tokens: found,
+        error: scanFailureMessage(failure, 'wallet'),
+        truncated: walletTruncated,
+      }
     }
 
-    return { wallet, tokens: found, error: null }
+    return { wallet, tokens: found, error: null, truncated: walletTruncated }
   }
 
   await mapLimit(input.wallets, 3, async (wallet) => {
     const result = await scanWallet(wallet)
+    if (result.truncated) truncated = true
     scans.set(wallet.address, result)
     input.onWallet?.(result)
     return result
@@ -131,5 +168,6 @@ export async function scanHeldTokens(input: {
       const scan = scans.get(wallet.address)
       return scan ? [scan] : []
     }),
+    truncated,
   }
 }

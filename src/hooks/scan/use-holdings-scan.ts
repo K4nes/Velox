@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import { usePageStore, usePageStoreScope } from '@/hooks/use-page-store'
 import { resolveScanWallets, scanHeldTokens } from '@/lib/inventory/holdings'
@@ -17,6 +17,17 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
   const fields = usePageStore(scoped)
   const isScanning = () => scoped.get().state.status === 'scanning'
   const scanning = isScanning()
+  const abortRef = useRef<AbortController | null>(null)
+
+  // A per-mount page stops reading when it goes away. A retained store is
+  // deliberately not aborted: its scan keeps going while the operator visits
+  // another route, which is what lets the page come back to its rows.
+  useEffect(() => {
+    if (scoped.retained) return
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [scoped])
 
   function changeUrl(next: string) {
     if (isScanning()) return
@@ -32,6 +43,8 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
     if (isScanning()) return
 
     const run = scoped.open('scan')
+    const controller = new AbortController()
+    abortRef.current = controller
     scoped.set({ tokens: [], state: { status: 'scanning' } })
 
     const { url, walletIds } = scoped.get()
@@ -61,6 +74,7 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
         chain: collection.chain,
         slug: collection.slug,
         wallets: resolved.wallets,
+        signal: controller.signal,
       })
 
       if (!run.live()) return
@@ -85,6 +99,8 @@ export function useHoldingsScan(store?: PageStore<HoldingsFields>) {
       if (!run.live()) return
       const message = toMessage(failure)
       scoped.set({ state: { status: 'failed', message } })
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
     }
   }
 
