@@ -1,8 +1,12 @@
+import { decodeFunctionData } from 'viem'
+
 import { chainByChainId, chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import { relayCurrency } from '@/config/swap-assets'
 import { httpExchange } from '@/lib/chain/http'
+import { shortAddress } from '@/lib/core/format'
 import type { SwapSpec } from '@/lib/swap/swap-spec'
+import { sameAddress } from '@/lib/wallet/address'
 
 export type SwapOperation = 'wrap' | 'unwrap' | 'swap'
 
@@ -24,11 +28,19 @@ export type SwapTxStep = {
   readonly label: string
 }
 
+export type SwapFee = {
+  readonly amount: bigint
+  readonly symbol: string
+  readonly decimals: number
+}
+
 export type SwapQuote = {
   readonly requestId: string
   readonly operation: SwapOperation
   readonly amountOut: bigint
   readonly minimumOut: bigint
+  readonly priceImpactPercent: number | null
+  readonly relayFee: SwapFee | null
   readonly steps: readonly SwapTxStep[]
 }
 
@@ -55,6 +67,8 @@ class RelayError extends Error {
 }
 
 const RELAY_API = 'https://api.relay.link'
+// v2 is deprecated (retired February 2027), but v3 requires an API key this app
+// does not hold; the move needs that key, not just a different path.
 const QUOTE_PATH = '/quote/v2'
 const STATUS_PATH = '/intents/status/v3'
 const SINGLE_PATH = '/transactions/single'
@@ -98,6 +112,28 @@ function asBigInt(value: unknown): bigint | null {
     : null
 }
 
+function asPercent(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string' || value.trim() === '') return null
+  const percent = Number(value)
+  return Number.isFinite(percent) ? percent : null
+}
+
+function parseSwapFee(raw: unknown): SwapFee | null {
+  const fee = asRecord(raw)
+  const currency = asRecord(fee?.currency)
+  const amount = asBigInt(fee?.amount)
+  const symbol = asString(currency?.symbol)
+  const decimals =
+    typeof currency?.decimals === 'number' &&
+    Number.isInteger(currency.decimals) &&
+    currency.decimals >= 0
+      ? currency.decimals
+      : null
+  if (amount === null || symbol === null || decimals === null) return null
+  return { amount, symbol, decimals }
+}
+
 function errorFromBody(body: unknown, status: number): RelayError {
   const source = asRecord(body)
   const message =
@@ -136,12 +172,74 @@ async function getJson(path: string): Promise<unknown> {
   throw new RelayError('Relay could not be reached', { code: 'network' })
 }
 
+const APPROVE_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+] as const
+
+// An approve step is signed with the operator's key, so it must call the sell
+// token itself and grant a positive allowance. The spender is Relay's allowance
+// target, not a token address, and it belongs in the label the operator reads.
+function approvalSpender(input: {
+  to: `0x${string}`
+  data: `0x${string}`
+  spec: SwapSpec
+}): `0x${string}` {
+  const ref = input.spec.from.ref
+  if (ref.kind !== 'token') {
+    throw new RelayError(
+      `Relay asked to approve ${input.spec.from.symbol}, which is native`,
+      { code: 'unsupported-approve' }
+    )
+  }
+  if (!sameAddress(input.to, ref.address)) {
+    throw new RelayError(
+      `Approve step targets ${input.to}, not ${input.spec.from.symbol} at ${ref.address}`,
+      { code: 'unsupported-approve' }
+    )
+  }
+
+  let decoded
+  try {
+    decoded = decodeFunctionData({ abi: APPROVE_ABI, data: input.data })
+  } catch {
+    throw new RelayError(
+      'Approve step is not an approve(spender, amount) call',
+      { code: 'unsupported-approve' }
+    )
+  }
+
+  const args = decoded.args as
+    | readonly [`0x${string}`, bigint]
+    | undefined
+  const spender = args?.[0]
+  const amount = args?.[1]
+  if (!spender || amount === undefined || amount <= 0n) {
+    throw new RelayError('Approve step grants no allowance', {
+      code: 'unsupported-approve',
+    })
+  }
+  return spender
+}
+
 function stepLabel(
   id: string,
   operation: SwapOperation,
-  spec: SwapSpec
+  spec: SwapSpec,
+  spender: `0x${string}` | null
 ): string {
-  if (id === 'approve') return `approval of ${spec.from.symbol}`
+  if (id === 'approve') {
+    const target = spender ? ` for ${shortAddress(spender)}` : ''
+    return `approval of ${spec.from.symbol}${target}`
+  }
   if (id === 'deposit') {
     const chain = chainBySlug(spec.to.chain)
     return `deposit to ${chain?.name ?? spec.to.chain}`
@@ -225,6 +323,11 @@ function parseStep(
           ? ('single' as const)
           : ('none' as const)
 
+  const spender =
+    purpose === 'approve'
+      ? approvalSpender({ to, data: calldata, spec })
+      : null
+
   return {
     purpose,
     tx: {
@@ -235,7 +338,7 @@ function parseStep(
     },
     indexing,
     awaitsStatus: asRecord(item?.check) !== null,
-    label: stepLabel(id, operation, spec),
+    label: stepLabel(id, operation, spec, spender),
   }
 }
 
@@ -274,7 +377,22 @@ function parseQuote(body: unknown, spec: SwapSpec): SwapQuote {
     )
   }
 
-  return { requestId, operation, amountOut, minimumOut, steps }
+  const totalImpact = asRecord(details?.totalImpact)
+  const priceImpactPercent = asPercent(totalImpact?.percent)
+  // A v2 quote carries its fee block beside `details`; accept the nested shape
+  // too, since an absent fee must never fail a quote.
+  const fees = asRecord(root.fees) ?? asRecord(details?.fees)
+  const relayFee = parseSwapFee(fees?.relayer)
+
+  return {
+    requestId,
+    operation,
+    amountOut,
+    minimumOut,
+    priceImpactPercent,
+    relayFee,
+    steps,
+  }
 }
 
 // `wallet` is the quote's user, recipient and refundTo. A quote without
