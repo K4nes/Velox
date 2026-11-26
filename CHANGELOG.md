@@ -58,6 +58,8 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Fixed
 
+- The Transfer Status column uses short states (`Available`, `Sending`, `Sent`,
+  `Unavailable`, `Failed`) and keeps the full reason in the tooltip.
 - External links open in the operator's default browser from the installed app. The
   webview denies the new window a `target="_blank"` anchor asks for, so the Tx Hash link,
   the OpenSea link beside a Bulk Sell order hash and the Portfolio token links now hand

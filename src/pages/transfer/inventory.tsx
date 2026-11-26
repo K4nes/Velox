@@ -20,25 +20,42 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/lib/inventory/holdings-fields'
-import type { TransferScanRow } from '@/hooks/scan/use-transfer-scan'
+import type {
+  TransferBlock,
+  TransferScanRow,
+} from '@/hooks/scan/use-transfer-scan'
 import { shortAddress } from '@/lib/core/format'
 import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer/transfer-run'
 import type { TransferStepState } from '@/lib/transfer/transfer-run'
 
+const BLOCK_LABEL: Record<TransferBlock, string> = {
+  chain: 'Unavailable',
+  spent: 'Sent',
+  empty: 'Empty',
+  checking: 'Checking',
+  unsupported: 'Unsupported',
+  unreadable: 'Unavailable',
+}
+
 function StatusCell({
   step,
   chain,
+  blocked,
   blockedReason,
 }: {
   step: TransferStepState | undefined
   chain: string
+  blocked: TransferBlock | null
   blockedReason: string | null
 }) {
   if (!step) {
-    return blockedReason ? (
-      <span className="text-muted-foreground text-xs">{blockedReason}</span>
-    ) : (
-      <span className="text-muted-foreground text-xs">—</span>
+    return (
+      <span
+        className="text-muted-foreground text-xs"
+        title={blockedReason ?? undefined}
+      >
+        {blocked === null ? 'Available' : BLOCK_LABEL[blocked]}
+      </span>
     )
   }
 
@@ -265,6 +282,7 @@ export function Inventory({
                   <StatusCell
                     step={tokenStates.get(key)}
                     chain={row.token.chain}
+                    blocked={row.blocked}
                     blockedReason={row.blockedReason}
                   />
                 </TableCell>

@@ -21,12 +21,21 @@ import {
 import type { TransferSelection } from '@/lib/transfer/transfer-plan'
 import { chainBySlug } from '@/config/chains'
 
+export type TransferBlock =
+  | 'chain'
+  | 'spent'
+  | 'empty'
+  | 'checking'
+  | 'unsupported'
+  | 'unreadable'
+
 export type TransferScanRow = {
   token: HeldToken
   standard: TokenStandard | null
   available: number
   amount: number
   selectable: boolean
+  blocked: TransferBlock | null
   blockedReason: string | null
 }
 
@@ -156,19 +165,25 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
 
         // A spent token is blocked by the ledger even when the chain has not
         // caught up yet, so the same row cannot be queued twice.
+        let blocked: TransferBlock | null = null
         let blockedReason: string | null = null
         if (chainError !== null) {
+          blocked = 'chain'
           blockedReason = chainError
         } else if (remaining < 1) {
+          blocked = used > 0 ? 'spent' : 'empty'
           blockedReason =
             used > 0
               ? 'This token has already been transferred'
               : 'This token has no transferable balance'
         } else if (!probe) {
+          blocked = 'checking'
           blockedReason = 'Checking this token…'
         } else if (probe.status === 'unsupported') {
+          blocked = 'unsupported'
           blockedReason = 'This token cannot be transferred'
         } else if (probe.status === 'unreadable') {
+          blocked = 'unreadable'
           blockedReason = 'Could not check this token'
         }
 
@@ -178,6 +193,7 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
           available,
           amount,
           selectable: blockedReason === null,
+          blocked,
           blockedReason,
         }
       }),
