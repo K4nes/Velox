@@ -198,6 +198,14 @@ function seriesKey(record: PnlRecord): string {
   return `${record.contract.toLowerCase()}|${walletsOf(record).join(',')}`
 }
 
+// A wider selection can reuse the earlier set as its baseline, because every
+// wallet the earlier check measured is still present. The reverse cannot be
+// split: a removed wallet's share of the earlier total is unknown.
+function coversWallets(earlier: PnlRecord, later: PnlRecord): boolean {
+  const laterWallets = walletsOf(later)
+  return walletsOf(earlier).every((wallet) => laterWallets.includes(wallet))
+}
+
 function isEarlier(candidate: PnlRecord, record: PnlRecord): boolean {
   if (candidate.day !== record.day) return candidate.day < record.day
   return candidate.createdAt < record.createdAt
@@ -302,7 +310,7 @@ function incomparableMonths(records: PnlRecord[]): Set<string> {
       if (
         previous !== null &&
         record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
-        seriesKey(record) !== seriesKey(previous)
+        !coversWallets(previous, record)
       ) {
         months.add(record.day.slice(0, 7))
       }
@@ -333,7 +341,7 @@ function seriesChangedAcrossMonths(records: PnlRecord[]): boolean {
       if (
         previous !== null &&
         record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
-        seriesKey(record) !== seriesKey(previous)
+        !coversWallets(previous, record)
       ) {
         return true
       }
@@ -773,8 +781,9 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       profitable,
       streak,
       average:
-        net !== null && comparable.length > 0
-          ? net / BigInt(comparable.length)
+        comparable.length > 0
+          ? comparable.reduce((sum, month) => sum + month.change, 0n) /
+            BigInt(comparable.length)
           : null,
       best,
       worst,

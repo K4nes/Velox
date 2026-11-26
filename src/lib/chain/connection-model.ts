@@ -111,20 +111,23 @@ export function adoptStoredEndpoint(
 
   const before = template.slice(0, at)
   const after = template.slice(at + placeholder.length)
+  // A pasted URL often keeps the template's trailing slash after the key.
+  const candidate =
+    after === '' && trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed
   const origin = new URL(template).origin
   const bare = before.endsWith('/') ? before.slice(0, -1) : before
   if (
-    trimmed === origin ||
-    trimmed === `${origin}/` ||
-    trimmed === bare ||
-    trimmed === `${bare}/` ||
-    trimmed === before
+    candidate === origin ||
+    candidate === `${origin}/` ||
+    candidate === bare ||
+    candidate === `${bare}/` ||
+    candidate === before
   ) {
     return { url: template, key: null }
   }
-  if (!trimmed.startsWith(before) || !trimmed.endsWith(after)) return null
+  if (!candidate.startsWith(before) || !candidate.endsWith(after)) return null
 
-  const key = trimmed.slice(before.length, trimmed.length - after.length)
+  const key = candidate.slice(before.length, candidate.length - after.length)
   if (
     key === '' ||
     key.includes('/') ||

@@ -65,15 +65,17 @@ come from the Conventional Commit history (`COMMIT.md`).
   endpoint URL is the provider's own, and an arbitrary URL is no longer a supported
   connection. Version 7 of the local database deletes retired provider rows and
   rewrites surviving endpoints to their provider template; a chain left without an
-  endpoint falls back to `src/config/chains.ts`.
+  endpoint falls back to `src/config/chains.ts`. A deleted row's provider key is not
+  carried into another provider (a QuickNode key only works on QuickNode's host).
 
 ### Fixed
 
 - The Monthly PnL chart accumulates within the month, so a 15 ETH baseline and a
   12 ETH change draw 15 then 27 instead of two separate daily spikes. Lifetime Best
   and Worst withhold a ranking until two comparable months exist; a month that mixes
-  wallet sets is not ranked at all, a change that spans months hides the cumulative
-  chart instead of summing two positions, and the header names its figure the latest net.
+  wallet sets is not ranked at all, a narrowing or disjoint change across months hides
+  the cumulative chart instead of summing two positions while widening the selection
+  keeps it, and the header names its figure the latest net.
 - The Transfer Status column uses short states (`Available`, `Checking`, `Sending`,
   `Sent`, `Unavailable`, `Unsupported`, `Empty`, `Failed`, `Unconfirmed`) and keeps
   the full reason in the tooltip.

@@ -143,4 +143,80 @@ test('a cross-month wallet change hides the lifetime chart and ranking', async (
   await expect(
     screen.getByText('Only one comparable month').first(),
   ).toBeVisible()
+  await expect(
+    browser.locator(
+      'xpath=//span[normalize-space()="Average / month"]/../following-sibling::span[1]',
+    ),
+  ).toContainText('15.0000 ETH')
+})
+
+test('widening a wallet set keeps the lifetime chart and both months ranked', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const now = new Date()
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1, 9)
+  const current = new Date(now.getFullYear(), now.getMonth(), 1, 9)
+  const day = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+  const contract = `0x${'e3'.repeat(20)}`
+  const walletA = `0x${'a1'.repeat(20)}`
+  const walletB = `0x${'b2'.repeat(20)}`
+
+  await app.open('/pnl/monthly')
+  await seedVelox(browser, {
+    pnlRecords: [
+      pnlRecordFixture({
+        contract,
+        name: 'Widening',
+        day: day(prev),
+        createdAt: prev.getTime(),
+        wallets: [walletA],
+        netPnl: '5000000000000000000',
+      }),
+      pnlRecordFixture({
+        contract,
+        name: 'Widening',
+        day: day(current),
+        createdAt: current.getTime(),
+        wallets: [walletA, walletB],
+        netPnl: '15000000000000000000',
+      }),
+    ],
+  })
+  await app.open('/pnl/monthly')
+
+  // The added wallet's 10 ETH is a real change from the 5 ETH baseline.
+  await expect(
+    browser.locator('span:text-is("Month net") + span'),
+  ).toContainText('10.0000 ETH')
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between checks; this month mixes baselines.',
+    ),
+  ).toHaveCount(0)
+
+  await app.open('/pnl/lifetime')
+
+  await expect(screen.getByText('Latest Net PnL')).toBeVisible()
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between months; those months are not ranked and the cumulative chart is hidden.',
+    ),
+  ).toHaveCount(0)
+  await expect(screen.getByText('Cumulative performance')).toBeVisible()
+
+  const best = browser.locator(
+    'xpath=//span[normalize-space()="Best month"]/../following-sibling::span[1]',
+  )
+  const worst = browser.locator(
+    'xpath=//span[normalize-space()="Worst month"]/../following-sibling::span[1]',
+  )
+  const average = browser.locator(
+    'xpath=//span[normalize-space()="Average / month"]/../following-sibling::span[1]',
+  )
+  await expect(best).toContainText('10.0000 ETH')
+  await expect(worst).toContainText('5.0000 ETH')
+  await expect(average).toContainText('7.5000 ETH')
 })

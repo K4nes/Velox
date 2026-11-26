@@ -288,7 +288,7 @@ test('v6 → v7: custom rows are deleted and a pasted provider key survives', as
         {
           id: 'eth-endpoint',
           chain: 'ethereum',
-          url: `https://eth-mainnet.g.alchemy.com/v2/${pastedKey}`,
+          url: `https://eth-mainnet.g.alchemy.com/v2/${pastedKey}/`,
           probe: null,
         },
         {
