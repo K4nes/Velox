@@ -16,7 +16,7 @@
     "linux": {
       "appimage": {
         "files": {
-          "/usr/share/applications/Velox.desktop": "target/linux/Velox.desktop",
+          "/usr/share/applications/com.k4nes.velox.desktop": "target/linux/com.k4nes.velox.desktop",
           "/usr/share/metainfo/com.k4nes.velox.metainfo.xml": "target/linux/com.k4nes.velox.metainfo.xml",
           "/usr/share/icons/hicolor/index.theme": "linux/hicolor-index.theme"
         }
