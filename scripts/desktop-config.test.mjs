@@ -6,13 +6,10 @@ import test from 'node:test'
 const ROOT = join(import.meta.dirname, '..')
 const TAURI = join(ROOT, 'src-tauri')
 
-// The packaged webview applies this CSP to every page. Custom RPC endpoints are
-// operator-supplied, so connect-src has to reach any HTTPS origin; script
-// execution, framing and the base URI stay locked to the packaged app.
-//
-// `http://[::1]:*` is deliberately absent: CSP3's host-part excludes '[' and
-// ':', so browsers ignore that source expression. Local nodes reached over IPv6
-// loopback remain unreachable from the webview.
+// The packaged webview applies this CSP to every page. Settings no longer
+// accepts an arbitrary RPC URL, so connect-src names only the providers and
+// chain hosts the app itself calls; script execution, framing and the base URI
+// stay locked to the packaged app.
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
@@ -33,19 +30,22 @@ test('the capability grants the process restart the updater calls after installi
   )
 })
 
-test('connect-src reaches user-supplied https rpc hosts and loopback nodes', () => {
+test('connect-src stays on the configured providers, not every https host', () => {
   const { csp } = readJson(join(TAURI, 'tauri.conf.json')).app.security
   const connect = sources(csp, 'connect-src')
 
   for (const source of [
-    'https:',
-    'http://localhost:*',
-    'http://127.0.0.1:*',
     'https://api.scatter.art',
     'https://api.opensea.io',
     'https://api.relay.link',
+    'https://*.alchemy.com',
+    'https://rpc.ankr.com',
   ]) {
     assert.ok(connect.includes(source), `connect-src is missing ${source}`)
+  }
+
+  for (const source of ['https:', 'http://localhost:*', 'http://127.0.0.1:*']) {
+    assert.ok(!connect.includes(source), `connect-src still widens to ${source}`)
   }
 })
 
