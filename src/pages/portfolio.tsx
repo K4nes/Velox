@@ -47,6 +47,7 @@ import type {
   RarityTierFilter,
   ScanningHolding,
 } from '@/lib/inventory/portfolio'
+import { onExternalLinkClick } from '@/lib/external-open'
 import { cn } from '@/lib/utils'
 
 const TIER_FILTERS: readonly { key: RarityTierFilter; label: string }[] = [
@@ -526,6 +527,7 @@ export function PortfolioPage() {
                             target="_blank"
                             rel="noreferrer"
                             className="text-sm font-medium hover:underline"
+                            onClick={onExternalLinkClick(holding.openseaUrl)}
                           >
                             {holding.name || `#${holding.tokenId}`}
                           </a>

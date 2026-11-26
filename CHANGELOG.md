@@ -56,6 +56,13 @@ come from the Conventional Commit history (`COMMIT.md`).
   NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
   ([#124]).
 
+### Fixed
+
+- External links open in the operator's default browser from the installed app. The
+  webview denies the new window a `target="_blank"` anchor asks for, so the Tx Hash link,
+  the OpenSea link beside a Bulk Sell order hash and the Portfolio token links now hand
+  their URL to the OS through the opener plugin; the browser lane keeps opening a new tab.
+
 ## [0.3.0] - 2026-11-14
 
 ### Added
