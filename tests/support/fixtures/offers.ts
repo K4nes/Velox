@@ -123,3 +123,210 @@ export function offerLadderFixture(options: OfferLadderOptions) {
     next: null,
   }
 }
+
+/** One item of a raw Seaport order's offer or consideration array. */
+export type CollectionOfferItem = {
+  itemType: number
+  token: string
+  identifierOrCriteria: string
+  startAmount: string
+  endAmount: string
+  recipient?: string
+}
+
+/** The wire shape of one collection offer, as an offers page carries it. */
+export type CollectionOfferFixture = {
+  order_hash: string
+  status: string
+  chain: string
+  protocol_address: string
+  remaining_quantity: number
+  criteria: { encoded_token_ids: string }
+  price_per_item: { currency: string; decimals: number }
+  protocol_data: {
+    parameters: {
+      offerer: string
+      zone: string
+      offer: CollectionOfferItem[]
+      consideration: CollectionOfferItem[]
+      orderType: number
+      startTime: string
+      endTime: string
+      zoneHash: string
+      salt: string
+      conduitKey: string
+      counter: string
+    }
+  }
+}
+
+/** One raw `GET /offers/collection/{slug}` offer, with a real Seaport leaf. */
+export function collectionOfferFixture(options: {
+  contract: string
+  protocolAddress: string
+  /** Gross price of one unit, in wei. */
+  pricePerUnitWei: bigint | string
+  /** Units the offer is still willing to buy. */
+  remaining: number
+  /** Units the order originally offered; a partly filled order keeps this. */
+  quantity?: number
+  chain?: string
+  /** Marketplace fee per unit, in wei. */
+  feePerUnitWei?: bigint | string
+  offerer?: string
+  currency?: { symbol?: string; decimals?: number }
+  durationSec?: number
+  orderHash?: string
+  conduitKey?: string
+  /** ItemType 5 is an ERC-1155 criteria item; 4 is ERC-721. */
+  itemType?: 4 | 5
+}): CollectionOfferFixture {
+  const {
+    chain = 'robinhood',
+    contract,
+    protocolAddress,
+    pricePerUnitWei,
+    remaining,
+    quantity = remaining,
+    feePerUnitWei = 0n,
+    offerer = `0x${'11'.repeat(20)}`,
+    currency = {},
+    durationSec = 3_600,
+    orderHash = `0x${'01'.repeat(32)}`,
+    conduitKey = ZERO_HASH,
+    itemType = 5,
+  } = options
+
+  if (
+    !Number.isInteger(remaining) ||
+    remaining < 1 ||
+    !Number.isInteger(quantity) ||
+    quantity < remaining
+  ) {
+    throw new Error('collectionOfferFixture needs whole order quantities')
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000)
+  const gross = BigInt(pricePerUnitWei) * BigInt(quantity)
+  const fee = BigInt(feePerUnitWei) * BigInt(quantity)
+
+  const consideration: CollectionOfferItem[] = []
+  if (fee > 0n) {
+    consideration.push({
+      itemType: 0,
+      token: ZERO_ADDRESS,
+      identifierOrCriteria: '0',
+      startAmount: fee.toString(),
+      endAmount: fee.toString(),
+      recipient: FEE_RECIPIENT,
+    })
+  }
+  // A collection-wide bid names no token: the criteria is zero and the
+  // fulfillment's criteria resolver supplies the token being sold.
+  consideration.push({
+    itemType,
+    token: contract,
+    identifierOrCriteria: '0',
+    startAmount: String(quantity),
+    endAmount: String(quantity),
+    recipient: offerer,
+  })
+
+  return {
+    order_hash: orderHash,
+    status: 'ACTIVE',
+    chain,
+    protocol_address: protocolAddress,
+    remaining_quantity: remaining,
+    criteria: { encoded_token_ids: '*' },
+    price_per_item: {
+      currency: currency.symbol ?? 'ETH',
+      decimals: currency.decimals ?? 18,
+    },
+    protocol_data: {
+      parameters: {
+        offerer,
+        zone: ZERO_ADDRESS,
+        offer: [
+          {
+            itemType: 0,
+            token: ZERO_ADDRESS,
+            identifierOrCriteria: '0',
+            startAmount: gross.toString(),
+            endAmount: gross.toString(),
+          },
+        ],
+        consideration,
+        orderType: 0,
+        startTime: String(nowSec - 60),
+        endTime: String(nowSec + durationSec),
+        zoneHash: ZERO_HASH,
+        salt: '1',
+        conduitKey,
+        counter: '0',
+      },
+    },
+  }
+}
+
+/**
+ * The `POST /offers/fulfillment_data` body that fills `units` of an offer made by
+ * `collectionOfferFixture`. The fraction is the units over the offer's own
+ * quantity, which is what the client re-checks before it signs.
+ */
+export function offerFulfillmentFixture(options: {
+  offer: CollectionOfferFixture
+  chainId: number
+  fulfiller: string
+  tokenId: string
+  units: number
+}) {
+  const parameters = options.offer.protocol_data.parameters
+  const nftIndex = parameters.consideration.findIndex(
+    (item) => item.itemType === 4 || item.itemType === 5
+  )
+  const nft = parameters.consideration[nftIndex]
+  if (nftIndex < 0 || nft === undefined) {
+    throw new Error('offerFulfillmentFixture needs a criteria NFT item')
+  }
+
+  const numerator = BigInt(options.units)
+  const denominator = BigInt(nft.startAmount)
+  if (numerator < 1n || numerator > denominator) {
+    throw new Error('offerFulfillmentFixture fills outside the offer quantity')
+  }
+
+  return {
+    fulfillment_data: {
+      transaction: {
+        function: 'fulfillAdvancedOrder',
+        chain: options.chainId,
+        to: options.offer.protocol_address,
+        value: '0',
+        input_data: {
+          advancedOrder: {
+            parameters: {
+              ...parameters,
+              totalOriginalConsiderationItems: parameters.consideration.length,
+            },
+            numerator: numerator.toString(),
+            denominator: denominator.toString(),
+            signature: `0x${'11'.repeat(65)}`,
+            extraData: '0x',
+          },
+          criteriaResolvers: [
+            {
+              orderIndex: 0,
+              side: 1,
+              index: nftIndex,
+              identifier: options.tokenId,
+              criteriaProof: [],
+            },
+          ],
+          fulfillerConduitKey: ZERO_HASH,
+          recipient: options.fulfiller,
+        },
+      },
+    },
+  }
+}

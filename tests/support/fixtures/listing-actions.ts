@@ -1,12 +1,29 @@
+import { encodeFunctionData } from 'viem'
 import type { JsonValue } from 'e2e'
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const BYTES32 = `0x${'00'.repeat(32)}`
 
+const SET_APPROVAL_FOR_ALL_ABI = [
+  {
+    type: 'function',
+    name: 'setApprovalForAll',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'operator', type: 'address' },
+      { name: 'approved', type: 'bool' },
+    ],
+    outputs: [],
+  },
+] as const
+
 /**
  * One `POST /listings/actions` body with a single order to sign. The caller
  * echoes the request's own window, price and quantity back, because the plan
  * rejects an order whose terms differ from what the operator asked for.
+ *
+ * `approval` prepends the token approval step a real response sends when the
+ * wallet has not approved the operator yet.
  */
 export function listingActionFixture(input: {
   offerer: string
@@ -18,12 +35,39 @@ export function listingActionFixture(input: {
   endTimeSec: number
   amountWei: string
   quantity: number
+  approval?: { operator: string; approved?: boolean }
 }): JsonValue {
   const quantity = String(input.quantity)
   const chainId = input.chainId
 
   return {
     steps: [
+      ...(input.approval
+        ? [
+            {
+              itemApprovalAction: {
+                assetIdentifier: {
+                  contractAddress: input.contract,
+                  tokenId: input.tokenId,
+                },
+                transaction: {
+                  chainIdentifier: { chainId },
+                  from: input.offerer,
+                  to: input.contract,
+                  data: encodeFunctionData({
+                    abi: SET_APPROVAL_FOR_ALL_ABI,
+                    functionName: 'setApprovalForAll',
+                    args: [
+                      input.approval.operator as `0x${string}`,
+                      input.approval.approved ?? true,
+                    ],
+                  }),
+                  value: '0',
+                },
+              },
+            },
+          ]
+        : []),
       {
         createListingsAction: {
           signatureRequest: {
