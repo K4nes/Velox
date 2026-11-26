@@ -3,6 +3,11 @@ import { FLOW_CONCURRENCY } from '@/lib/core/concurrency'
 
 const MAX_PAGES = 5
 const REQUEST_TIMEOUT_MS = 15_000
+// One trade row per unit, so a remote quantity is a row count. The cap keeps a
+// bogus explorer value from allocating an unbounded list; a transfer past it is
+// dropped and the read is marked truncated.
+const MAX_TRANSFER_UNITS = 10_000
+const MAX_TRADES = 50_000
 const WEI = 10n ** 18n
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -28,8 +33,8 @@ export type PnlStats = {
   basis: bigint // cost of the lots still open
   currentValue: bigint
   unrealized: bigint
-  held: number
-  sold: number
+  held: number // units still open
+  sold: number // units moved out by a sale
 }
 
 type RawTransfer = {
@@ -37,6 +42,7 @@ type RawTransfer = {
   to?: { hash?: string }
   total?: { token_id?: string | null; value?: string }
   token?: { address_hash?: string; decimals?: string | number | null }
+  token_type?: string
   transaction_hash?: string
   block_number?: number | string
 }
@@ -153,7 +159,9 @@ async function listTransfers(
   const transfers: RawTransfer[] = []
   const truncated = await collectPages<RawTransfer>(
     `${explorerApi}/addresses/${address}/token-transfers`,
-    new URLSearchParams({ type: 'ERC-721', token: contract }),
+    // The explorer takes a comma-separated list and both standards share this
+    // one listing, so an ERC-1155 collection is read in the same pass.
+    new URLSearchParams({ type: 'ERC-721,ERC-1155', token: contract }),
     signal,
     (items) => {
       transfers.push(...items)
@@ -170,6 +178,7 @@ type FlowRead = { flows: TxFlows; truncated: boolean }
 async function loadFlows(
   explorerApi: string,
   hash: string,
+  contract: string,
   wrappedNative: string,
   signal?: AbortSignal,
 ): Promise<FlowRead> {
@@ -185,6 +194,7 @@ async function loadFlows(
   const erc20: Flow[] = []
   const otherTokens: Flow[] = []
   const wrapped = wrappedNative.toLowerCase()
+  const collection = contract.toLowerCase()
 
   const [internalsCut, transfersCut] = await Promise.all([
     collectPages<RawInternalTransaction>(
@@ -214,13 +224,19 @@ async function loadFlows(
       signal,
       (items) => {
         for (const item of items) {
+          // The traded NFT moves in the same transaction and is listed here as
+          // a token transfer too. It is what is being priced, never a payment,
+          // so it must not reach the other-token legs.
+          const token = item.token?.address_hash?.toLowerCase()
+          if (token === collection) continue
+          if (item.token_type === 'ERC-721' || item.token_type === 'ERC-1155') continue
           const amount = parseWei(item.total?.value)
           const from = item.from?.hash?.toLowerCase()
           const to = item.to?.hash?.toLowerCase()
           if (amount === null || from === undefined || to === undefined) continue
           const decimals = parseDecimals(item.token?.decimals) ?? 18
           const leg = { from, to, amount: asWei(amount, decimals) }
-          if (item.token?.address_hash?.toLowerCase() === wrapped) erc20.push(leg)
+          if (token === wrapped) erc20.push(leg)
           else otherTokens.push(leg)
         }
       },
@@ -244,6 +260,7 @@ type MoneyFlow = { inflow: bigint; outflow: bigint }
 
 type WalletTransfer = {
   tokenId: string
+  units: number
   blockNumber: number
   burn: boolean
   counterparty: string
@@ -281,6 +298,19 @@ function splitEvenly(total: bigint, count: number): bigint[] {
   return shares
 }
 
+// An ERC-1155 transfer carries its quantity here; an ERC-721 has none
+// and always moves one unit. A quantity too large to expand is refused instead
+// of allocating that many rows.
+function transferUnits(transfer: RawTransfer): number | null {
+  const raw = transfer.total?.value
+  if (raw === undefined) return 1
+  if (!/^\d+$/.test(raw)) return 1
+  const units = Number(raw)
+  if (!Number.isSafeInteger(units) || units < 0) return null
+  if (units === 0) return transfer.token_type === 'ERC-721' ? 1 : 0
+  return units <= MAX_TRANSFER_UNITS ? units : null
+}
+
 export async function fetchCollectionTrades(
   explorerApi: string,
   contract: string,
@@ -298,7 +328,7 @@ export async function fetchCollectionTrades(
     const key = hash.toLowerCase()
     const cached = flows.get(key)
     if (cached !== undefined) return cached
-    const pending = loadFlows(explorerApi, key, wrappedNative, signal)
+    const pending = loadFlows(explorerApi, key, contract, wrappedNative, signal)
     flows.set(key, pending)
     return pending
   }
@@ -321,6 +351,13 @@ export async function fetchCollectionTrades(
       // A transfer a wallet makes to itself does not move the token.
       if (from === to) continue
 
+      const units = transferUnits(transfer)
+      if (units === null) {
+        truncated = true
+        continue
+      }
+      if (units === 0) continue
+
       const key = `${hash.toLowerCase()}:${side}`
       let group = groups.get(key)
       if (group === undefined) {
@@ -329,6 +366,7 @@ export async function fetchCollectionTrades(
       }
       group.transfers.push({
         tokenId,
+        units,
         blockNumber: blockNumberOf(transfer),
         burn: to === ZERO_ADDRESS,
         counterparty: (side === 'buy' ? from : to).toLowerCase(),
@@ -352,24 +390,38 @@ export async function fetchCollectionTrades(
       )
       const ambiguous = (sides.get(group.hash.toLowerCase()) ?? 0) > 1
 
-      if (ambiguous || (group.side === 'buy' && amount === 0n && paidInAnotherToken)) {
+      // A purchase whose priced legs are empty cannot be valued, and neither
+      // can a sale: the wrapped-native legs do not prove they were the whole
+      // payment once another token moved. Both groups are left out rather than
+      // booked at zero, which would pop the lot for nothing.
+      const unpricedBuy = group.side === 'buy' && amount === 0n && paidInAnotherToken
+      const unpricedSell = group.side === 'sell' && paidInAnotherToken
+      if (ambiguous || unpricedBuy || unpricedSell) {
         unpriced = true
         return []
       }
 
-      const shares = splitEvenly(amount, group.transfers.length)
-      return group.transfers.map((transfer, index) => ({
-        wallet,
-        tokenId: transfer.tokenId,
-        side: group.side,
-        amount: shares[index],
-        blockNumber: transfer.blockNumber,
-        burn: transfer.burn,
-        counterparty: transfer.counterparty,
-      }))
+      const transferShares = splitEvenly(amount, group.transfers.length)
+      return group.transfers.flatMap((transfer, index) =>
+        splitEvenly(transferShares[index], transfer.units).map((share) => ({
+          wallet,
+          tokenId: transfer.tokenId,
+          side: group.side,
+          amount: share,
+          blockNumber: transfer.blockNumber,
+          burn: transfer.burn,
+          counterparty: transfer.counterparty,
+        })),
+      )
     })
 
-    for (const rows of grouped) trades.push(...rows)
+    for (const rows of grouped) {
+      if (trades.length + rows.length > MAX_TRADES) {
+        truncated = true
+        continue
+      }
+      trades.push(...rows)
+    }
   }
 
   for (const read of await Promise.all(flows.values())) {
@@ -542,13 +594,17 @@ export function summarize(trades: ChainTrade[]): PnlStats {
   let sold = 0
 
   for (const book of books.values()) {
-    if (book.sellCount > 0) sold += 1
+    sold += book.sellCount
     if (book.lots.length === 0) continue
 
     const open = book.lots.reduce((sum, lot) => sum + lot, 0n)
     basis += open
-    currentValue += book.lastSell ?? collectionMark ?? open
-    held += 1
+    // The last sale and the collection mark are per-unit prices, while `open`
+    // is the whole book's cost. One lot per unit means the mark covers every
+    // open unit; without a mark the book is worth what it cost.
+    const mark = book.lastSell ?? collectionMark
+    currentValue += mark === null ? open : mark * BigInt(book.lots.length)
+    held += book.lots.length
   }
 
   return {
