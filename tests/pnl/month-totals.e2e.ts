@@ -220,3 +220,58 @@ test('widening a wallet set keeps the lifetime chart and both months ranked', as
   await expect(worst).toContainText('5.0000 ETH')
   await expect(average).toContainText('7.5000 ETH')
 })
+
+test('widening a wallet set within one month is not flagged as mixed baselines', async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const now = new Date()
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const first = new Date(now.getFullYear(), now.getMonth(), 1, 9)
+  const second = new Date(now.getFullYear(), now.getMonth(), 5, 9)
+  const contract = `0x${'e4'.repeat(20)}`
+  const walletA = `0x${'a1'.repeat(20)}`
+  const walletB = `0x${'b2'.repeat(20)}`
+
+  await app.open('/pnl/monthly')
+  await seedVelox(browser, {
+    pnlRecords: [
+      pnlRecordFixture({
+        contract,
+        name: 'Same Month Widening',
+        day: `${month}-01`,
+        createdAt: first.getTime(),
+        wallets: [walletA],
+        netPnl: '5000000000000000000',
+      }),
+      pnlRecordFixture({
+        contract,
+        name: 'Same Month Widening',
+        day: `${month}-05`,
+        createdAt: second.getTime(),
+        wallets: [walletA, walletB],
+        netPnl: '15000000000000000000',
+      }),
+    ],
+  })
+  await app.open('/pnl/monthly')
+
+  // The added wallet's 10 ETH is a change from the 5 ETH covered baseline.
+  await expect(
+    browser.locator('span:text-is("Month net") + span'),
+  ).toContainText('15.0000 ETH')
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between checks; this month mixes baselines.',
+    ),
+  ).toHaveCount(0)
+
+  await app.open('/pnl/lifetime')
+  await expect(screen.getByText('Cumulative performance')).toBeVisible()
+  await expect(
+    screen.getByText(
+      'Wallet selection changed between months; those months are not ranked and the cumulative chart is hidden.',
+    ),
+  ).toHaveCount(0)
+})

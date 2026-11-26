@@ -303,6 +303,12 @@ test('v6 → v7: custom rows are deleted and a pasted provider key survives', as
           url: 'https://example.invalid/rpc',
           probe: null,
         },
+        {
+          id: 'literal-template',
+          chain: 'ape_chain',
+          url: 'https://apechain-mainnet.g.alchemy.com/v2/{key}/',
+          probe: null,
+        },
       ],
       updatedAt: AT,
     },
@@ -381,6 +387,7 @@ test('v6 → v7: custom rows are deleted and a pasted provider key survives', as
       endpoints: [
         'ethereum https://eth-mainnet.g.alchemy.com/v2/{key}',
         'base https://base-mainnet.g.alchemy.com/v2/{key}',
+        'ape_chain https://apechain-mainnet.g.alchemy.com/v2/{key}',
       ],
     },
     { id: 'rpc:ankr', credentials: [], endpoints: [] },
