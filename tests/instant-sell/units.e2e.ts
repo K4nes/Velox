@@ -134,8 +134,12 @@ test('a five-unit token fills a five-unit bid in one sale', async ({
   await expect(screen.getByText('-0.05 ETH')).toBeVisible()
   await accept.click()
 
-  await expect(screen.getByText(/1 of 1 sold/)).toBeVisible()
-  await expect(screen.getByText(/0\.45 ETH/)).toBeVisible()
+  await expect(screen.getByText(/^1 of 1 sold · 0\.45 ETH$/)).toBeVisible()
+  const soldRow = screen.getByRole('row').filter({ hasText: /Mock #1[^0-9]/ })
+  await expect(soldRow).toContainText('Sold')
+  await expect(
+    screen.getByRole('checkbox', { name: `Select token #${TOKEN_ID}` })
+  ).toBeDisabled()
   expect(bodies).toHaveLength(1)
   expect(bodies[0]?.units_to_fill).toBe(5)
   expect(typeof bodies[0]?.units_to_fill).toBe('number')
