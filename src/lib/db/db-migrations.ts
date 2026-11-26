@@ -1,5 +1,6 @@
 import { chains } from '@/config/chains'
-import { seedPlan } from '@/lib/chain/connection-model'
+import type { ChainSlug } from '@/config/chains'
+import { endpointTemplate, seedPlan } from '@/lib/chain/connection-model'
 
 export type UpgradeContext = {
   /** The version the profile sat at before this upgrade. */
@@ -30,6 +31,10 @@ export const migrations: Record<number, Migration> = {
       retireQuickNodeSeed(transaction.objectStore('connections'))
     }
   },
+  // Custom RPC rows and pasted endpoint URLs are no longer a supported
+  // connection. Their chains fall back to the configured RPC.
+  7: (transaction) =>
+    retireCustomProviders(transaction.objectStore('connections')),
 }
 
 type LegacyPnlRecord = {
@@ -84,11 +89,7 @@ function migratePnlRecordIds(store: IDBObjectStore): void {
 function seedConnections(transaction: IDBTransaction): void {
   const connections = transaction.objectStore('connections')
   const write = (rows: readonly { id: string; value: string }[]) => {
-    const plan = seedPlan(
-      rows,
-      Date.now(),
-      chains.map((chain) => chain.slug)
-    )
+    const plan = seedPlan(rows, Date.now())
     for (const connection of plan) {
       connections.put(connection)
     }
@@ -164,6 +165,45 @@ function retireQuickNodeSeed(store: IDBObjectStore): void {
         cursor.update({ ...cursor.value, provider: 'custom' })
       }
     }
+    cursor.continue()
+  }
+}
+
+// Version 7 deletes the provider rows that no longer have a settings surface
+// and rewrites every surviving RPC endpoint to its provider template. A chain
+// left without an endpoint falls back to `chains.ts`; a row with no endpoint
+// stays visible so its key can still be added under a supported provider.
+function retireCustomProviders(store: IDBObjectStore): void {
+  const request = store.openCursor()
+
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor === null) {
+      return
+    }
+
+    const row = cursor.value as {
+      kind?: string
+      provider?: string
+      endpoints?: { chain: ChainSlug }[]
+    }
+    if (row.kind !== 'rpc') {
+      cursor.continue()
+      return
+    }
+
+    const provider = row.provider
+    if (provider !== 'alchemy' && provider !== 'ankr') {
+      cursor.delete()
+      cursor.continue()
+      return
+    }
+
+    const endpoints = (row.endpoints ?? []).flatMap((endpoint) => {
+      const url = endpointTemplate(provider, endpoint.chain)
+      return url === '' ? [] : [{ ...endpoint, url }]
+    })
+    cursor.update({ ...row, endpoints })
     cursor.continue()
   }
 }

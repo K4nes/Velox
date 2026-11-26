@@ -58,8 +58,8 @@ export type TransferRunSummary = {
 
 export const TRANSFER_STEP_LABEL: Record<TransferStepStatus, string> = {
   queued: 'Queued',
-  signing: 'Signing',
-  confirming: 'Confirming',
+  signing: 'Sending',
+  confirming: 'Sending',
   sent: 'Sent',
   unknown: 'Unconfirmed',
   failed: 'Failed',

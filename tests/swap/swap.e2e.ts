@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
-import { customRpc, mintWallets, walletFolder } from '../support/data'
+import { testRpc, mintWallets, walletFolder } from '../support/data'
 import { mockRpc, word } from '../support/rpc'
 import { seedVelox } from '../support/seed'
 
@@ -55,7 +55,7 @@ test('a funded wallet gets a quote and an enabled swap', async ({
   await seedVelox(browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
   await app.open('/swap')
 
@@ -139,7 +139,7 @@ test('page state survives a round trip through another page', async ({
   await seedVelox(browser, {
     folders: [folder],
     wallets: [wallet],
-    connections: [customRpc('ethereum', RPC_URL)],
+    connections: [testRpc('ethereum', RPC_URL)],
   })
   await app.open('/swap')
 

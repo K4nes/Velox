@@ -1,6 +1,7 @@
 import { chainBySlug } from '@/config/chains'
-import { getAll, put, remove } from '@/lib/db/db'
+import { getAll, put } from '@/lib/db/db'
 import {
+  endpointTemplate,
   pickKeys,
   pickRpcUrls,
   validateConnection,
@@ -9,7 +10,6 @@ import type {
   Connection,
   DataService,
   Issue,
-  RpcConnection,
 } from '@/lib/chain/connection-model'
 
 // One import site for the page: the model's types and pure helpers ride along
@@ -37,7 +37,16 @@ export class RpcConfigError extends Error {
 
 export async function listConnections(): Promise<Connection[]> {
   const all = await getAll<Connection>('connections')
-  return [...all].sort((a, b) => a.order - b.order)
+  // A backup or an older profile can still hold a retired provider. It is
+  // ignored rather than rendered, and the migration deletes it on upgrade.
+  return [...all]
+    .filter(
+      (entry) =>
+        entry.kind !== 'rpc' ||
+        entry.provider === 'alchemy' ||
+        entry.provider === 'ankr'
+    )
+    .sort((a, b) => a.order - b.order)
 }
 
 export async function saveConnection(next: Connection): Promise<Connection> {
@@ -49,12 +58,6 @@ export async function saveConnection(next: Connection): Promise<Connection> {
 
   await put<Connection>('connections', normalized)
   return normalized
-}
-
-export async function deleteConnection(
-  id: RpcConnection['id']
-): Promise<void> {
-  await remove('connections', id)
 }
 
 export async function resolveKeys(service: DataService): Promise<string[]> {
@@ -85,7 +88,7 @@ export async function resolveRpcUrls(slug: string): Promise<string[]> {
   if (deduped.length === 0) {
     throw new RpcConfigError(
       stored
-        ? `No usable RPC for ${slug}: add a key or fix the endpoint`
+        ? `No usable RPC for ${slug}: add a provider key`
         : `No RPC configured for ${slug}`
     )
   }
@@ -113,9 +116,11 @@ function normalizeConnection(value: Connection): Connection {
     kind: 'rpc',
     id: value.id,
     provider: value.provider,
-    endpoints: value.endpoints.map((endpoint) => ({
-      ...endpoint,
-      url: endpoint.url.trim(),
-    })),
+    // The URL is the provider's template, never a pasted endpoint. An imported
+    // or older row is normalized on save and unsupported chains are dropped.
+    endpoints: value.endpoints.flatMap((endpoint) => {
+      const url = endpointTemplate(value.provider, endpoint.chain)
+      return url === '' ? [] : [{ ...endpoint, url }]
+    }),
   }
 }

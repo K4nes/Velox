@@ -1,8 +1,8 @@
 import { Server } from 'lucide-react'
 import { cn } from 'cn'
 
-// Iconify hosts the real provider marks; the lucide fallback keeps a custom or
-// unknown provider from rendering an empty tile.
+// Iconify hosts the real provider marks; the lucide fallback keeps an unknown
+// provider from rendering an empty tile.
 const imageMarks: Record<string, string> = {
   opensea: 'https://api.iconify.design/simple-icons/opensea.svg?color=%232081E2',
   coinmarketcap:

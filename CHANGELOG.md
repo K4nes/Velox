@@ -59,8 +59,22 @@ come from the Conventional Commit history (`COMMIT.md`).
   NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
   ([#124]).
 
+### Removed
+
+- The custom RPC provider option. Settings now offers only Alchemy and Ankr; the
+  endpoint URL is the provider's own, and an arbitrary URL is no longer a supported
+  connection. Version 7 of the local database deletes retired provider rows and
+  rewrites surviving endpoints to their provider template; a chain left without an
+  endpoint falls back to `src/config/chains.ts`.
+
 ### Fixed
 
+- The Monthly PnL chart accumulates within the month, so a 15 ETH baseline and a
+  12 ETH change draw 15 then 27 instead of two separate daily spikes. Lifetime Best
+  and Worst withhold a ranking until two comparable months exist; a month that mixes
+  wallet sets is not ranked at all.
+- The Transfer Status column uses short states (`Available`, `Sending`, `Sent`,
+  `Unavailable`, `Failed`) and keeps the full reason in the tooltip.
 - A swap batch refuses two saved records that share one address before any quote or
   send, because both passed the per-record balance check and the second swap would
   spend a balance the first already spent. A repriced replacement is now indexed and

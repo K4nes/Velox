@@ -44,7 +44,7 @@ async function openSeedPage(browser: Browser): Promise<void> {
   await browser.goto('/velox-logo.png')
 }
 
-test('v5 → v6: the untouched QuickNode seed is dropped and the edited one becomes custom', async ({
+test('v5 → v7: QuickNode and custom RPC rows are retired', async ({
   app,
   browser,
   screen,
@@ -131,8 +131,8 @@ test('v5 → v6: the untouched QuickNode seed is dropped and the edited one beco
 
   await app.open('/settings')
   await expect(
-    screen.getByRole('button', { name: /QuickNode \(kept\)/ }),
-  ).toBeVisible()
+    screen.getByRole('button', { name: /QuickNode/ }),
+  ).toHaveCount(0)
 
   const rows = await readVeloxRows<ConnectionRow>(browser, 'connections')
   expect(
@@ -142,11 +142,10 @@ test('v5 → v6: the untouched QuickNode seed is dropped and the edited one beco
     { id: 'opensea', provider: null },
     { id: 'rpc:alchemy', provider: 'alchemy' },
     { id: 'rpc:ankr', provider: 'ankr' },
-    { id: 'rpc:quicknode:kept', provider: 'custom' },
   ])
 })
 
-test('v3 → v6: legacy secrets become the OpenSea key and a custom RPC connection', async ({
+test('v3 → v7: legacy secrets become the OpenSea key; legacy RPC URLs are dropped', async ({
   app,
   browser,
   screen,
@@ -182,15 +181,10 @@ test('v3 → v6: legacy secrets become the OpenSea key and a custom RPC connecti
     { id: 'opensea', credentials: [OPEN_SEA_KEY], endpoints: [] },
     { id: 'rpc:alchemy', credentials: [], endpoints: [] },
     { id: 'rpc:ankr', credentials: [], endpoints: [] },
-    {
-      id: 'rpc:custom:legacy',
-      credentials: [],
-      endpoints: [`ethereum ${ETH_RPC}`, `base ${BASE_RPC}`],
-    },
   ])
 })
 
-test('v3 → v6: same-day PnL rows merge per contract and day, keeping the complete read', async ({
+test('v3 → v7: same-day PnL rows merge per contract and day, keeping the complete read', async ({
   app,
   browser,
   screen,

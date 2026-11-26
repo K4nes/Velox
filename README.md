@@ -44,7 +44,7 @@ and in the web lane they stay as routes on the dev server.
   the Linux AppImage targets Ubuntu 22.04+/Debian 12+ and needs FUSE2 at runtime.
 - Node `^20.19` or `>=22.12` (the engine range Vite 8 declares) and npm, for the dev server
   and for building.
-- Network access to OpenSea, Relay, CoinMarketCap and the RPC endpoints you configure.
+- Network access to OpenSea, Relay, CoinMarketCap, Alchemy and Ankr.
 - A browser with IndexedDB, for the web lane. Chromium or Firefox is fine.
 
 ## Installation
@@ -82,8 +82,8 @@ The dev server prints its URL (default `http://localhost:5173`). Two steps befor
 do anything useful:
 
 1. **Settings** — add an OpenSea API key. Most pages read OpenSea with it. Add a
-   CoinMarketCap key and RPC endpoints to run the price and on-chain reads on your own
-   accounts. The installed app carries no key inside it, so CoinMarketCap is the only way
+   CoinMarketCap key and Alchemy or Ankr keys to run the price and on-chain reads on
+   your own accounts. The installed app carries no key inside it, so CoinMarketCap is the only way
    it prices the PnL card.
 2. **Wallet Profiles** — import wallets, then pick the active chain.
 
@@ -106,7 +106,7 @@ app to carry wallets, folders, connections and PnL records across.
 | Transfer | `/transfer` | Moves ERC-721 and ERC-1155 tokens from many wallets to one destination. |
 | Swap | `/swap` | Routes a swap through Relay, including WETH wrap and unwrap. |
 | Wallet Profiles | `/wallet-profiles` | Imports and groups wallets into folders, and picks the active chain. |
-| Settings | `/settings` | Provider connections: OpenSea and CoinMarketCap credentials, RPC endpoints per chain. Exports and imports the wallets, folders, connections and PnL records as one JSON file. |
+| Settings | `/settings` | Provider connections: OpenSea and CoinMarketCap credentials, and Alchemy or Ankr RPC keys per chain. Exports and imports the wallets, folders, connections and PnL records as one JSON file. |
 
 Chains: Ethereum, Base, Robinhood Chain, ApeChain (`src/config/chains.ts`).
 
@@ -118,7 +118,7 @@ Everything a user configures lives in **Settings**, not in the environment:
 | --- | --- | --- |
 | OpenSea API key | Settings → Connections | Required by every page that reads OpenSea. Multiple keys rotate. |
 | CoinMarketCap key | Settings → Connections | Prices the ETH/USDT quote. Required in the installed app, optional in the web lane. |
-| RPC endpoints | Settings → Connections | Alchemy, Ankr or a custom URL, per chain. |
+| RPC keys | Settings → Connections | Alchemy or Ankr, per chain. The endpoint URL is the provider's own; arbitrary RPC URLs are not supported. |
 | `CMC_API_KEY` | `.env.local` | Fallback for the quote on the dev server only. An installed copy never reads it. |
 
 ## Development
