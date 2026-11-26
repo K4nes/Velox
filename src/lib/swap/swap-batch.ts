@@ -5,6 +5,7 @@ import { readTokenBalance } from '@/lib/chain/erc20'
 import { amountFor, parseFixedAmount } from '@/lib/swap/swap-spec'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
 import { clientFor } from '@/lib/chain/tx'
+import { addressKey } from '@/lib/wallet/address'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 export type SwapBatchJob = {
@@ -23,6 +24,11 @@ export type SwapBatch = {
   readonly shortfall: number
   readonly unresolved: number
   readonly balanceUnreadable: number
+  // Two saved records can share one on-chain address (the same key imported into
+  // two folders). Both pass a per-record balance check, then the second swap
+  // spends a balance the first already spent and reverts after gas.
+  readonly duplicateAddresses: readonly string[]
+  readonly duplicateWallets: number
 }
 
 // One balance read per wallet; the client is hoisted because `clientFor`
@@ -90,7 +96,11 @@ export async function resolveSwapBatch(input: {
   let shortfall = 0
   let unresolved = 0
   let balanceUnreadable = 0
+  const perAddress = new Map<string, number>()
   for (const job of jobs) {
+    const key = addressKey(job.address)
+    perAddress.set(key, (perAddress.get(key) ?? 0) + 1)
+
     if (job.balanceUnreadable) balanceUnreadable += 1
     if (job.amount === null) {
       unresolved += 1
@@ -100,5 +110,22 @@ export async function resolveSwapBatch(input: {
     if (job.available !== null && job.amount > job.available) shortfall += 1
   }
 
-  return { spec, jobs, total, shortfall, unresolved, balanceUnreadable }
+  const duplicateAddresses = [...perAddress.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([address]) => address)
+  const duplicateWallets = duplicateAddresses.reduce(
+    (count, address) => count + (perAddress.get(address) ?? 0),
+    0
+  )
+
+  return {
+    spec,
+    jobs,
+    total,
+    shortfall,
+    unresolved,
+    balanceUnreadable,
+    duplicateAddresses,
+    duplicateWallets,
+  }
 }

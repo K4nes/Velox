@@ -158,6 +158,11 @@ export function explainSwapBlockers(input: {
     return 'No saved wallets match the selection'
   }
 
+  if (input.batch.duplicateWallets > 0) {
+    const count = input.batch.duplicateWallets
+    return `${count} saved wallets share an address; select one record per wallet`
+  }
+
   if (input.batch.shortfall > 0) {
     const count = input.batch.shortfall
     return `${count} ${

@@ -19,7 +19,15 @@ export function SwapPage() {
   const { walletIds, spec, amounts } = usePageStore(swapStore)
 
   const batch = useSwapBatch(spec, walletIds, amounts, swapStore)
-  const preview = useSwapPreview(spec, batch.value?.jobs[0] ?? null, swapStore)
+  // Two records of one address would double-spend: keep the rows visible but
+  // never quote the batch, so no extra request leaves before the operator picks
+  // one record per wallet.
+  const duplicates = (batch.value?.duplicateWallets ?? 0) > 0
+  const preview = useSwapPreview(
+    spec,
+    duplicates ? null : (batch.value?.jobs[0] ?? null),
+    swapStore
+  )
   const run = useSwapRun({
     batch: batch.value,
     onSettled: batch.refresh,

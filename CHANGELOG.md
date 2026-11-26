@@ -48,6 +48,9 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Changed
 
+- Swap still quotes through Relay's deprecated `/quote/v2`. `/quote/v3` needs an API key
+  the app does not hold, so the migration waits for that credential rather than a path
+  change.
 - The Linux release AppImage is repacked with 1 MiB zstd blocks at level 22 and
   re-signed after the repack, because the stock 128 KiB blocks measured 116.6 MB
   locally and the release targets under 100 MB. The repacked local artifact
@@ -61,6 +64,13 @@ come from the Conventional Commit history (`COMMIT.md`).
 - The Transfer Status column uses short states (`Available`, `Checking`, `Sending`,
   `Sent`, `Unavailable`, `Unsupported`, `Empty`, `Failed`, `Unconfirmed`) and keeps
   the full reason in the tooltip.
+- A swap batch refuses two saved records that share one address before any quote or
+  send, because both passed the per-record balance check and the second swap would
+  spend a balance the first already spent. A repriced replacement is now indexed and
+  linked by its replacement hash instead of the original hash that never mined, and
+  the Swap rail shows the minimum received, price impact and Relay fee the quote
+  supplies. An approve step must call the sell token's own contract with a positive
+  allowance before it can be signed, and its label names the spender.
 - Listing and instant-sell approvals are checked before a wallet signs: the listing
   response's `setApprovalForAll` calldata is decoded and its operator must be the order's
   Seaport or the conduit resolved on chain from the order's key, an order's named

@@ -1,13 +1,16 @@
 // Type imports only: `npm run test:release` loads this file with node type stripping.
 
 import type { SwapBatch } from '@/lib/swap/swap-batch'
-import type { SwapOperation } from '@/lib/swap/relay'
+import type { SwapFee, SwapOperation } from '@/lib/swap/relay'
 import type { SwapRunProgress } from '@/lib/swap/swap-run'
 import type { SwapAmounts, SwapSpec } from '@/lib/swap/swap-spec'
 
 export type SwapPreview = {
   readonly operation: SwapOperation
   readonly amountOut: bigint
+  readonly minimumOut: bigint
+  readonly priceImpactPercent: number | null
+  readonly relayFee: SwapFee | null
 }
 
 // The resolved value keeps the key it was read for, so a retained batch or quote
