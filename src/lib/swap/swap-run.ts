@@ -5,6 +5,7 @@ import { chainBySlug } from '@/config/chains'
 import type { ChainSlug } from '@/config/chains'
 import type { SwapAssetOption } from '@/config/swap-assets'
 import { mapLimit } from '@/lib/core/async'
+import { shortAddress } from '@/lib/core/format'
 import { toMessage } from '@/lib/core/message'
 import { notifyIndexer, pollSwapIntent, quoteSwap } from '@/lib/swap/relay'
 import type {
@@ -176,6 +177,14 @@ export async function runSwapPlan(input: {
       error: `Chain not supported: ${input.batch.spec.from.chain}`,
     }
   }
+  // The UI refuses this, but a stale batch must not reach the send path: two
+  // records of one address would spend the same balance twice.
+  if (input.batch.duplicateWallets > 0) {
+    return {
+      progress,
+      error: `${input.batch.duplicateWallets} saved wallets share an address; select one record per wallet`,
+    }
+  }
 
   const symbol = input.batch.spec.from.symbol
 
@@ -317,7 +326,7 @@ export async function runSwapPlan(input: {
           ...base(job),
           status: 'failed',
           error: 'Approval reverted',
-          tx: sent.ref,
+          tx: { chain: step.tx.chain, hash: outcome.txHash },
         })
         return
       }
@@ -326,7 +335,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'unconfirmed',
-        tx: sent.ref,
+        tx: { chain: step.tx.chain, hash: outcome.txHash },
         error: 'Approval is unconfirmed. Check the explorer before retrying.',
       })
       return
@@ -397,12 +406,19 @@ export async function runSwapPlan(input: {
       }
     )
 
+    // A repriced replacement carries the same transfer, so its receipt is this
+    // outcome and its hash is the one Relay must index and the row must link.
+    const settledRef: SwapTxRef = {
+      chain: sent.ref.chain,
+      hash: outcome.txHash,
+    }
+
     if (outcome.status === 'reverted') {
       commit({
         ...base(job),
         status: 'failed',
         error: 'Transaction reverted',
-        tx: sent.ref,
+        tx: settledRef,
       })
       return
     }
@@ -410,9 +426,8 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'unconfirmed',
-        tx: sent.ref,
-        error:
-          'This transaction was replaced or dropped. Check the explorer before retrying.',
+        tx: settledRef,
+        error: `Replaced by ${shortAddress(outcome.txHash)}. Check the explorer before retrying.`,
       })
       return
     }
@@ -420,7 +435,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'unconfirmed',
-        tx: sent.ref,
+        tx: settledRef,
         error: 'Still unconfirmed. Check the explorer before retrying.',
       })
       return
@@ -432,10 +447,10 @@ export async function runSwapPlan(input: {
         await notifyIndexer({
           requestId: quote.requestId,
           indexing: step.indexing,
-          chain: sent.ref.chain,
+          chain: settledRef.chain,
           from: job.address,
           tx: step.tx,
-          txHash: sent.ref.hash as `0x${string}`,
+          txHash: outcome.txHash as `0x${string}`,
         })
       } catch (error) {
         // A relay that cannot index the transaction may still settle it, so
@@ -448,7 +463,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'done',
-        tx: sent.ref,
+        tx: settledRef,
         received: quote.amountOut,
       })
       return
@@ -461,7 +476,7 @@ export async function runSwapPlan(input: {
     commit({
       ...base(job),
       status: 'waiting',
-      tx: sent.ref,
+      tx: settledRef,
       detail: indexDetail,
     })
 
@@ -474,7 +489,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'done',
-        tx: sent.ref,
+        tx: settledRef,
         received: quote.amountOut,
       })
       return
@@ -483,7 +498,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'refunded',
-        tx: sent.ref,
+        tx: settledRef,
         reason: status.reason,
       })
       return
@@ -493,7 +508,7 @@ export async function runSwapPlan(input: {
         ...base(job),
         status: 'failed',
         error: `Refund will not be automatic: ${status.reason}`,
-        tx: sent.ref,
+        tx: settledRef,
       })
       return
     }
@@ -502,7 +517,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'waiting',
-        tx: sent.ref,
+        tx: settledRef,
         detail: indexDetail ? `${indexDetail}. ${unsettled}` : unsettled,
       })
     }
@@ -511,7 +526,7 @@ export async function runSwapPlan(input: {
       commit({
         ...base(job),
         status: 'waiting',
-        tx: sent.ref,
+        tx: settledRef,
         detail: indexDetail ? `${indexDetail}. ${unwatched}` : unwatched,
       })
     }
