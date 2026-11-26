@@ -48,6 +48,10 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Changed
 
+- The Linux release AppImage is repacked with 1 MiB zstd blocks at level 22 and
+  re-signed after the repack, because the stock 128 KiB blocks measured 116.6 MB
+  locally and the release targets under 100 MB. The repacked local artifact
+  measured 106.9 MB; the Ubuntu 22.04 release job measures the shipped one.
 - The Mint summary names the scope of every row: quantity per wallet, unit price, total
   NFTs with the wallet count, and estimated cost. Unit size multiplies the NFT total
   ([#124]).

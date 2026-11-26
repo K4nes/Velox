@@ -1,18 +1,37 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { appimagetoolArgs, signArgs } from './appimage-repack.mjs'
 import { buildManifest, releaseNotes, verifyRelease } from './latest-json.mjs'
 import { verifyMinisign } from './minisign.mjs'
 
 const ROOT = join(import.meta.dirname, '..')
 const BUNDLE_DIR = join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'appimage')
+const APP_DIR = join(BUNDLE_DIR, 'Velox.AppDir')
+const APPIMAGETOOL_APPIMAGE = join(
+  ROOT,
+  'src-tauri',
+  'target',
+  '.tauri',
+  'linuxdeploy-plugin-appimage.AppImage',
+)
 const TAURI_CLI = join(ROOT, 'node_modules', '@tauri-apps', 'cli', 'tauri.js')
 const RELEASE_OVERLAY = join(ROOT, 'src-tauri', 'tauri.release.conf.json')
 const BASE_CONFIG = join(ROOT, 'src-tauri', 'tauri.conf.json')
 const LINUX_CONFIG = join(ROOT, 'src-tauri', 'tauri.linux.conf.json')
 const PLATFORM = 'linux-x86_64'
 const MANIFEST = 'latest-linux.json'
+// The bundle names the entry after the GTK app id, so this exact file is what
+// tauri.linux.conf.json copies into the AppDir and what carries the version.
+const DESKTOP_ENTRY = 'com.k4nes.velox.desktop'
 
 function fail(message) {
   console.error(message)
@@ -98,6 +117,82 @@ function build() {
   }
 }
 
+// Tauri writes zstd with 128 KiB blocks, which leaves the stock AppImage at
+// 116.6 MB locally. Repack the same AppDir at 1 MiB blocks and level 22 with
+// the appimagetool Tauri already cached; the desktop entry and its
+// X-AppImage-Version live in the AppDir, so readAppImageVersion still holds.
+// The repack invalidates the bundle's signature, so sign the new bytes after.
+function repack(version) {
+  const artifact = join(BUNDLE_DIR, artifactName(version))
+  if (!existsSync(APPIMAGETOOL_APPIMAGE)) {
+    fail(
+      `no cached ${APPIMAGETOOL_APPIMAGE}; a Tauri Linux build places it ` +
+        `there, so run npm run build:desktop first.`,
+    )
+  }
+  if (!existsSync(APP_DIR)) {
+    fail(`no AppDir at ${APP_DIR}; the bundle did not produce one`)
+  }
+  if (!existsSync(artifact)) {
+    fail(`no ${artifactName(version)} in ${BUNDLE_DIR}; the bundle did not produce it`)
+  }
+
+  const tools = mkdtempSync(join(tmpdir(), 'velox-appimagetool-'))
+  try {
+    const extracted = spawnSync(APPIMAGETOOL_APPIMAGE, ['--appimage-extract'], {
+      cwd: tools,
+      encoding: 'utf8',
+    })
+    if (extracted.error) {
+      fail(`could not run ${APPIMAGETOOL_APPIMAGE}: ${describe(extracted.error)}`)
+    }
+    if (extracted.status !== 0) {
+      fail(
+        `could not extract ${APPIMAGETOOL_APPIMAGE}: ` +
+          (extracted.stderr.trim() || `exit ${extracted.status}`),
+      )
+    }
+
+    const appimagetool = join(
+      tools,
+      'squashfs-root',
+      'appimagetool-prefix',
+      'usr',
+      'bin',
+      'appimagetool',
+    )
+    if (!existsSync(appimagetool)) {
+      fail(`${APPIMAGETOOL_APPIMAGE} does not carry ${appimagetool}`)
+    }
+
+    // appimagetool shells out to mksquashfs and desktop-file-validate by name;
+    // the prefix carries both, so neither this host nor the CI runner needs
+    // squashfs-tools installed.
+    const binDir = dirname(appimagetool)
+    const repacked = spawnSync(appimagetool, appimagetoolArgs({ appDir: APP_DIR, artifact }), {
+      cwd: tools,
+      stdio: 'inherit',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ''}` },
+    })
+    if (repacked.status !== 0) {
+      fail('appimagetool failed to repack the Linux AppImage')
+    }
+  } finally {
+    rmSync(tools, { recursive: true, force: true })
+  }
+
+  const signed = spawnSync(
+    process.execPath,
+    [TAURI_CLI, ...signArgs({ artifact, version })],
+    { cwd: ROOT, stdio: 'inherit' },
+  )
+  if (signed.status !== 0) {
+    fail(`could not re-sign ${artifactName(version)} after the repack`)
+  }
+
+  console.log(`${artifactName(version)} is ${statSync(artifact).size} bytes after the repack`)
+}
+
 function locateArtifact(version) {
   const name = artifactName(version)
   const artifact = join(BUNDLE_DIR, name)
@@ -124,7 +219,7 @@ function readAppImageVersion(artifact) {
   try {
     const result = spawnSync(
       artifact,
-      ['--appimage-extract', 'usr/share/applications/Velox.desktop'],
+      ['--appimage-extract', `usr/share/applications/${DESKTOP_ENTRY}`],
       { cwd: temp, encoding: 'utf8' },
     )
     if (result.error) {
@@ -138,7 +233,7 @@ function readAppImageVersion(artifact) {
     }
 
     const desktop = readFileSync(
-      join(temp, 'squashfs-root', 'usr', 'share', 'applications', 'Velox.desktop'),
+      join(temp, 'squashfs-root', 'usr', 'share', 'applications', DESKTOP_ENTRY),
       'utf8',
     )
     const version = desktop.match(/^X-AppImage-Version=(.+)$/m)?.[1]?.trim()
@@ -176,6 +271,7 @@ function main() {
   const notes = releaseNotes(readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8'), version)
 
   build()
+  repack(version)
   const artifacts = locateArtifact(version)
   const artifactVersion = readAppImageVersion(artifacts.artifact)
   if (artifactVersion !== version) {
