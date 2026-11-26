@@ -14,6 +14,10 @@ const OPERATION_LABEL: Record<SwapPreview['operation'], string> = {
   swap: 'Swap',
 }
 
+function formatPercent(percent: number): string {
+  return `${Number(percent.toFixed(2))}%`
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
@@ -92,6 +96,24 @@ export function SwapRail({
                   : '—'
               }
             />
+            {preview ? (
+              <Row
+                label="Min received"
+                value={`${formatSwapAmount(preview.minimumOut, spec.to.decimals)} ${spec.to.symbol}`}
+              />
+            ) : null}
+            {preview?.priceImpactPercent != null ? (
+              <Row
+                label="Price impact"
+                value={formatPercent(preview.priceImpactPercent)}
+              />
+            ) : null}
+            {preview?.relayFee ? (
+              <Row
+                label="Relay fee"
+                value={`${formatSwapAmount(preview.relayFee.amount, preview.relayFee.decimals)} ${preview.relayFee.symbol}`}
+              />
+            ) : null}
           </dl>
 
           {summary && summary.total > 0 ? (

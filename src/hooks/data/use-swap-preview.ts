@@ -48,6 +48,9 @@ export function useSwapPreview(
               preview: {
                 operation: quote.operation,
                 amountOut: quote.amountOut,
+                minimumOut: quote.minimumOut,
+                priceImpactPercent: quote.priceImpactPercent,
+                relayFee: quote.relayFee,
               },
             },
           })
