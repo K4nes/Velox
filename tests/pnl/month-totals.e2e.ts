@@ -3,7 +3,7 @@ import { expect } from 'e2e'
 import { pnlRecordFixture } from '../support/fixtures/pnl'
 import { seedVelox } from '../support/seed'
 
-test('monthly and lifetime report the same change when the wallet set changes', async ({
+test('monthly reports a mixed-baseline change; lifetime withholds a one-month ranking', async ({
   app,
   browser,
   screen,
@@ -41,8 +41,8 @@ test('monthly and lifetime report the same change when the wallet set changes', 
   await app.open('/pnl/monthly')
 
   // Day 1 measures 15 ETH and day 2 measures 12 starting from its own baseline,
-  // so the month is 27 under the shared delta rule, not the 12 a level-to-level
-  // walk would report on the lifetime page.
+  // so the month is 27 under the shared delta rule. The chart accumulates the
+  // two days, and the lifetime page cannot rank a mixed-baseline month.
   await expect(browser.locator('span:text-is("Month net") + span')).toContainText(
     '27.0000 ETH',
   )
@@ -57,7 +57,10 @@ test('monthly and lifetime report the same change when the wallet set changes', 
   const best = browser.locator(
     'xpath=//span[normalize-space()="Best month"]/../following-sibling::span[1]',
   )
-  await expect(best).toContainText('27.0000 ETH')
+  await expect(best).toContainText('—')
+  await expect(
+    screen.getByText('Mixed baselines').first()
+  ).toBeVisible()
   await expect(
     screen.getByText(
       'Wallet selection changed between checks; those months mix baselines.',

@@ -108,7 +108,7 @@ export function PnlMonthlyPage() {
           <div className="flex h-12 items-center justify-between border-b px-4">
             <div className="flex flex-col">
               <h2 className="text-[13px] font-semibold">Net PnL</h2>
-              <p className="text-xs text-muted-foreground">Daily · ETH</p>
+              <p className="text-xs text-muted-foreground">Cumulative · ETH</p>
             </div>
             <div className="flex flex-col items-end">
               <span className="text-[11px] font-medium text-muted-foreground tracking-[0.6px] uppercase">

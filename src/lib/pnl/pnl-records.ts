@@ -285,26 +285,35 @@ function incomparableMonths(records: PnlRecord[]): Set<string> {
   return months
 }
 
-// Every day of the month is present, so the area keeps a flat zero on days
-// without a check instead of stretching the neighbours across the gap.
+// Every day of the month is present, so the area keeps a flat level on days
+// without a check instead of stretching the neighbours across the gap. The
+// series is cumulative within the month: the last point is `monthNet`, and a
+// 15 ETH baseline followed by a 12 ETH change draws 15 then 27, not two
+// separate spikes.
 export function dailyNetSeries(
   records: PnlRecord[],
   month: Date,
 ): { days: { day: number; net: number }[]; partial: boolean } {
   const length = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
-  const totals = new Array<number>(length).fill(0)
+  const daily = new Array<number>(length).fill(0)
   const prefix = monthPrefix(month)
 
   for (const delta of dailyDeltas(records)) {
     if (!delta.day.startsWith(`${prefix}-`)) continue
     const index = Number(delta.day.slice(8, 10)) - 1
     if (index >= 0 && index < length) {
-      totals[index] += Number(delta.wei) / 10 ** 18
+      daily[index] += Number(delta.wei) / 10 ** 18
     }
   }
 
+  let level = 0
+  const days = daily.map((net, index) => {
+    level += net
+    return { day: index + 1, net: level }
+  })
+
   return {
-    days: totals.map((net, index) => ({ day: index + 1, net })),
+    days,
     partial: records.some(
       (record) => record.day.startsWith(`${prefix}-`) && !isComplete(record),
     ),
@@ -414,6 +423,9 @@ export type LifetimeTotals = {
 
 export type LifetimeRanges = {
   tracked: number
+  // Months whose baseline is comparable. A month that mixes wallet sets is
+  // tracked but cannot be ranked against another month.
+  comparable: number
   profitable: number
   streak: number
   average: bigint | null
@@ -641,6 +653,7 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       : null
 
   const tracked = months.filter((month) => month.tracked)
+  const comparable = tracked.filter((month) => !month.incomparable)
   let profitable = 0
   let streak = 0
   let run = 0
@@ -659,6 +672,9 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     } else {
       run = 0
     }
+    // A month that mixes wallet sets has no shared baseline, so calling it the
+    // best or worst month would compare two different positions.
+    if (month.incomparable) continue
     if (best === null || month.change > best.change) {
       best = { month: month.month, change: month.change }
     }
@@ -692,6 +708,7 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     },
     ranges: {
       tracked: tracked.length,
+      comparable: comparable.length,
       profitable,
       streak,
       average:
