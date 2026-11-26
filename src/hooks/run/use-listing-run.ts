@@ -14,6 +14,7 @@ import {
   explainPlanBlockers,
   groupListingItems,
   parsePrice,
+  resolveListingConduits,
 } from '@/lib/listings/listing-plan'
 import type { ListingToken, PlanFeeTotals } from '@/lib/listings/listing-plan'
 import {
@@ -139,6 +140,17 @@ export function useListingRun(input: {
         })
       )
 
+      // A conduit approval can only be judged against the conduit the order's
+      // key resolves to, so that read happens before the plan is built. No
+      // approval means no read.
+      const flat = envelopes.flatMap((batch) => batch.envelopes)
+      const conduits = flat.some((envelope) => envelope.kind === 'approval')
+        ? await resolveListingConduits({
+            chainSlug: collection.chain,
+            envelopes: flat,
+          })
+        : []
+
       const plan = buildListingPlan({
         collection: {
           slug: collection.slug,
@@ -152,6 +164,7 @@ export function useListingRun(input: {
         endTimeSec,
         decimals,
         currency: collection.listingCurrency.address,
+        conduits,
         envelopes,
       })
 

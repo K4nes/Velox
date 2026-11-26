@@ -1,5 +1,6 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { getAll, put, remove } from '@/lib/db/db'
+import { addressKey } from '@/lib/wallet/address'
 
 export type StoredWallet = {
   id: string
@@ -74,21 +75,25 @@ export async function importWallets(
   folderId: string,
   rows: { label: string; privateKey: string }[],
 ): Promise<{ imported: number; skipped: number }> {
+  // A row written before the address was normalised may carry a checksummed
+  // address, while deriveAddress answers lowercase. Compare both by key so
+  // that key is skipped instead of imported a second time.
   const known = new Set(
     (await listWallets())
       .filter((wallet) => wallet.folderId === folderId)
-      .map((wallet) => wallet.address)
+      .map((wallet) => addressKey(wallet.address))
   )
   let imported = 0
   let skipped = 0
 
   for (const row of rows) {
     const address = deriveAddress(row.privateKey)
-    if (known.has(address)) {
+    const key = addressKey(address)
+    if (known.has(key)) {
       skipped += 1
       continue
     }
-    known.add(address)
+    known.add(key)
 
     const wallet: StoredWallet = {
       id: uid(),

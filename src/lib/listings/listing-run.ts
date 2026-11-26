@@ -1,4 +1,5 @@
 import { privateKeyToAccount } from 'viem/accounts'
+import { encodeFunctionData } from 'viem'
 import { chainBySlug } from '@/config/chains'
 import { mapLimit } from '@/lib/core/async'
 import { toMessage } from '@/lib/core/message'
@@ -7,6 +8,7 @@ import { stepById, withStep } from '@/lib/core/run-progress'
 import type { RunOutcome, RunProgress } from '@/lib/core/run-engine'
 import { sendTransaction, waitForReceipt } from '@/lib/chain/tx'
 import { WALLET_CONCURRENCY } from '@/lib/core/concurrency'
+import { TOKEN_APPROVAL_ABI } from '@/lib/offers/approval'
 import { addressKey, sameAddress } from '@/lib/wallet/address'
 import { toPrivateKeyHex } from '@/lib/wallet/wallets'
 import type { StoredWallet } from '@/lib/wallet/wallets'
@@ -184,7 +186,11 @@ export async function runListingPlan(input: {
           wallet: record,
           chainSlug: input.plan.collection.chain,
           to: approval.to,
-          data: approval.data,
+          data: encodeFunctionData({
+            abi: TOKEN_APPROVAL_ABI,
+            functionName: 'setApprovalForAll',
+            args: [approval.operator, true],
+          }),
           value: BigInt(approval.value),
           shouldAbort: input.shouldAbort,
         })

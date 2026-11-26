@@ -12,6 +12,9 @@ export type InstantSellState = BulkSellFields &
     // The operator's pick lives beside the book, so a refetch keeps the ladder
     // they were looking at instead of falling back to the first one.
     offersCurrency: string | null
+    // Units already sold, per token. A partial fill leaves the rest sellable,
+    // and the next plan has to know the balance it can actually cover.
+    soldUnits: Record<string, number>
   }
 
 export function createInstantSellState(): InstantSellState {
@@ -20,6 +23,7 @@ export function createInstantSellState(): InstantSellState {
     selectedKeys: [],
     offers: { status: 'idle' },
     offersCurrency: null,
+    soldUnits: {},
     running: false,
     error: null,
     progress: null,
