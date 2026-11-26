@@ -8,14 +8,18 @@ import { countFailed, failureLine } from '@/lib/core/run-engine'
 import type { SellTarget } from '@/lib/offers/instant-sell'
 import {
   runSellTargets,
-  soldKeys,
+  soldUnits,
   summarizeSell,
 } from '@/lib/offers/sell-run'
-import type { SellRunProgress, SellRunSummary } from '@/lib/offers/sell-run'
+import type {
+  SellRunProgress,
+  SellRunSummary,
+  SoldUnits,
+} from '@/lib/offers/sell-run'
 import { listWallets } from '@/lib/wallet/wallets'
 
 export function useInstantSellRun(input: {
-  onSold?: (keys: readonly string[]) => void
+  onSold?: (sold: readonly SoldUnits[]) => void
   onSettled?: () => void
   store: PageStore<RunState<SellRunProgress>>
 }): {
@@ -31,8 +35,8 @@ export function useInstantSellRun(input: {
     store: input.store,
     onSettled: input.onSettled,
     onFinish: (progress) => {
-      const keys = soldKeys(progress)
-      if (keys.length > 0) input.onSold?.(keys)
+      const sold = soldUnits(progress)
+      if (sold.length > 0) input.onSold?.(sold)
 
       const failed = countFailed(progress.steps)
       if (failed > 0) {

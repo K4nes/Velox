@@ -80,6 +80,13 @@ const SEAPORT_VERSIONS: Record<string, string> = {
   '0x00000000000000adc04c56bf30ac9d3c0aaf14dc': '1.5',
 }
 
+// The contracts this app signs cancels against and approves as an operator. A
+// protocol address outside this list is whatever the response named, not a
+// Seaport the app can trust.
+export function seaportVersion(protocolAddress: string): string | null {
+  return SEAPORT_VERSIONS[protocolAddress.toLowerCase()] ?? null
+}
+
 export type OrderFees = {
   grossWei: bigint
   feeWei: bigint
@@ -353,8 +360,8 @@ export function cancelTypedData(input: {
   protocolAddress: string
   orderHash: string
 }): CancelTypedData {
-  const version = SEAPORT_VERSIONS[input.protocolAddress.toLowerCase()]
-  if (version === undefined) {
+  const version = seaportVersion(input.protocolAddress)
+  if (version === null) {
     throw new SeaportError(
       'unknown-protocol',
       `Unsupported Seaport contract ${input.protocolAddress}`

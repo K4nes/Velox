@@ -32,6 +32,8 @@ export type SellStepState = {
   address: string
   label: string
   tokenId: string
+  // Units this step fills, and the net proceeds for those units.
+  units: number
   netWei: bigint
   symbol: string
   decimals: number
@@ -91,7 +93,8 @@ export async function runSellTargets(input: {
       address: target.address,
       label: target.label,
       tokenId: target.tokenId,
-      netWei: target.offer.netWei,
+      units: target.units,
+      netWei: target.offer.netWei * BigInt(target.units),
       symbol: target.offer.currency.symbol,
       decimals: target.offer.currency.decimals,
       status: 'queued' as const,
@@ -116,6 +119,16 @@ export async function runSellTargets(input: {
       return {
         progress,
         error: `Offer chain ${target.offer.chain} does not match ${target.chain}`,
+      }
+    }
+    if (
+      !Number.isInteger(target.units) ||
+      target.units < 1 ||
+      target.units > target.quantity
+    ) {
+      return {
+        progress,
+        error: `Cannot fill ${target.units} of ${target.quantity} units of token #${target.tokenId}`,
       }
     }
   }
@@ -190,6 +203,7 @@ export async function runSellTargets(input: {
           fulfiller: target.address,
           contract: target.contract,
           tokenId: target.tokenId,
+          unitsToFill: target.units,
         })
 
         if (input.shouldAbort?.()) return
@@ -280,9 +294,13 @@ export function sellStepsByToken(
   return states
 }
 
-export function soldKeys(progress: SellRunProgress): string[] {
+export type SoldUnits = { key: string; units: number }
+
+// A step reports the units its own fill covered. The page accumulates them, so
+// a five-unit token sold two at a time is never marked sold after the first.
+export function soldUnits(progress: SellRunProgress): SoldUnits[] {
   return progress.steps.flatMap((step) =>
-    step.status === 'sold' ? [step.tokenKey] : []
+    step.status === 'sold' ? [{ key: step.tokenKey, units: step.units }] : []
   )
 }
 
