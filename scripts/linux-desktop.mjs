@@ -1,6 +1,9 @@
 // Writes the Linux desktop entry and AppStream metadata for the AppImage.
 // `tauri.linux.conf.json` runs this before bundling and copies both files into
 // the AppDir, so the version in `package.json` is the one the AppImage advertises.
+// The entry file name must equal the GTK app id (`identifier` in
+// `tauri.conf.json`): KWin resolves the Wayland window icon by looking up
+// `<app id>.desktop` in /usr/share/applications.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -37,7 +40,7 @@ const metainfo = `<?xml version="1.0" encoding="UTF-8"?>
   <description>
     <p>Velox is an operator console for NFT work across stored EVM wallets: mint, PnL, portfolio, bulk sell, instant sell, transfer and swap.</p>
   </description>
-  <launchable type="desktop-id">Velox.desktop</launchable>
+  <launchable type="desktop-id">com.k4nes.velox.desktop</launchable>
   <provides>
     <binary>Velox</binary>
   </provides>
@@ -57,6 +60,6 @@ const metainfo = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 mkdirSync(OUT, { recursive: true })
-writeFileSync(join(OUT, 'Velox.desktop'), desktop)
+writeFileSync(join(OUT, 'com.k4nes.velox.desktop'), desktop)
 writeFileSync(join(OUT, 'com.k4nes.velox.metainfo.xml'), metainfo)
 console.log(`wrote Linux desktop metadata for Velox ${version}`)
