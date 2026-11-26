@@ -282,7 +282,65 @@ function incomparableMonths(records: PnlRecord[]): Set<string> {
   for (const [key, keys] of series) {
     if (keys.size > 1) months.add(key.slice(key.indexOf('\n') + 1))
   }
+
+  // A wallet-set change across months starts a new series at baseline zero,
+  // because the earlier total cannot be split by wallet. The later month's
+  // figure is a position, not a change, so it is marked instead of being
+  // ranked or added to the cumulative level.
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of records) {
+    if (!isComplete(record)) continue
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) byContract.set(key, [record])
+    else group.push(record)
+  }
+  for (const group of byContract.values()) {
+    group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+    let previous: PnlRecord | null = null
+    for (const record of group) {
+      if (
+        previous !== null &&
+        record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
+        seriesKey(record) !== seriesKey(previous)
+      ) {
+        months.add(record.day.slice(0, 7))
+      }
+      previous = record
+    }
+  }
+
   return months
+}
+
+// A wallet-set change between two months starts a new series at baseline zero,
+// because the earlier total cannot be split by wallet. The later month is not a
+// change from the earlier one, and summing them would overstate the chart.
+function seriesChangedAcrossMonths(records: PnlRecord[]): boolean {
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of records) {
+    if (!isComplete(record)) continue
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) byContract.set(key, [record])
+    else group.push(record)
+  }
+
+  for (const group of byContract.values()) {
+    group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+    let previous: PnlRecord | null = null
+    for (const record of group) {
+      if (
+        previous !== null &&
+        record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
+        seriesKey(record) !== seriesKey(previous)
+      ) {
+        return true
+      }
+      previous = record
+    }
+  }
+  return false
 }
 
 // Every day of the month is present, so the area keeps a flat level on days
@@ -438,6 +496,9 @@ export type LifetimeView = {
   ranges: LifetimeRanges
   collections: LifetimeCollection[]
   months: LifetimeMonth[]
+  // A wallet-set change between months makes the cumulative chart a sum of
+  // positions measured from different baselines, so the page hides it.
+  seriesChanged: boolean
 }
 
 type Measured = {
@@ -652,8 +713,11 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
         )
       : null
 
-  const tracked = months.filter((month) => month.tracked)
-  const comparable = tracked.filter((month) => !month.incomparable)
+  const trackedCount = months.filter((month) => month.tracked).length
+  const comparable = months.filter(
+    (month) => month.tracked && !month.incomparable
+  )
+  const seriesChanged = seriesChangedAcrossMonths(records)
   let profitable = 0
   let streak = 0
   let run = 0
@@ -661,7 +725,7 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
   let worst: LifetimeRanges['worst'] = null
 
   for (const month of months) {
-    if (!month.tracked) {
+    if (!month.tracked || month.incomparable) {
       run = 0
       continue
     }
@@ -672,9 +736,6 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     } else {
       run = 0
     }
-    // A month that mixes wallet sets has no shared baseline, so calling it the
-    // best or worst month would compare two different positions.
-    if (month.incomparable) continue
     if (best === null || month.change > best.change) {
       best = { month: month.month, change: month.change }
     }
@@ -707,18 +768,19 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       from: complete[0]?.day ?? null,
     },
     ranges: {
-      tracked: tracked.length,
+      tracked: trackedCount,
       comparable: comparable.length,
       profitable,
       streak,
       average:
-        net !== null && tracked.length > 0
-          ? net / BigInt(tracked.length)
+        net !== null && comparable.length > 0
+          ? net / BigInt(comparable.length)
           : null,
       best,
       worst,
     },
     collections,
     months,
+    seriesChanged,
   }
 }
