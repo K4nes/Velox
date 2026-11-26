@@ -85,6 +85,8 @@ export function TransferPage() {
           selectedKeys={scan.selectedKeys}
           tokenStates={run.tokenStates}
           running={run.running}
+          chainError={scan.chainError}
+          truncated={scan.truncated}
           onToggleToken={scan.toggleToken}
           onToggleAll={scan.toggleAll}
         />
@@ -104,6 +106,7 @@ export function TransferPage() {
           blockedReason={run.blockedReason}
           running={run.running}
           onTransfer={() => void run.start()}
+          onAmountChange={scan.setAmount}
           onRemoveToken={scan.removeToken}
           onRemoveGroup={scan.removeGroup}
         />

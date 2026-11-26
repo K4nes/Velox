@@ -61,6 +61,9 @@ come from the Conventional Commit history (`COMMIT.md`).
 
 ### Fixed
 
+- The Transfer Status column uses short states (`Available`, `Checking`, `Sending`,
+  `Sent`, `Unavailable`, `Unsupported`, `Empty`, `Failed`, `Unconfirmed`) and keeps
+  the full reason in the tooltip.
 - A swap batch refuses two saved records that share one address before any quote or
   send, because both passed the per-record balance check and the second swap would
   spend a balance the first already spent. A repriced replacement is now indexed and

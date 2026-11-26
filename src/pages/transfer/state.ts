@@ -12,6 +12,7 @@ export function createTransferState(): TransferState {
     selectedKeys: [],
     probeState: { key: '', probes: new Map() },
     spent: new Map(),
+    amounts: new Map(),
     destinationText: '',
     resolved: null,
     history: new Map(),

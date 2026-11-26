@@ -147,13 +147,31 @@ export function destinationLabel(
   wallets: readonly { address: string; label: string }[]
 ): string {
   const address = destination.address.toLowerCase()
+  const short = `${destination.address.slice(0, 6)}…${destination.address.slice(-4)}`
+
+  // A name is only a convenience: the resolved address is what the wallet
+  // signs to, so it stays visible beside the name for the operator to compare.
+  if (destination.ensName) return `${destination.ensName} (${short})`
+
   const wallet = wallets.find(
     (entry) => entry.address.toLowerCase() === address
   )
   if (wallet) return wallet.label
-  if (destination.ensName) return destination.ensName
 
-  return `${destination.address.slice(0, 6)}…${destination.address.slice(-4)}`
+  return short
+}
+
+// Whole units, bounded by the balance that is actually left. ERC-721 has no
+// amount: one token id is one transfer, whatever a caller passes.
+export function clampTransferAmount(
+  requested: number,
+  available: number,
+  standard: TokenStandard
+): number {
+  if (standard === 'erc721') return 1
+  const max = Math.max(1, Math.trunc(available))
+  if (!Number.isFinite(requested)) return 1
+  return Math.min(Math.max(1, Math.trunc(requested)), max)
 }
 
 export function selectedTransfers(input: {
@@ -161,6 +179,7 @@ export function selectedTransfers(input: {
   standards: ReadonlyMap<string, StandardProbe>
   spent: ReadonlyMap<string, number>
   selectedKeys: readonly string[]
+  amounts?: ReadonlyMap<string, number>
 }): TransferSelection[] {
   const selections: TransferSelection[] = []
 
@@ -182,7 +201,11 @@ export function selectedTransfers(input: {
       standard: probe.standard,
       decimals: token.decimals,
       from: { address: token.owner.address, label: token.owner.label },
-      amount: 1,
+      amount: clampTransferAmount(
+        input.amounts?.get(token.key) ?? 1,
+        available,
+        probe.standard
+      ),
       available,
     })
   }
@@ -276,14 +299,19 @@ export function buildTransferPlan(input: {
       )
     }
 
-    if (!Number.isInteger(selection.amount) || selection.amount < 1) {
+    // An ERC-721 id has no quantity even when a caller carries one; the plan
+    // fixes it at one so the step and its calldata agree.
+    const amount =
+      selection.standard === 'erc721' ? 1 : selection.amount
+
+    if (!Number.isInteger(amount) || amount < 1) {
       throw new TransferPlanError(
         'amount-not-positive',
         `Token #${selection.tokenId} needs an amount of at least 1`
       )
     }
 
-    if (selection.amount > selection.available) {
+    if (amount > selection.available) {
       throw new TransferPlanError(
         'amount-exceeds-available',
         `Token #${selection.tokenId} has only ${selection.available} units available`
@@ -311,7 +339,7 @@ export function buildTransferPlan(input: {
       contract: selection.contract,
       tokenId: selection.tokenId,
       standard: selection.standard,
-      amount: selection.amount,
+      amount,
       from: selection.from.address,
       to: input.destination.address,
       data: transferCalldata({
@@ -319,7 +347,7 @@ export function buildTransferPlan(input: {
         from: selection.from.address,
         to: input.destination.address,
         tokenId: selection.tokenId,
-        amount: selection.amount,
+        amount,
         decimals: selection.decimals,
       }),
     })
