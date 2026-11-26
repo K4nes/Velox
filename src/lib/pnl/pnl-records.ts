@@ -206,6 +206,21 @@ function coversWallets(earlier: PnlRecord, later: PnlRecord): boolean {
   return walletsOf(earlier).every((wallet) => laterWallets.includes(wallet))
 }
 
+// `baselineWei` can reuse any earlier check whose wallet set this record fully
+// covers. If none exists, the record starts a new series at zero and its whole
+// net is a position, not a change from the earlier check.
+function hasEarlierCoverage(
+  record: PnlRecord,
+  snapshots: readonly PnlRecord[]
+): boolean {
+  return snapshots.some(
+    (snapshot) =>
+      snapshot.contract.toLowerCase() === record.contract.toLowerCase() &&
+      isEarlier(snapshot, record) &&
+      coversWallets(snapshot, record)
+  )
+}
+
 function isEarlier(candidate: PnlRecord, record: PnlRecord): boolean {
   if (candidate.day !== record.day) return candidate.day < record.day
   return candidate.createdAt < record.createdAt
@@ -271,63 +286,40 @@ export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   return deltas
 }
 
-// A month that holds two wallet-set series for the same collection adds two
-// baselines into one figure: each series was measured from a different starting
-// position. The total stays visible, but the pages say why it is not a like-for-
-// like month instead of pretending the selection did not change.
+// A record whose wallet set has no earlier covered baseline starts a new series
+// at zero: its whole net is a position, not a change. The total stays visible,
+// but the pages say why it is not like-for-like instead of ranking it.
 function incomparableMonths(records: PnlRecord[]): Set<string> {
-  const series = new Map<string, Set<string>>()
-  for (const record of records) {
-    if (!isComplete(record)) continue
-    const month = record.day.slice(0, 7)
-    const key = `${record.contract.toLowerCase()}\n${month}`
-    const keys = series.get(key)
-    if (keys === undefined) series.set(key, new Set([seriesKey(record)]))
-    else keys.add(seriesKey(record))
+  const complete = records.filter(isComplete)
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of complete) {
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) byContract.set(key, [record])
+    else group.push(record)
   }
 
   const months = new Set<string>()
-  for (const [key, keys] of series) {
-    if (keys.size > 1) months.add(key.slice(key.indexOf('\n') + 1))
-  }
-
-  // A wallet-set change across months starts a new series at baseline zero,
-  // because the earlier total cannot be split by wallet. The later month's
-  // figure is a position, not a change, so it is marked instead of being
-  // ranked or added to the cumulative level.
-  const byContract = new Map<string, PnlRecord[]>()
-  for (const record of records) {
-    if (!isComplete(record)) continue
-    const key = record.contract.toLowerCase()
-    const group = byContract.get(key)
-    if (group === undefined) byContract.set(key, [record])
-    else group.push(record)
-  }
   for (const group of byContract.values()) {
     group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
-    let previous: PnlRecord | null = null
-    for (const record of group) {
-      if (
-        previous !== null &&
-        record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
-        !coversWallets(previous, record)
-      ) {
+    for (let index = 1; index < group.length; index += 1) {
+      const record = group[index]
+      if (!hasEarlierCoverage(record, complete)) {
         months.add(record.day.slice(0, 7))
       }
-      previous = record
     }
   }
-
   return months
 }
 
-// A wallet-set change between two months starts a new series at baseline zero,
-// because the earlier total cannot be split by wallet. The later month is not a
-// change from the earlier one, and summing them would overstate the chart.
+// A month that starts a series with no covered baseline cannot be plotted on the
+// same cumulative line as the earlier position. Adding a wallet is different:
+// the earlier set is still a covered baseline, so only narrowing, disjoint or
+// returning sets trigger this.
 function seriesChangedAcrossMonths(records: PnlRecord[]): boolean {
+  const complete = records.filter(isComplete)
   const byContract = new Map<string, PnlRecord[]>()
-  for (const record of records) {
-    if (!isComplete(record)) continue
+  for (const record of complete) {
     const key = record.contract.toLowerCase()
     const group = byContract.get(key)
     if (group === undefined) byContract.set(key, [record])
@@ -336,16 +328,17 @@ function seriesChangedAcrossMonths(records: PnlRecord[]): boolean {
 
   for (const group of byContract.values()) {
     group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
-    let previous: PnlRecord | null = null
-    for (const record of group) {
+    for (let index = 1; index < group.length; index += 1) {
+      const record = group[index]
+      const earlierInAnotherMonth = group
+        .slice(0, index)
+        .some((earlier) => earlier.day.slice(0, 7) !== record.day.slice(0, 7))
       if (
-        previous !== null &&
-        record.day.slice(0, 7) !== previous.day.slice(0, 7) &&
-        !coversWallets(previous, record)
+        earlierInAnotherMonth &&
+        !hasEarlierCoverage(record, complete)
       ) {
         return true
       }
-      previous = record
     }
   }
   return false
