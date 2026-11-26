@@ -47,3 +47,19 @@ test('every recorded collection listing parses into a cancellable listing', () =
     expect(parsed.expiresAtSec).toBeGreaterThan(nowSec)
   }
 })
+
+test('a listing whose status is not ACTIVE is not cancellable', () => {
+  const raw = listingsOf(recording.body)[0] as Record<string, unknown>
+  const nowSec = Math.floor(Date.parse(recording.recordedAt) / 1000)
+
+  // The collection endpoint publishes a status, and the cancel rail must not
+  // offer an order the API already retired. An absent status keeps parsing,
+  // because the older response shape carried only the boolean flags.
+  for (const status of ['CANCELLED', 'FULFILLED', 'INACTIVE']) {
+    const listing = toActiveListing(
+      { ...raw, status } as Parameters<typeof toActiveListing>[0],
+      nowSec
+    )
+    expect(listing).toBeNull()
+  }
+})

@@ -64,6 +64,16 @@ come from the Conventional Commit history (`COMMIT.md`).
   wallet sets is not ranked at all, a narrowing or disjoint change across months hides
   the cumulative chart instead of summing two positions while widening the selection
   keeps it, and the header names its figure the latest net.
+- Listing and instant-sell approvals are checked before a wallet signs: the listing
+  response's `setApprovalForAll` calldata is decoded and its operator must be the order's
+  Seaport or the conduit resolved on chain from the order's key, an order's named
+  protocol must be a known Seaport whose EIP-712 domain matches it, an approval must
+  target a selected token's contract, and an offer whose protocol is not a known
+  Seaport never reaches an approval. Cancel listings drops rows
+  read for another collection and refuses to submit until the current read is ready, a
+  listing the API reports as non-`ACTIVE` is not cancellable, instant sell fills the held
+  units against the bid's depth and leaves a partial fill sellable, and the price route
+  redacts the CoinMarketCap key from provider error copy.
 - External links open in the operator's default browser from the installed app. The
   webview denies the new window a `target="_blank"` anchor asks for, so the Tx Hash link,
   the OpenSea link beside a Bulk Sell order hash and the Portfolio token links now hand

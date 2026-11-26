@@ -1,10 +1,11 @@
-import { formatUnits } from 'viem'
+import { decodeFunctionData, formatUnits } from 'viem'
 import type { CollectionSource } from '@/lib/collection-source'
 import type { MintAllowance } from '@/lib/mint/allowance'
 import { resolveKeys } from '@/lib/chain/connections'
 import { OPENSEA_BASE_URL, OPENSEA_TIMEOUT_MS, httpExchange, readErrorBody } from '@/lib/chain/http'
 import { traceMint } from '@/lib/mint/mint-trace'
 import { OpenSeaError } from '@/lib/opensea/error'
+import { TOKEN_APPROVAL_ABI } from '@/lib/offers/approval'
 import { offerEconomics } from '@/lib/offers/instant-sell'
 import type { CollectionOffer } from '@/lib/offers/instant-sell'
 import {
@@ -288,8 +289,6 @@ type RawCollection = {
 }
 
 const NATIVE_CURRENCY = '0x0000000000000000000000000000000000000000'
-
-const SET_APPROVAL_FOR_ALL = '0xa22cb465'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null
@@ -654,6 +653,9 @@ export type ListingActionEnvelope =
       to: `0x${string}`
       data: `0x${string}`
       value: string
+      // The address the decoded calldata grants transfer rights to. The plan
+      // re-checks it against the order's protocol before anything is signed.
+      operator: `0x${string}`
       token: { contract: string; tokenId: string }
     }
   | {
@@ -717,6 +719,34 @@ function requiredChainId(value: unknown): number {
   return chainId
 }
 
+const ZERO_ADDRESS = ('0x' + '00'.repeat(20)) as `0x${string}`
+
+// The response names the target and the calldata; the wallet signs whatever the
+// calldata says. Decoding it is what keeps a tampered response from granting
+// transfer rights to an address no Seaport ever asked for.
+function decodeApprovalData(
+  data: `0x${string}`
+): { operator: `0x${string}`; approved: boolean } | null {
+  try {
+    const decoded = decodeFunctionData({ abi: TOKEN_APPROVAL_ABI, data })
+    if (decoded.functionName !== 'setApprovalForAll') return null
+
+    const [operator, approved] = decoded.args
+    if (
+      typeof operator !== 'string' ||
+      !/^0x[0-9a-fA-F]{40}$/.test(operator) ||
+      operator.toLowerCase() === ZERO_ADDRESS ||
+      typeof approved !== 'boolean'
+    ) {
+      return null
+    }
+
+    return { operator: operator as `0x${string}`, approved }
+  } catch {
+    return null
+  }
+}
+
 function toListingEnvelope(step: unknown): ListingActionEnvelope {
   const record = asRecord(step)
 
@@ -728,13 +758,15 @@ function toListingEnvelope(step: unknown): ListingActionEnvelope {
     const data = requiredData(transaction?.data, 'the approval data')
     const value = requiredString(transaction?.value, 'the approval value')
     const contract = requiredString(asset?.contractAddress, 'the approval contract')
+    const decoded = decodeApprovalData(data)
 
     // The wallet signs this with its own key, so the shape is checked against
     // the one approval a listing needs: setApprovalForAll on the collection the
-    // token belongs to, free of charge.
+    // token belongs to, granting (never revoking) rights, free of charge.
     if (
       to.toLowerCase() !== contract.toLowerCase() ||
-      !data.startsWith(SET_APPROVAL_FOR_ALL) ||
+      decoded === null ||
+      decoded.approved !== true ||
       value !== '0'
     ) {
       throw unexpected('/listings/actions')
@@ -747,6 +779,7 @@ function toListingEnvelope(step: unknown): ListingActionEnvelope {
       to,
       data,
       value,
+      operator: decoded.operator,
       token: {
         contract,
         tokenId: requiredString(asset?.tokenId, 'the approval token id'),
@@ -903,6 +936,7 @@ type RawOrder = {
   maker?: unknown
   current_price?: unknown
   expiration_time?: unknown
+  status?: unknown
   cancelled?: unknown
   finalized?: unknown
   marked_invalid?: unknown
@@ -929,6 +963,15 @@ export function toActiveListing(
 
   if (orderHash === null || typeof protocolAddress !== 'string') return null
   if (typeof chain !== 'string' || chain === '') return null
+  // The collection endpoint publishes a status; the legacy boolean flags stay
+  // as the fallback for a response that predates it.
+  if (
+    raw.status !== undefined &&
+    raw.status !== null &&
+    raw.status !== 'ACTIVE'
+  ) {
+    return null
+  }
   if (raw.cancelled === true || raw.finalized === true) return null
   if (raw.marked_invalid === true) return null
 
@@ -1293,7 +1336,20 @@ export async function requestOfferFulfillment(input: {
   fulfiller: string
   contract: string
   tokenId: string
+  // The units this fill covers. The endpoint's schema types it as an integer,
+  // and a string there is not the same request.
+  unitsToFill: number
 }): Promise<OfferFulfillmentTransaction> {
+  if (
+    !Number.isInteger(input.unitsToFill) ||
+    input.unitsToFill < 1 ||
+    input.unitsToFill > input.offer.remaining
+  ) {
+    throw new Error(
+      `Cannot fill ${input.unitsToFill} of ${input.offer.remaining} offered units`
+    )
+  }
+
   const body = (await request('/offers/fulfillment_data', {
     method: 'POST',
     body: JSON.stringify({
@@ -1307,7 +1363,7 @@ export async function requestOfferFulfillment(input: {
         asset_contract_address: input.contract,
         token_id: input.tokenId,
       },
-      units_to_fill: '1',
+      units_to_fill: input.unitsToFill,
       include_optional_creator_fees: false,
     }),
   })) as { fulfillment_data?: unknown } | null

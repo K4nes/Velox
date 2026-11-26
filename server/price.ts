@@ -72,7 +72,7 @@ export async function handlePrice(req: Request, envKey: string): Promise<Respons
 
   const quote = outcome.kind === 'ok' ? quoteFrom(outcome.body) : null
   if (quote === null) {
-    return json({ error: failureMessage(outcome.body) }, 502)
+    return json({ error: failureMessage(outcome.body, key) }, 502)
   }
 
   remember(key, quote)
@@ -123,11 +123,15 @@ function quoteFrom(body: unknown): Quote | null {
   return { price, updatedAt }
 }
 
-function failureMessage(body: unknown): string {
+// The provider's wording reaches a toast, and it can quote the key back inside
+// it, so every occurrence is scrubbed on the way out. A body that carries no
+// message gets fixed copy, which is what the Rust lane does.
+export function failureMessage(body: unknown, key: string): string {
   const message = read(read(body, 'status'), 'error_message')
-  return typeof message === 'string' && message !== ''
-    ? message
-    : 'CoinMarketCap request failed'
+  if (typeof message !== 'string' || message === '') {
+    return 'CoinMarketCap request failed'
+  }
+  return key === '' ? message : message.split(key).join('[redacted]')
 }
 
 function read(source: unknown, key: string): unknown {

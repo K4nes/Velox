@@ -40,6 +40,10 @@ export type InventoryRow = {
   assigned: CollectionOffer | null
   blocked: InventoryBlock | null
   selected: boolean
+  // Units already sold, and units still held. A row with a partial fill keeps
+  // its remaining units selectable.
+  soldUnits: number
+  remainingUnits: number
   status: SellStepState | undefined
 }
 
@@ -111,12 +115,24 @@ function BidCell({
 function StatusCell({
   step,
   chain,
+  soldUnits,
+  heldUnits,
 }: {
   step: SellStepState | undefined
   chain: string
+  soldUnits: number
+  heldUnits: number
 }) {
+  const partial = soldUnits > 0 && soldUnits < heldUnits
+
   if (!step) {
-    return <span className="text-muted-foreground text-xs">—</span>
+    return partial ? (
+      <span className="text-muted-foreground text-xs">
+        {soldUnits} of {heldUnits} sold
+      </span>
+    ) : (
+      <span className="text-muted-foreground text-xs">—</span>
+    )
   }
 
   const live =
@@ -130,7 +146,11 @@ function StatusCell({
   return (
     <RunStatusCell
       tone={SELL_STEP_TONE[step.status]}
-      label={SELL_STEP_LABEL[step.status]}
+      label={
+        step.status === 'sold' && partial
+          ? `${soldUnits} of ${heldUnits} sold`
+          : SELL_STEP_LABEL[step.status]
+      }
       live={live}
       note={hash ? <TxHashLink chain={chain} txHash={hash} /> : undefined}
       error={step.status === 'failed' ? step.error : undefined}
@@ -333,7 +353,12 @@ export function Inventory({
                   />
                 </TableCell>
                 <TableCell className="px-3">
-                  <StatusCell step={row.status} chain={row.token.chain} />
+                  <StatusCell
+                    step={row.status}
+                    chain={row.token.chain}
+                    soldUnits={row.soldUnits}
+                    heldUnits={Math.floor(row.token.quantity)}
+                  />
                 </TableCell>
               </TableRow>
             )
