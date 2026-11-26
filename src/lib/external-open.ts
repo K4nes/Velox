@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 
@@ -11,4 +12,22 @@ export function openExternal(url: string): void {
     return
   }
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// A plain left click goes through the helper; middle-click and modified clicks
+// keep the anchor's own behaviour.
+export function onExternalLinkClick(url: string) {
+  return (event: MouseEvent<HTMLAnchorElement>): void => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return
+    }
+    event.preventDefault()
+    openExternal(url)
+  }
 }
