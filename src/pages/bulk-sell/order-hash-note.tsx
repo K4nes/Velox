@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { writeClipboardText } from '@/lib/clipboard/clipboard'
+import { openExternal } from '@/lib/external-open'
 
 function copyOrderHash(orderHash: string) {
   void writeClipboardText(orderHash).then(
@@ -40,6 +41,19 @@ export function OrderHashNote({
           title="Open the asset page on OpenSea"
           aria-label={`Open token #${tokenId} on OpenSea in a new tab`}
           className="text-muted-foreground hover:text-foreground shrink-0"
+          onClick={(event) => {
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            ) {
+              return
+            }
+            event.preventDefault()
+            openExternal(openseaUrl)
+          }}
         >
           <ExternalLink className="size-3" />
         </a>
