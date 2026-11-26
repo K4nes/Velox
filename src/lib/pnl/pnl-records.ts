@@ -198,6 +198,29 @@ function seriesKey(record: PnlRecord): string {
   return `${record.contract.toLowerCase()}|${walletsOf(record).join(',')}`
 }
 
+// A wider selection can reuse the earlier set as its baseline, because every
+// wallet the earlier check measured is still present. The reverse cannot be
+// split: a removed wallet's share of the earlier total is unknown.
+function coversWallets(earlier: PnlRecord, later: PnlRecord): boolean {
+  const laterWallets = walletsOf(later)
+  return walletsOf(earlier).every((wallet) => laterWallets.includes(wallet))
+}
+
+// `baselineWei` can reuse any earlier check whose wallet set this record fully
+// covers. If none exists, the record starts a new series at zero and its whole
+// net is a position, not a change from the earlier check.
+function hasEarlierCoverage(
+  record: PnlRecord,
+  snapshots: readonly PnlRecord[]
+): boolean {
+  return snapshots.some(
+    (snapshot) =>
+      snapshot.contract.toLowerCase() === record.contract.toLowerCase() &&
+      isEarlier(snapshot, record) &&
+      coversWallets(snapshot, record)
+  )
+}
+
 function isEarlier(candidate: PnlRecord, record: PnlRecord): boolean {
   if (candidate.day !== record.day) return candidate.day < record.day
   return candidate.createdAt < record.createdAt
@@ -263,28 +286,111 @@ export function dailyDeltas(records: PnlRecord[]): DayDelta[] {
   return deltas
 }
 
-// Every day of the month is present, so the area keeps a flat zero on days
-// without a check instead of stretching the neighbours across the gap.
+// A record whose wallet set has no earlier covered baseline starts a new series
+// at zero: its whole net is a position, not a change. The total stays visible,
+// but the pages say why it is not like-for-like instead of ranking it.
+function incomparableMonths(records: PnlRecord[]): Set<string> {
+  const complete = records.filter(isComplete)
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of complete) {
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) byContract.set(key, [record])
+    else group.push(record)
+  }
+
+  const months = new Set<string>()
+  for (const group of byContract.values()) {
+    group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+    for (let index = 1; index < group.length; index += 1) {
+      const record = group[index]
+      if (!hasEarlierCoverage(record, complete)) {
+        months.add(record.day.slice(0, 7))
+      }
+    }
+  }
+  return months
+}
+
+// A month that starts a series with no covered baseline cannot be plotted on the
+// same cumulative line as the earlier position. Adding a wallet is different:
+// the earlier set is still a covered baseline, so only narrowing, disjoint or
+// returning sets trigger this.
+function seriesChangedAcrossMonths(records: PnlRecord[]): boolean {
+  const complete = records.filter(isComplete)
+  const byContract = new Map<string, PnlRecord[]>()
+  for (const record of complete) {
+    const key = record.contract.toLowerCase()
+    const group = byContract.get(key)
+    if (group === undefined) byContract.set(key, [record])
+    else group.push(record)
+  }
+
+  for (const group of byContract.values()) {
+    group.sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
+    for (let index = 1; index < group.length; index += 1) {
+      const record = group[index]
+      const earlierInAnotherMonth = group
+        .slice(0, index)
+        .some((earlier) => earlier.day.slice(0, 7) !== record.day.slice(0, 7))
+      if (
+        earlierInAnotherMonth &&
+        !hasEarlierCoverage(record, complete)
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+// Every day of the month is present, so the area keeps a flat level on days
+// without a check instead of stretching the neighbours across the gap. The
+// series is cumulative within the month: the last point is `monthNet`, and a
+// 15 ETH baseline followed by a 12 ETH change draws 15 then 27, not two
+// separate spikes.
 export function dailyNetSeries(
   records: PnlRecord[],
   month: Date,
-): { day: number; net: number }[] {
+): { days: { day: number; net: number }[]; partial: boolean } {
   const length = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
-  const totals = new Array<number>(length).fill(0)
+  const daily = new Array<number>(length).fill(0)
   const prefix = monthPrefix(month)
 
   for (const delta of dailyDeltas(records)) {
     if (!delta.day.startsWith(`${prefix}-`)) continue
     const index = Number(delta.day.slice(8, 10)) - 1
     if (index >= 0 && index < length) {
-      totals[index] += Number(delta.wei) / 10 ** 18
+      daily[index] += Number(delta.wei) / 10 ** 18
     }
   }
 
-  return totals.map((net, index) => ({ day: index + 1, net }))
+  let level = 0
+  const days = daily.map((net, index) => {
+    level += net
+    return { day: index + 1, net: level }
+  })
+
+  return {
+    days,
+    partial: records.some(
+      (record) => record.day.startsWith(`${prefix}-`) && !isComplete(record),
+    ),
+  }
 }
 
-export function monthNet(records: PnlRecord[], month: Date): { wei: bigint; usd: string } {
+export type MonthNet = {
+  wei: bigint
+  usd: string
+  // The month holds a truncated or unpriced read, so the deltas above cover
+  // only the complete checks and the figure is not a measured total.
+  partial: boolean
+  // Two wallet sets measure the same collection this month, so its baseline
+  // moved underneath the sum.
+  incomparable: boolean
+}
+
+export function monthNet(records: PnlRecord[], month: Date): MonthNet {
   const prefix = monthPrefix(month)
   const deltas = dailyDeltas(records).filter((delta) =>
     delta.day.startsWith(`${prefix}-`),
@@ -308,7 +414,15 @@ export function monthNet(records: PnlRecord[], month: Date): { wei: bigint; usd:
   const value =
     deltas.length > 0 && priced === deltas.length ? usd.format(usdTotal) : '—'
 
-  return { wei, usd: value }
+  return {
+    wei,
+    usd: value,
+    partial: records.some(
+      (record) =>
+        record.day.startsWith(`${prefix}-`) && !isComplete(record),
+    ),
+    incomparable: incomparableMonths(records).has(prefix),
+  }
 }
 
 export function formatNetPnl(record: PnlRecord): string {
@@ -343,6 +457,7 @@ export type LifetimeMonth = {
   change: bigint
   level: bigint
   tracked: boolean
+  incomparable: boolean
 }
 
 export type LifetimeTotals = {
@@ -367,6 +482,9 @@ export type LifetimeTotals = {
 
 export type LifetimeRanges = {
   tracked: number
+  // Months whose baseline is comparable. A month that mixes wallet sets is
+  // tracked but cannot be ranked against another month.
+  comparable: number
   profitable: number
   streak: number
   average: bigint | null
@@ -379,6 +497,9 @@ export type LifetimeView = {
   ranges: LifetimeRanges
   collections: LifetimeCollection[]
   months: LifetimeMonth[]
+  // A wallet-set change between months makes the cumulative chart a sum of
+  // positions measured from different baselines, so the page hides it.
+  seriesChanged: boolean
 }
 
 type Measured = {
@@ -489,16 +610,15 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
     .filter(isComplete)
     .sort((a, b) => (isEarlier(a, b) ? -1 : isEarlier(b, a) ? 1 : 0))
 
+  // Both views take their month changes from the same deltas, so a wallet-set
+  // change cannot make the monthly and lifetime pages disagree about a month.
+  // The month that mixes baselines is marked instead of being decomposed.
   const changes = new Map<string, bigint>()
-  const levels = new Map<string, bigint>()
-  for (const record of complete) {
-    const contract = record.contract.toLowerCase()
-    const next = netWei(record)
-    const month = record.day.slice(0, 7)
-    const delta = next - (levels.get(contract) ?? 0n)
-    changes.set(month, (changes.get(month) ?? 0n) + delta)
-    levels.set(contract, next)
+  for (const delta of dailyDeltas(records)) {
+    const month = delta.day.slice(0, 7)
+    changes.set(month, (changes.get(month) ?? 0n) + delta.wei)
   }
+  const incomparable = incomparableMonths(records)
 
   // Every calendar month between the first and last check is emitted, so the
   // chart holds a flat line across a month nobody checked instead of joining
@@ -512,7 +632,13 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       const month = monthKey(index)
       const change = changes.get(month) ?? 0n
       level += change
-      months.push({ month, change, level, tracked: changes.has(month) })
+      months.push({
+        month,
+        change,
+        level,
+        tracked: changes.has(month),
+        incomparable: incomparable.has(month),
+      })
     }
   }
 
@@ -588,7 +714,11 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
         )
       : null
 
-  const tracked = months.filter((month) => month.tracked)
+  const trackedCount = months.filter((month) => month.tracked).length
+  const comparable = months.filter(
+    (month) => month.tracked && !month.incomparable
+  )
+  const seriesChanged = seriesChangedAcrossMonths(records)
   let profitable = 0
   let streak = 0
   let run = 0
@@ -596,7 +726,7 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
   let worst: LifetimeRanges['worst'] = null
 
   for (const month of months) {
-    if (!month.tracked) {
+    if (!month.tracked || month.incomparable) {
       run = 0
       continue
     }
@@ -639,17 +769,20 @@ export function lifetimeView(records: PnlRecord[]): LifetimeView {
       from: complete[0]?.day ?? null,
     },
     ranges: {
-      tracked: tracked.length,
+      tracked: trackedCount,
+      comparable: comparable.length,
       profitable,
       streak,
       average:
-        net !== null && tracked.length > 0
-          ? net / BigInt(tracked.length)
+        comparable.length > 0
+          ? comparable.reduce((sum, month) => sum + month.change, 0n) /
+            BigInt(comparable.length)
           : null,
       best,
       worst,
     },
     collections,
     months,
+    seriesChanged,
   }
 }

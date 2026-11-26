@@ -28,7 +28,7 @@ test('a seeded PnL record renders on monthly and lifetime', async ({
   await expect(row).toContainText('$3,000.00')
 
   await app.open('/pnl/lifetime')
-  const netTotal = browser.locator('dt:has-text("Net Total PnL") + dd')
+  const netTotal = browser.locator('dt:has-text("Latest Net PnL") + dd')
   await expect(netTotal).toContainText('1.0000 ETH')
 })
 

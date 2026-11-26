@@ -52,6 +52,10 @@ function monthLabel(month: string): string {
   return monthFormat.format(new Date(Number(year), Number(index) - 1, 1))
 }
 
+function monthCount(count: number): string {
+  return `${count} month${count === 1 ? '' : 's'}`
+}
+
 // `from` is a local day key, so it is parsed as a local date; the Date
 // constructor's string form would read it as UTC and shift the day.
 function dayOf(day: string): Date {
@@ -153,7 +157,7 @@ export function PnlLifetimePage() {
       secondary: formatUsd(totals.usd.unrealized),
     },
     {
-      label: 'Net Total PnL',
+      label: 'Latest Net PnL',
       value: ethText(totals.net),
       secondary: formatUsd(totals.usd.net),
     },
@@ -170,29 +174,46 @@ export function PnlLifetimePage() {
     {
       label: 'Net ROI',
       value: totals.roi === null ? '—' : `${(totals.roi * 100).toFixed(1)}%`,
-      secondary: `${ranges.tracked} months tracked`,
+      secondary: `${monthCount(ranges.tracked)} tracked`,
     },
   ]
+
+  // A single month has nothing to compare against, and a month that mixes
+  // wallet sets has no shared baseline. Both cases withhold a ranking instead
+  // of printing the same figure as both best and worst.
+  const rankNote =
+    ranges.comparable === 0
+      ? ranges.tracked > 0
+        ? 'Mixed baselines'
+        : 'No comparable months'
+      : ranges.comparable === 1
+        ? 'Only one comparable month'
+        : null
+  const rank = (entry: { month: string; change: bigint } | null) =>
+    rankNote !== null || entry === null
+      ? { secondary: rankNote ?? '—', value: '—' }
+      : {
+          secondary: monthLabel(entry.month),
+          value: ethText(entry.change),
+        }
 
   const rangeRows = [
     {
       label: 'Best month',
-      secondary: ranges.best === null ? '—' : monthLabel(ranges.best.month),
-      value: ranges.best === null ? '—' : ethText(ranges.best.change),
+      ...rank(ranges.best),
     },
     {
       label: 'Worst month',
-      secondary: ranges.worst === null ? '—' : monthLabel(ranges.worst.month),
-      value: ranges.worst === null ? '—' : ethText(ranges.worst.change),
+      ...rank(ranges.worst),
     },
     {
       label: 'Average / month',
-      secondary: `${ranges.tracked} months with a check`,
+      secondary: `${monthCount(ranges.comparable)} with a check`,
       value: ethText(ranges.average),
     },
     {
       label: 'Profitable months',
-      secondary: `of ${ranges.tracked} months`,
+      secondary: `of ${monthCount(ranges.comparable)}`,
       value: String(ranges.profitable),
     },
     {
@@ -230,6 +251,17 @@ export function PnlLifetimePage() {
         </dl>
       </Card>
 
+      {view.seriesChanged ? (
+        <p className="text-xs text-muted-foreground">
+          Wallet selection changed between months; those months are not ranked
+          and the cumulative chart is hidden.
+        </p>
+      ) : view.months.some((entry) => entry.incomparable) ? (
+        <p className="text-xs text-muted-foreground">
+          Wallet selection changed between checks; those months mix baselines.
+        </p>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card className="flex min-h-[336px] flex-col gap-0 py-0">
           <div className="flex h-12 items-center justify-between border-b px-4">
@@ -239,7 +271,7 @@ export function PnlLifetimePage() {
             </div>
             <div className="flex flex-col items-end">
               <span className="text-[11px] font-medium text-muted-foreground tracking-[0.6px] uppercase">
-                All-time net
+                Latest net
               </span>
               <span className="flex items-baseline gap-1.5">
                 <span className="text-xs font-medium">{ethText(totals.net)}</span>
@@ -254,6 +286,11 @@ export function PnlLifetimePage() {
           {view.months.length === 0 ? (
             <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
               {records.length === 0 ? 'No PnL records yet.' : 'No complete checks yet.'}
+            </div>
+          ) : view.seriesChanged ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-muted-foreground">
+              Wallet selection changed between months; the cumulative chart
+              cannot compare these positions.
             </div>
           ) : (
             <div className="min-h-0 flex-1">
