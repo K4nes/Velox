@@ -61,8 +61,9 @@ come from the Conventional Commit history (`COMMIT.md`).
 - The Monthly PnL chart accumulates within the month, so a 15 ETH baseline and a
   12 ETH change draw 15 then 27 instead of two separate daily spikes. Lifetime Best
   and Worst withhold a ranking until two comparable months exist; a month that mixes
-  wallet sets is not ranked at all, a change that spans months hides the cumulative
-  chart instead of summing two positions, and the header names its figure the latest net.
+  wallet sets is not ranked at all, a narrowing or disjoint change across months hides
+  the cumulative chart instead of summing two positions while widening the selection
+  keeps it, and the header names its figure the latest net.
 - External links open in the operator's default browser from the installed app. The
   webview denies the new window a `target="_blank"` anchor asks for, so the Tx Hash link,
   the OpenSea link beside a Bulk Sell order hash and the Portfolio token links now hand

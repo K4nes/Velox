@@ -208,12 +208,12 @@ export function PnlLifetimePage() {
     },
     {
       label: 'Average / month',
-      secondary: `${monthCount(ranges.tracked)} with a check`,
+      secondary: `${monthCount(ranges.comparable)} with a check`,
       value: ethText(ranges.average),
     },
     {
       label: 'Profitable months',
-      secondary: `of ${monthCount(ranges.tracked)}`,
+      secondary: `of ${monthCount(ranges.comparable)}`,
       value: String(ranges.profitable),
     },
     {
