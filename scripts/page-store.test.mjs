@@ -65,6 +65,7 @@ const RETAINED_STORES = [
     module: '../src/pages/transfer/state.ts',
     creator: 'createTransferState',
     fields: [
+      'amounts',
       'destinationText',
       'error',
       'history',

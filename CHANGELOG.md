@@ -67,6 +67,9 @@ come from the Conventional Commit history (`COMMIT.md`).
   wallet sets is not ranked at all, a narrowing or disjoint change across months hides
   the cumulative chart instead of summing two positions while widening the selection
   keeps it, and the header names its figure the latest net.
+- The Transfer Status column uses short states (`Available`, `Checking`, `Sending`,
+  `Sent`, `Unavailable`, `Unsupported`, `Empty`, `Failed`, `Unconfirmed`) and keeps
+  the full reason in the tooltip.
 - A swap batch refuses two saved records that share one address before any quote or
   send, because both passed the per-record balance check and the second swap would
   spend a balance the first already spent. A repriced replacement is now indexed and

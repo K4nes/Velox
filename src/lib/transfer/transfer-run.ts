@@ -51,12 +51,15 @@ export type TransferRunSummary = {
   sent: number
   unknown: number
   failed: number
+  // Units confirmed moved. ERC-721 contributes one per token, so a plain NFT
+  // transfer still reads as one unit.
+  units: number
 }
 
 export const TRANSFER_STEP_LABEL: Record<TransferStepStatus, string> = {
   queued: 'Queued',
-  signing: 'Signing',
-  confirming: 'Confirming',
+  signing: 'Sending',
+  confirming: 'Sending',
   sent: 'Sent',
   unknown: 'Unconfirmed',
   failed: 'Failed',
@@ -295,7 +298,7 @@ export function spentUnits(
 
   for (const step of progress.steps) {
     if (step.status !== 'sent' && step.status !== 'unknown') continue
-    units.set(step.tokenKey, step.amount)
+    units.set(step.tokenKey, (units.get(step.tokenKey) ?? 0) + step.amount)
   }
 
   return units
@@ -309,11 +312,15 @@ export function summarizeTransferRun(
     sent: 0,
     unknown: 0,
     failed: 0,
+    units: 0,
   }
 
   for (const step of progress.steps) {
     summary.total += 1
-    if (step.status === 'sent') summary.sent += 1
+    if (step.status === 'sent') {
+      summary.sent += 1
+      summary.units += step.amount
+    }
     if (step.status === 'unknown') summary.unknown += 1
     if (step.status === 'failed') summary.failed += 1
   }

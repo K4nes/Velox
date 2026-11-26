@@ -33,6 +33,7 @@ export function TransferRail({
   blockedReason,
   running,
   onTransfer,
+  onAmountChange,
   onRemoveToken,
   onRemoveGroup,
 }: {
@@ -50,15 +51,22 @@ export function TransferRail({
   blockedReason: string | null
   running: boolean
   onTransfer: () => void
+  onAmountChange: (key: string, amount: number) => void
   onRemoveToken: (key: string) => void
   onRemoveGroup: (contract: string) => void
 }) {
   const sources = new Set(
     selections.map((selection) => selection.from.address.toLowerCase())
   ).size
-  const countLabel = `${selections.length} ${
-    selections.length === 1 ? 'NFT' : 'NFTs'
-  }`
+  const units = selections.reduce((sum, entry) => sum + entry.amount, 0)
+  const unitName = selections.some((entry) => entry.standard === 'erc1155')
+    ? units === 1
+      ? 'unit'
+      : 'units'
+    : units === 1
+      ? 'NFT'
+      : 'NFTs'
+  const countLabel = `${units} ${unitName}`
   const sourcesLabel = `${sources} ${sources === 1 ? 'wallet' : 'wallets'}`
   const destinationMessage =
     destination.status === 'invalid' || destination.status === 'failed'
@@ -140,59 +148,104 @@ export function TransferRail({
             </p>
           ) : null}
 
-          {selectionGroups.map((group) => (
-            <div key={group.contract.toLowerCase()} className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <TokenImage src={group.imageUrl} alt={group.name} />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-[13px] font-medium">
-                    {group.name}
-                  </span>
-                  <span className="text-muted-foreground truncate font-mono text-[11px]">
-                    {shortAddress(group.contract)}
-                  </span>
-                </div>
-                <Badge variant="secondary">
-                  {group.tokens.length}{' '}
-                  {group.tokens.length === 1 ? 'NFT' : 'NFTs'}
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Remove all ${group.name}`}
-                  onClick={() => onRemoveGroup(group.contract)}
-                  disabled={running}
-                >
-                  <X />
-                </Button>
-              </div>
+          {selectionGroups.map((group) => {
+            const groupUnits = group.tokens.reduce(
+              (sum, token) => sum + token.amount,
+              0
+            )
+            const groupUnitName = group.tokens.some(
+              (token) => token.standard === 'erc1155'
+            )
+              ? groupUnits === 1
+                ? 'unit'
+                : 'units'
+              : groupUnits === 1
+                ? 'NFT'
+                : 'NFTs'
 
-              <div className="ml-3.5 flex flex-col gap-1 border-l pl-3">
-                {group.tokens.map((token) => (
-                  <div key={token.key} className="flex items-center gap-2">
-                    <span
-                      className="max-w-[72px] shrink-0 truncate font-mono text-[11px] font-semibold tabular-nums"
-                      title={`#${token.tokenId}`}
-                    >
-                      #{token.tokenId}
+            return (
+              <div
+                key={group.contract.toLowerCase()}
+                className="flex flex-col gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <TokenImage src={group.imageUrl} alt={group.name} />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-[13px] font-medium">
+                      {group.name}
                     </span>
-                    <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                      {token.ownerLabel}
+                    <span className="text-muted-foreground truncate font-mono text-[11px]">
+                      {shortAddress(group.contract)}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Remove #${token.tokenId}`}
-                      onClick={() => onRemoveToken(token.key)}
-                      disabled={running}
-                    >
-                      <X />
-                    </Button>
                   </div>
-                ))}
+                  <Badge variant="secondary">
+                    {groupUnits} {groupUnitName}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Remove all ${group.name}`}
+                    onClick={() => onRemoveGroup(group.contract)}
+                    disabled={running}
+                  >
+                    <X />
+                  </Button>
+                </div>
+
+                <div className="ml-3.5 flex flex-col gap-1 border-l pl-3">
+                  {group.tokens.map((token) => (
+                    <div key={token.key} className="flex items-center gap-2">
+                      <span
+                        className="max-w-[72px] shrink-0 truncate font-mono text-[11px] font-semibold tabular-nums"
+                        title={`#${token.tokenId}`}
+                      >
+                        #{token.tokenId}
+                      </span>
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                        {token.ownerLabel}
+                      </span>
+                      {token.standard === 'erc1155' ? (
+                        <>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={token.available}
+                            step={1}
+                            value={token.amount}
+                            disabled={running}
+                            aria-label={`Units to transfer for token #${token.tokenId}`}
+                            onFocus={(event) =>
+                              event.currentTarget.select()
+                            }
+                            onChange={(event) =>
+                              onAmountChange(
+                                token.key,
+                                Number(event.target.value)
+                              )
+                            }
+                            className="h-7 w-16 px-1.5 text-right text-xs tabular-nums"
+                          />
+                          <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+                            / {token.available}
+                          </span>
+                        </>
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Remove #${token.tokenId}`}
+                        onClick={() => onRemoveToken(token.key)}
+                        disabled={running}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="mt-auto shrink-0 border-t p-4">
@@ -203,6 +256,11 @@ export function TransferRail({
           {summary && summary.total > 0 ? (
             <p className="text-muted-foreground mt-1 text-xs">
               {summary.sent} of {summary.total} sent
+              {summary.units > 0
+                ? ` · ${summary.units} ${
+                    summary.units === 1 ? 'unit' : 'units'
+                  } moved`
+                : ''}
               {summary.failed > 0 ? `, ${summary.failed} failed` : ''}
               {summary.unknown > 0
                 ? `, ${summary.unknown} unconfirmed`

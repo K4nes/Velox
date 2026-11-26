@@ -10,13 +10,32 @@ import type { PageStore } from '@/lib/core/page-store'
 import { shortAddress } from '@/lib/core/format'
 import type { HeldToken } from '@/lib/inventory/holdings'
 import { probeStandards } from '@/lib/chain/token-standard'
-import type { StandardProbe } from '@/lib/chain/token-standard'
-import { selectedTransfers } from '@/lib/transfer/transfer-plan'
+import type {
+  StandardProbe,
+  TokenStandard,
+} from '@/lib/chain/token-standard'
+import {
+  clampTransferAmount,
+  selectedTransfers,
+} from '@/lib/transfer/transfer-plan'
 import type { TransferSelection } from '@/lib/transfer/transfer-plan'
+import { chainBySlug } from '@/config/chains'
+
+export type TransferBlock =
+  | 'chain'
+  | 'spent'
+  | 'empty'
+  | 'checking'
+  | 'unsupported'
+  | 'unreadable'
 
 export type TransferScanRow = {
   token: HeldToken
+  standard: TokenStandard | null
+  available: number
+  amount: number
   selectable: boolean
+  blocked: TransferBlock | null
   blockedReason: string | null
 }
 
@@ -26,7 +45,14 @@ export type TransferSelectionGroup = {
   contract: string
   name: string
   imageUrl: string
-  tokens: { key: string; tokenId: string; ownerLabel: string }[]
+  tokens: {
+    key: string
+    tokenId: string
+    ownerLabel: string
+    standard: TokenStandard
+    amount: number
+    available: number
+  }[]
 }
 
 export type TransferProbeState = {
@@ -38,6 +64,7 @@ export type TransferScanFields = HoldingsFields &
   SelectionFields & {
     probeState: TransferProbeState
     spent: ReadonlyMap<string, number>
+    amounts: ReadonlyMap<string, number>
   }
 
 const NO_PROBES: ReadonlyMap<string, StandardProbe> = new Map()
@@ -47,6 +74,7 @@ const INITIAL: TransferScanFields = {
   selectedKeys: [],
   probeState: { key: '', probes: NO_PROBES },
   spent: new Map(),
+  amounts: new Map(),
 }
 
 export function useTransferScan(store?: PageStore<TransferScanFields>) {
@@ -58,7 +86,16 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
   const state = fields.state
   const tokens = fields.tokens
   const spent = fields.spent
+  const amounts = fields.amounts
   const collection = state.status === 'ready' ? state.collection : null
+  // A chain the app cannot reach cannot answer a standard probe. Naming it once
+  // at scan level keeps every row from reading as an unreadable token.
+  const chainError =
+    state.status === 'ready' && !chainBySlug(state.collection.chain)
+      ? `Chain not supported: ${state.collection.chain}`
+      : null
+  const truncated =
+    state.status === 'ready' && state.scans.some((scan) => scan.truncated)
   // A probe belongs to the collection it was made for. Keying the state keeps a
   // rescan from reusing the previous collection's probes.
   const scanKey =
@@ -70,6 +107,7 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
 
   useEffect(() => {
     if (state.status !== 'ready') return
+    if (chainError !== null) return
 
     const byContract = new Map<
       string,
@@ -97,7 +135,7 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
     return () => {
       cancelled = true
     }
-  }, [state, tokens, scanKey, scoped])
+  }, [state, tokens, scanKey, scoped, chainError])
 
   const wallets = useMemo<TransferScanWallet[]>(
     () =>
@@ -115,28 +153,51 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
     () =>
       scan.rows.map((token) => {
         const probe = standards.get(token.contractAddress.toLowerCase())
+        const standard =
+          probe?.status === 'known' ? probe.standard : null
         const used = spent.get(token.key) ?? 0
         const remaining = Math.floor(token.quantity) - used
+        const available = Math.max(0, remaining)
+        const amount =
+          standard === 'erc1155'
+            ? clampTransferAmount(amounts.get(token.key) ?? 1, available, standard)
+            : 1
 
         // A spent token is blocked by the ledger even when the chain has not
         // caught up yet, so the same row cannot be queued twice.
+        let blocked: TransferBlock | null = null
         let blockedReason: string | null = null
-        if (remaining < 1) {
+        if (chainError !== null) {
+          blocked = 'chain'
+          blockedReason = chainError
+        } else if (remaining < 1) {
+          blocked = used > 0 ? 'spent' : 'empty'
           blockedReason =
             used > 0
               ? 'This token has already been transferred'
               : 'This token has no transferable balance'
         } else if (!probe) {
+          blocked = 'checking'
           blockedReason = 'Checking this token…'
         } else if (probe.status === 'unsupported') {
+          blocked = 'unsupported'
           blockedReason = 'This token cannot be transferred'
         } else if (probe.status === 'unreadable') {
+          blocked = 'unreadable'
           blockedReason = 'Could not check this token'
         }
 
-        return { token, selectable: blockedReason === null, blockedReason }
+        return {
+          token,
+          standard,
+          available,
+          amount,
+          selectable: blockedReason === null,
+          blocked,
+          blockedReason,
+        }
       }),
-    [scan.rows, standards, spent]
+    [scan.rows, standards, spent, amounts, chainError]
   )
 
   const select = useSelection(
@@ -155,8 +216,9 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
         standards,
         spent,
         selectedKeys: select.selectedKeys,
+        amounts,
       }),
-    [tokens, standards, spent, select.selectedKeys]
+    [tokens, standards, spent, select.selectedKeys, amounts]
   )
 
   const selectionGroups = useMemo<TransferSelectionGroup[]>(() => {
@@ -168,6 +230,9 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
         key: entry.key,
         tokenId: entry.tokenId,
         ownerLabel: entry.from.label,
+        standard: entry.standard,
+        amount: entry.amount,
+        available: entry.available,
       }
       const group = byContract.get(contract)
       if (group) {
@@ -189,18 +254,64 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
     return [...byContract.values()]
   }, [selection, collection])
 
-  function resetSelection() {
+  function clearAmounts(keys: readonly string[]) {
+    const current = scoped.get().amounts
+    const present = keys.filter((key) => current.has(key))
+    if (present.length === 0) return
+
+    const next = new Map(current)
+    for (const key of present) next.delete(key)
+    scoped.set({ amounts: next })
+  }
+
+  function clearSelection({ keepSpent = false } = {}) {
     select.setKeys([])
-    scoped.set({ spent: new Map() })
+    scoped.set({
+      amounts: new Map<string, number>(),
+      ...(keepSpent ? {} : { spent: new Map<string, number>() }),
+    })
+  }
+
+  function deselect(keys: readonly string[]) {
+    select.deselect(keys)
+    clearAmounts(keys)
+  }
+
+  // A successful run keeps its ledger for this collection and wallet scope:
+  // OpenSea can lag behind a receipt, and a row that reappears must stay
+  // blocked rather than send the same token twice.
+  function resetSelection() {
+    clearSelection({ keepSpent: true })
+  }
+
+  function setAmount(key: string, value: number) {
+    const entry = selection.find((row) => row.key === key)
+    if (!entry || entry.standard !== 'erc1155') return
+
+    const next = new Map(scoped.get().amounts)
+    next.set(key, clampTransferAmount(value, entry.available, entry.standard))
+    scoped.set({ amounts: next })
+  }
+
+  function toggleToken(key: string) {
+    select.toggle(key)
+    if (!scoped.get().selectedKeys.includes(key)) clearAmounts([key])
+  }
+
+  function toggleAll() {
+    const before = scoped.get().selectedKeys
+    select.toggleAll()
+    const after = scoped.get().selectedKeys
+    clearAmounts(before.filter((key) => !after.includes(key)))
   }
 
   function removeToken(key: string) {
-    select.deselect([key])
+    deselect([key])
   }
 
   function removeGroup(contract: string) {
     const target = contract.toLowerCase()
-    select.deselect(
+    deselect(
       selection
         .filter((entry) => entry.contract.toLowerCase() === target)
         .map((entry) => entry.key)
@@ -237,21 +348,24 @@ export function useTransferScan(store?: PageStore<TransferScanFields>) {
     selectedKeys: select.selectedKeys,
     selection,
     selectionGroups,
+    chainError,
+    truncated,
     changeUrl: (next: string) => {
       if (scan.running) return
-      resetSelection()
+      clearSelection()
       scan.changeUrl(next)
     },
     changeWallets: (ids: string[]) => {
       if (scan.running) return
-      resetSelection()
+      clearSelection()
       scan.changeWallets(ids)
     },
-    toggleToken: select.toggle,
-    toggleAll: select.toggleAll,
+    toggleToken,
+    toggleAll,
     removeToken,
     removeGroup,
-    deselect: select.deselect,
+    deselect,
+    setAmount,
     applySpent,
     scan: rescan,
   }

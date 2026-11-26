@@ -20,36 +20,57 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { HoldingsScanState } from '@/lib/inventory/holdings-fields'
-import type { TransferScanRow } from '@/hooks/scan/use-transfer-scan'
+import type {
+  TransferBlock,
+  TransferScanRow,
+} from '@/hooks/scan/use-transfer-scan'
 import { shortAddress } from '@/lib/core/format'
 import { TRANSFER_STEP_LABEL, TRANSFER_STEP_TONE } from '@/lib/transfer/transfer-run'
 import type { TransferStepState } from '@/lib/transfer/transfer-run'
 
+const BLOCK_LABEL: Record<TransferBlock, string> = {
+  chain: 'Unavailable',
+  spent: 'Sent',
+  empty: 'Empty',
+  checking: 'Checking',
+  unsupported: 'Unsupported',
+  unreadable: 'Unavailable',
+}
+
 function StatusCell({
   step,
   chain,
+  blocked,
   blockedReason,
 }: {
   step: TransferStepState | undefined
   chain: string
+  blocked: TransferBlock | null
   blockedReason: string | null
 }) {
   if (!step) {
-    return blockedReason ? (
-      <span className="text-muted-foreground text-xs">{blockedReason}</span>
-    ) : (
-      <span className="text-muted-foreground text-xs">—</span>
+    return (
+      <span
+        className="text-muted-foreground text-xs"
+        title={blockedReason ?? undefined}
+      >
+        {blocked === null ? 'Available' : BLOCK_LABEL[blocked]}
+      </span>
     )
   }
 
   const live = step.status === 'signing' || step.status === 'confirming'
   const txHash = 'txHash' in step ? step.txHash : null
+  const label =
+    step.amount > 1
+      ? `${TRANSFER_STEP_LABEL[step.status]} · ${step.amount} units`
+      : TRANSFER_STEP_LABEL[step.status]
 
   return (
     <RunStatusCell
       className="max-w-[220px]"
       tone={TRANSFER_STEP_TONE[step.status]}
-      label={TRANSFER_STEP_LABEL[step.status]}
+      label={label}
       live={live}
       note={txHash ? <TxHashLink chain={chain} txHash={txHash} /> : undefined}
       error={
@@ -70,6 +91,8 @@ export function Inventory({
   selectedKeys,
   tokenStates,
   running,
+  chainError,
+  truncated,
   onToggleToken,
   onToggleAll,
 }: {
@@ -81,6 +104,8 @@ export function Inventory({
   selectedKeys: readonly string[]
   tokenStates: Map<string, TransferStepState>
   running: boolean
+  chainError: string | null
+  truncated: boolean
   onToggleToken: (key: string) => void
   onToggleAll: () => void
 }) {
@@ -117,6 +142,17 @@ export function Inventory({
           <Spinner className="text-muted-foreground size-4" />
           <p className="text-muted-foreground text-sm">Scanning collection…</p>
         </div>
+      )
+    }
+
+    if (chainError !== null) {
+      return (
+        <BodyMessage
+          icon={PackageOpen}
+          title={chainError}
+          description="Velox has no transfer target for this chain. Pick a collection on a configured chain."
+          tone="text-destructive"
+        />
       )
     }
 
@@ -246,6 +282,7 @@ export function Inventory({
                   <StatusCell
                     step={tokenStates.get(key)}
                     chain={row.token.chain}
+                    blocked={row.blocked}
                     blockedReason={row.blockedReason}
                   />
                 </TableCell>
@@ -269,6 +306,12 @@ export function Inventory({
           settled: state,
         })}
       />
+
+      {truncated ? (
+        <p role="status" className="text-warning border-b px-4 py-2 text-xs">
+          Scan stopped early; some tokens may be missing.
+        </p>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {body()}
