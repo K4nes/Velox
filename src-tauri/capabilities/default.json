@@ -4,6 +4,7 @@
   "permissions": [
     "core:default",
     "updater:default",
+    "process:allow-restart",
     "allow-auth-nonce",
     "allow-auth-token",
     "allow-eth-usdt-price",

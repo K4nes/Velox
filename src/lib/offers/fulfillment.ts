@@ -322,8 +322,12 @@ export function buildFulfillmentCall(input: {
   if (numerator <= 0n || denominator <= 0n) {
     throw new Error('Offer fill fraction must be positive')
   }
-  if (BigInt(nft.startAmount) * numerator !== denominator) {
-    throw new Error('Offer fulfillment does not fill exactly one unit')
+  // The fraction has to cover exactly the units this fill was planned for: the
+  // whole order when the bid's depth met the balance, less when it did not.
+  if (BigInt(nft.startAmount) * numerator !== denominator * BigInt(target.units)) {
+    throw new Error(
+      `Offer fulfillment does not fill ${target.units} unit${target.units === 1 ? '' : 's'}`
+    )
   }
 
   if (

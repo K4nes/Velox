@@ -94,6 +94,7 @@ const RETAINED_STORES = [
       'query',
       'running',
       'selectedKeys',
+      'soldUnits',
       'state',
       'tokens',
       'url',

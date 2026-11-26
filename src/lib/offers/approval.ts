@@ -1,13 +1,14 @@
 import { encodeFunctionData } from 'viem'
 import { toMessage } from '@/lib/core/message'
 import { clientFor, sendTransaction, waitForReceipt } from '@/lib/chain/tx'
+import { seaportVersion } from '@/lib/opensea/seaport'
 import type { StoredWallet } from '@/lib/wallet/wallets'
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const ZERO_BYTES32 = ('0x' + '00'.repeat(32)) as `0x${string}`
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
-const TOKEN_APPROVAL_ABI = [
+export const TOKEN_APPROVAL_ABI = [
   {
     type: 'function',
     name: 'isApprovedForAll',
@@ -64,11 +65,18 @@ export function createApprovalCache(): ApprovalCache {
 
 const conduitOperators = new Map<string, Promise<`0x${string}`>>()
 
-async function resolveOperator(input: {
+// The offer names the Seaport it settles on. Only a contract on this app's own
+// whitelist may be approved, because the protocol address arrives in the same
+// API response as the offer and nothing on chain has vouched for it yet.
+export async function resolveApprovalOperator(input: {
   chainSlug: string
   protocolAddress: `0x${string}`
   fulfillerConduitKey: `0x${string}`
 }): Promise<`0x${string}`> {
+  if (seaportVersion(input.protocolAddress) === null) {
+    throw new Error(`Unsupported Seaport contract ${input.protocolAddress}`)
+  }
+
   if (input.fulfillerConduitKey.toLowerCase() === ZERO_BYTES32) {
     return input.protocolAddress
   }
@@ -122,7 +130,7 @@ export async function ensureOperatorApproved(input: {
   const owner = input.wallet.address.toLowerCase()
   const contract = input.contract.toLowerCase()
 
-  const operator = await resolveOperator({
+  const operator = await resolveApprovalOperator({
     chainSlug: input.chainSlug,
     protocolAddress: input.protocolAddress,
     fulfillerConduitKey: input.fulfillerConduitKey,

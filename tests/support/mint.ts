@@ -173,7 +173,10 @@ export async function mockMintRpc(options: {
   browser: Browser
   wallets: { address: string; sendDelayMs?: number }[]
   receiptDelayMs?: number
+  /** A fixed chain clock for a test that pins an offset from the desktop clock. */
   nowMs?: number
+  /** Reads the chain clock when the block is requested; overrides `nowMs`. */
+  blockTime?: () => number
   revert?: boolean
   // Answers every `eth_call` with a JSON-RPC error, so a failed allowance read is
   // observable without a second route.
@@ -286,7 +289,9 @@ export async function mockMintRpc(options: {
           size: '0x0',
           gasLimit: '0x1c9c380',
           gasUsed: '0x0',
-          timestamp: `0x${Math.floor(nowMs / 1000).toString(16)}`,
+          timestamp: `0x${Math.floor(
+            (options.blockTime?.() ?? nowMs) / 1000
+          ).toString(16)}`,
           transactions: [],
           uncles: [],
           baseFeePerGas: '0x1',

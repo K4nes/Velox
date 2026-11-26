@@ -42,7 +42,12 @@ export async function mintForWallet(input: {
   gas: TxGas
   transaction: MintTransaction
   shouldAbort?: () => boolean
-}): Promise<{ txHash: string; chain: string }> {
+}): Promise<{
+  txHash: string
+  chain: string
+  from: `0x${string}`
+  nonce: number
+}> {
   return sendTransaction({
     wallet: input.wallet,
     chainSlug: input.transaction.chain,
@@ -211,8 +216,17 @@ export async function stageConfirmed(
   // failed build as a successful readiness check.
   if (entries.length === 0) return false
 
+  // A token-priced mint cannot succeed before the approval the run sends first, so
+  // its simulation would revert on the allowance every time and burn the retry
+  // budget. The chain-time stage window the caller checked is its gate; the run
+  // reports a send failure. Native mints keep the simulation.
+  const nativeEntries = entries.filter(
+    (entry) => entry.transaction.allowances.length === 0
+  )
+  if (nativeEntries.length === 0) return true
+
   const results = await Promise.allSettled(
-    entries.map((entry) =>
+    nativeEntries.map((entry) =>
       callTransaction({
         chainSlug,
         from: entry.from,

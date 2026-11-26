@@ -10,6 +10,8 @@ export type OrderListingRow = {
   priceWei: string
   startTimeSec: number
   expirationTimeSec: number
+  /** The endpoint's status; omitted means the fixture's `ACTIVE`. */
+  status?: string
 }
 
 /**
@@ -75,7 +77,7 @@ export function orderListingsFixture(input: {
         value: order.priceWei,
       },
       type: 'basic',
-      status: 'ACTIVE',
+      status: order.status ?? 'ACTIVE',
     })),
     next: null,
   }

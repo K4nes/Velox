@@ -58,6 +58,13 @@ export function SettingsPage() {
           return
         }
 
+        // An import or another tab can restore a row this page deleted. The
+        // tombstone covers a save that was already in flight, so a row the
+        // loader can see is back must not stay a delete on the next Save.
+        for (const entry of list) {
+          removed.current.delete(entry.id)
+        }
+
         setConnections(list)
         setDrafts(
           Object.fromEntries(list.map((entry) => [entry.id, entry]))
@@ -146,6 +153,23 @@ export function SettingsPage() {
       const saved = await saveConnection(connection)
       if (removed.current.has(saved.id) && saved.kind === 'rpc') {
         await deleteConnection(saved.id)
+        // The row was deleted before this save landed, and the write brought
+        // it back. Drop it from the page with the delete and say so, instead
+        // of leaving a draft on screen that the store no longer holds.
+        removed.current.delete(saved.id)
+        setConnections((current) =>
+          current.filter((entry) => entry.id !== saved.id)
+        )
+        setDrafts((current) => {
+          const next = { ...current }
+          delete next[saved.id]
+          return next
+        })
+        setIssues([])
+        setLoadError(null)
+        toast.info(
+          `${saved.name} was deleted while saving. The change was not kept.`
+        )
         return
       }
       setConnections((current) =>

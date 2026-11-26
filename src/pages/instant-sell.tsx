@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { WalletSelect } from '@/components/wallet-select'
+import { usePageStore } from '@/hooks/use-page-store'
 import { useBulkSellScan } from '@/hooks/scan/use-bulk-sell-scan'
 import { useCollectionOffers } from '@/hooks/data/use-collection-offers'
 import { useInstantSellRun } from '@/hooks/run/use-instant-sell-run'
@@ -37,9 +38,32 @@ function currentSecond(): number {
 
 export function InstantSellPage() {
   const scan = useBulkSellScan(instantSellStore)
+  const fields = usePageStore(instantSellStore)
   const offers = useCollectionOffers(scan.collection, instantSellStore)
+
+  // A settled token keeps only what it still holds. The store survives the
+  // page, so a partial fill is not lost by visiting another route and back.
+  const soldByToken = fields.soldUnits
+
   const run = useInstantSellRun({
-    onSold: scan.deselect,
+    onSold: (sold) => {
+      const current = instantSellStore.get().soldUnits
+      const next = { ...current }
+      for (const entry of sold) {
+        next[entry.key] = (next[entry.key] ?? 0) + entry.units
+      }
+      instantSellStore.set({ soldUnits: next })
+
+      const held = new Map(
+        scan.selection.map((token) => [token.key, token.quantity])
+      )
+      const complete = sold
+        .filter(
+          (entry) => (next[entry.key] ?? 0) >= (held.get(entry.key) ?? Infinity)
+        )
+        .map((entry) => entry.key)
+      if (complete.length > 0) scan.deselect(complete)
+    },
     onSettled: offers.refresh,
     store: instantSellStore,
   })
@@ -62,14 +86,26 @@ export function InstantSellPage() {
     return () => window.clearTimeout(timer)
   }, [nextExpirySec, nowSec])
 
+  const planSelection = useMemo(
+    () =>
+      scan.selection.flatMap((token) => {
+        const quantity = Math.max(
+          0,
+          Math.floor(token.quantity) - (soldByToken[token.key] ?? 0)
+        )
+        return quantity < 1 ? [] : [{ ...token, quantity }]
+      }),
+    [scan.selection, soldByToken]
+  )
+
   const plan = useMemo(
     () =>
       planSales({
-        selected: scan.selection,
+        selected: planSelection,
         ladder: offers.ladder,
         nowSec,
       }),
-    [scan.selection, offers.ladder, nowSec]
+    [planSelection, offers.ladder, nowSec]
   )
 
   const statuses = useMemo(
@@ -90,10 +126,13 @@ export function InstantSellPage() {
     return scan.rows.map((token): InventoryRow => {
       const selected = selectedSet.has(token.key)
       const assigned = plan.assigned.get(token.key) ?? null
-      const sold = statuses.get(token.key)?.status === 'sold'
+      const remaining = Math.max(
+        0,
+        Math.floor(token.quantity) - (soldByToken[token.key] ?? 0)
+      )
       let blocked: InventoryRow['blocked'] = null
 
-      if (sold) {
+      if (remaining < 1) {
         blocked = 'sold'
       } else if (Math.floor(token.quantity) < 1) {
         blocked = 'sub-unit'
@@ -116,16 +155,18 @@ export function InstantSellPage() {
         assigned,
         blocked,
         selected,
+        soldUnits: Math.min(
+          Math.floor(token.quantity),
+          soldByToken[token.key] ?? 0
+        ),
+        remainingUnits: remaining,
         status: statuses.get(token.key),
       }
     })
-  }, [scan.rows, selectedSet, plan, statuses, offers.ladder, offersState.status])
+  }, [scan.rows, selectedSet, plan, statuses, offers.ladder, offersState.status, soldByToken])
 
   const visibleSelectable = rows.filter(
-    (row) =>
-      Math.floor(row.token.quantity) >= 1 &&
-      row.blocked !== 'sold' &&
-      (row.selected || row.blocked === null)
+    (row) => row.remainingUnits >= 1 && (row.selected || row.blocked === null)
   )
   const allVisibleSelected =
     visibleSelectable.length > 0 &&
@@ -152,13 +193,32 @@ export function InstantSellPage() {
       book: offersState.status === 'idle' ? null : offersState.book,
     },
     ladder: offers.ladder,
-    selected: scan.selection,
+    selected: planSelection,
     plan,
   })
 
+  function resetSoldUnits() {
+    if (Object.keys(instantSellStore.get().soldUnits).length > 0) {
+      instantSellStore.set({ soldUnits: {} })
+    }
+  }
+
   function check() {
     run.reset()
+    resetSoldUnits()
     void scan.scan()
+  }
+
+  function changeUrl(next: string) {
+    if (scan.running) return
+    resetSoldUnits()
+    scan.changeUrl(next)
+  }
+
+  function changeWallets(ids: string[]) {
+    if (scan.running) return
+    resetSoldUnits()
+    scan.changeWallets(ids)
   }
 
   return (
@@ -171,7 +231,7 @@ export function InstantSellPage() {
           <Input
             id="collection-url"
             value={scan.url}
-            onChange={(event) => scan.changeUrl(event.target.value)}
+            onChange={(event) => changeUrl(event.target.value)}
             placeholder={COLLECTION_FIELD_PLACEHOLDER}
             disabled={scan.running || run.running}
           />
@@ -188,7 +248,7 @@ export function InstantSellPage() {
           <WalletSelect
             groups={groups}
             selected={scan.selectedWallets}
-            onSelectedChange={scan.changeWallets}
+            onSelectedChange={changeWallets}
             disabled={scan.running || run.running}
             aria-labelledby="instant-wallet-label"
             className="w-full"
@@ -230,7 +290,7 @@ export function InstantSellPage() {
           onCurrencyChange={offers.setCurrency}
           onRefresh={offers.refresh}
           plan={plan}
-          selectedCount={scan.selection.length}
+          selectedCount={planSelection.length}
           summary={run.summary}
           error={run.error}
           blockedReason={blockedReason}

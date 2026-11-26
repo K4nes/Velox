@@ -273,7 +273,7 @@ export function CancelRail({
         <Button
           className="h-10 w-full"
           onClick={onCancel}
-          disabled={running || pending.length === 0}
+          disabled={running || read.status !== 'ready' || pending.length === 0}
         >
           {running ? (
             <>
