@@ -228,10 +228,13 @@ test(
       functionName: 'allowance',
       args: [owner, collection.address as `0x${string}`],
     })
-    test.skip(
-      approved >= amount,
-      `the live wallet already holds an allowance of ${formatUnits(approved, list.decimals)} ${list.currencySymbol} to the collection; this case needs an uncovered one`
-    )
+    // A skip would report the lane green without exercising the approval this
+    // case exists to prove. Fail closed and tell the operator what to change.
+    if (approved >= amount) {
+      throw new Error(
+        `The live wallet already holds an allowance of ${formatUnits(approved, list.decimals)} ${list.currencySymbol} to the collection; this case needs an uncovered allowance. Use a fresh wallet or revoke the allowance before running with E2E_ALLOW_MINT=1.`
+      )
+    }
 
     const held = await client.readContract({
       address: collection.address as `0x${string}`,

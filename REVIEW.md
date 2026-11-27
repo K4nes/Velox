@@ -44,6 +44,25 @@ calls are the only thing this suppresses.
   `mergeCheckedRows`, the run reset, the abort path, and the receipt path. One path that
   does not handle it is a finding.
 
+## Evidence for changed behavior
+
+- A guard test tampers the value the guard trusts, not only a value outside the trusted
+  set. A rogue operator with the real Seaport does not prove a response's own protocol
+  address is trustworthy.
+- A migration test seeds the pre-migration row and asserts the post-migration values.
+  Empty or default rows do not exercise the rewrite that can lose a key or a row.
+- A behavior-change test asserts the output that changed. An aggregate that already
+  passes on the base branch does not prove a chart, label or state changed.
+- A boundary relation is tested both ways: widening and narrowing a wallet set, adding
+  and removing a token, old shape and new shape. One direction can be valid while the
+  other regresses.
+
+## Parallel PR slices
+
+- In a stack of domain PRs, only the integration or release PR edits `CHANGELOG.md`.
+  A slice that changes the same `### Fixed` block will conflict on the squash train,
+  and the conflict resolution is not part of the change being reviewed.
+
 ## Live lanes
 
 - A live case pins every input it asserts: quantity, list, chain and spender. A value read
