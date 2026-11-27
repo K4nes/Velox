@@ -61,6 +61,7 @@ async function seedTokenTask(options: {
   wallet: WalletRow
   list: TestList
   allowance: string
+  blockTime?: () => number
 }): Promise<{ events: MintEvent[]; calls: MintCall[] }> {
   await mockScatterNetwork({
     browser: options.browser,
@@ -75,8 +76,8 @@ async function seedTokenTask(options: {
   const rpc = await mockMintRpc({
     browser: options.browser,
     wallets: [options.wallet],
-    // The armed case fires on chain time, which has to advance with the clock.
-    blockTime: () => Date.now(),
+    // The armed case fires on chain time; a test can advance it itself.
+    blockTime: options.blockTime ?? (() => Date.now()),
     tokenBalances: [
       {
         token: TOKEN,
@@ -112,7 +113,10 @@ test('an armed token-priced list approves and mints without simulating the mint'
 }) => {
   const folder = walletFolder('Scatter ERC-20 Armed')
   const wallet = oneWallet(folder)
-  const startTime = new Date(Date.now() + 8_000).toISOString()
+  // A frozen chain clock makes the Scheduled state deterministic; the test
+  // advances it after arming instead of racing an 8 second wall clock.
+  let chainNow = Date.now()
+  const startTime = new Date(chainNow + 8_000).toISOString()
   const rpc = await seedTokenTask({
     app,
     browser,
@@ -121,6 +125,7 @@ test('an armed token-priced list approves and mints without simulating the mint'
     wallet,
     list: tokenList({ startTime, walletLimit: 1 }),
     allowance: '0',
+    blockTime: () => chainNow,
   })
 
   const row = screen.getByRole('row').filter({ hasText: wallet.address })
@@ -134,6 +139,9 @@ test('an armed token-priced list approves and mints without simulating the mint'
   await expect(screen.getByText('Mint opens in')).toBeVisible({
     timeout: 10_000,
   })
+
+  // Move the chain past the stage start; the arm loop observes it on its next tick.
+  chainNow += 10_000
 
   await expect
     .poll(() => sendsOf(rpc.events).length, { timeout: 60_000 })

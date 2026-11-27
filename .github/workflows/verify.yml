@@ -40,6 +40,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/check-commit-message.mjs
 
+      - name: whitespace
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: git diff --check "$BASE_SHA...HEAD"
+
       # The repo's own gates, in the order AGENTS.md documents them.
       - run: npm run build
       - run: npm run typecheck:test
